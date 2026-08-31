@@ -1079,6 +1079,104 @@ function ItagEntryForm({ initial, onSave, onCancel }) {
 
 const ITAG_STATUS = ["PAGO", "ABERTO", "ATRASADO"];
 
+function ImplantacaoForm({ initial, prospects, clients, onSaveProspect, onSave, onCancel }) {
+  const [prospectId, setProspectId] = useState(initial?.prospect_id || "");
+  const [showNewProspect, setShowNewProspect] = useState(false);
+  const [installments, setInstallments] = useState(initial?.installments?.length ? initial.installments : [{ due_date: new Date().toISOString().slice(0, 10), value: "", paid: false, paid_date: "" }]);
+  const [notes, setNotes] = useState(initial?.notes || "");
+
+  const prospect = prospects.find((p) => p.id === prospectId);
+
+  function updateInst(i, field, val) { setInstallments((prev) => prev.map((it, idx) => (idx === i ? { ...it, [field]: val } : it))); }
+  function addInst() { setInstallments((prev) => [...prev, { due_date: "", value: "", paid: false, paid_date: "" }]); }
+  function removeInst(i) { setInstallments((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev)); }
+  function splitEqual() {
+    const total = installments.reduce((s, it) => s + (Number(it.value) || 0), 0);
+    const each = total / installments.length;
+    setInstallments((prev) => prev.map((it) => ({ ...it, value: each.toFixed(2) })));
+  }
+
+  async function handleSaveNewProspect(p) { await onSaveProspect(p); setProspectId(p.id); setShowNewProspect(false); }
+
+  const totalValue = installments.reduce((s, it) => s + (Number(it.value) || 0), 0);
+  const paidValue = installments.filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+  const canSave = prospectId && totalValue > 0;
+
+  return (
+    <div className="rounded-2xl p-5 border shadow-sm space-y-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Nova implantação</div>
+        <button onClick={onCancel} className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+
+      <div>
+        <div className="flex items-end gap-2 mb-2">
+          <div className="flex-1">
+            <ClientPicker prospects={prospects} clients={clients} value={prospectId} onSelect={setProspectId} onCreateNew={async (c) => {
+              const p = { id: uid(), name: c.name, cnpj: c.cnpj || "", phone: c.phone || "", email: c.email || "", cep: c.cep || "", street: c.street || "", number: c.number || "", complement: c.complement || "", neighborhood: c.neighborhood || "", city: c.city || "", state: c.state || "" };
+              await onSaveProspect(p);
+              return p;
+            }} />
+          </div>
+          <button onClick={() => setShowNewProspect((v) => !v)} className="px-3 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
+            {showNewProspect ? "Cancelar" : "＋ Novo cliente"}
+          </button>
+        </div>
+        {showNewProspect && <ProspectForm onSave={handleSaveNewProspect} onCancel={() => setShowNewProspect(false)} />}
+        {prospect && !showNewProspect && (
+          <div className="text-xs rounded-lg p-3" style={{ background: "rgba(124,92,255,0.08)", color: COLORS.inkMuted }}>
+            <b style={{ color: COLORS.ink }}>{prospect.name}</b>{prospect.cnpj ? ` · CNPJ ${prospect.cnpj}` : ""}{prospect.phone ? ` · ${prospect.phone}` : ""}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Parcelas</span>
+          <span className="text-sm font-bold" style={{ color: COLORS.success }}>Total: {fmtMoney(totalValue)}</span>
+        </div>
+        <div className="space-y-2">
+          {installments.map((it, i) => (
+            <div key={i} className="flex gap-2 items-center flex-wrap">
+              <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor da parcela" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-2 py-1.5 rounded-lg" style={{ color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.04)" }}>
+                <input type="checkbox" checked={it.paid} onChange={(e) => updateInst(i, "paid", e.target.checked)} /> Paga
+              </label>
+              {it.paid && <input type="date" value={it.paid_date} onChange={(e) => updateInst(i, "paid_date", e.target.value)} placeholder="Data pgto" className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />}
+              {installments.length > 1 && <button type="button" onClick={() => removeInst(i)} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.danger }}>🗑️</button>}
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 mt-2">
+          <button type="button" onClick={addInst} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar parcela (2x, 3x...)</button>
+          <button type="button" onClick={splitEqual} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Dividir igual entre as parcelas</button>
+        </div>
+      </div>
+
+      <div className="text-sm font-bold pt-2 border-t" style={{ borderColor: COLORS.cardBorder, color: COLORS.warn }}>Em aberto: {fmtMoney(totalValue - paidValue)}</div>
+
+      <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
+
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({
+            id: initial?.id || uid(), prospect_id: prospectId, client_name: prospect?.name || "",
+            total_value: totalValue,
+            installments: installments.filter((it) => it.due_date || Number(it.value) > 0).map((it) => ({ due_date: it.due_date || null, value: Number(it.value) || 0, paid: !!it.paid, paid_date: it.paid_date || null })),
+            notes: notes.trim(),
+          })}
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 shadow-sm hover:opacity-90 transition"
+          style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>
+          Salvar implantação
+        </button>
+        <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-white/5 transition" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
+}
+
 function ItagBillingForm({ initial, onSave, onCancel }) {
   const [clientName, setClientName] = useState(initial?.client_name || "");
   const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "");
@@ -1528,6 +1626,9 @@ function App() {
   const [editingItagEntry, setEditingItagEntry] = useState(null);
   const [showItagBillingForm, setShowItagBillingForm] = useState(false);
   const [editingItagBilling, setEditingItagBilling] = useState(null);
+  const [implantacoes, setImplantacoes] = useState([]);
+  const [showImplantacaoForm, setShowImplantacaoForm] = useState(false);
+  const [editingImplantacao, setEditingImplantacao] = useState(null);
   const mKey = monthKey(monthDate);
 
   useEffect(() => {
@@ -1610,8 +1711,30 @@ function App() {
     await loadItagBillings();
     showToast("Faturamento removido.");
   }
+  const loadImplantacoes = useCallback(async () => {
+    const { data } = await supa.from("implantacoes").select("*").order("created_at", { ascending: false });
+    setImplantacoes(data || []);
+  }, []);
+  async function handleSaveImplantacao(imp) {
+    const { error } = await supa.from("implantacoes").upsert(imp);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadImplantacoes();
+    setShowImplantacaoForm(false); setEditingImplantacao(null);
+    showToast("Implantação salva.");
+  }
+  async function handleDeleteImplantacao(id) {
+    if (!confirm("Remover esta implantação?")) return;
+    await supa.from("implantacoes").delete().eq("id", id);
+    await loadImplantacoes();
+    showToast("Implantação removida.");
+  }
+  async function handleToggleInstallmentPaid(imp, idx) {
+    const newInstallments = imp.installments.map((it, i) => i === idx ? { ...it, paid: !it.paid, paid_date: !it.paid ? new Date().toISOString().slice(0, 10) : null } : it);
+    await supa.from("implantacoes").update({ installments: newInstallments }).eq("id", imp.id);
+    await loadImplantacoes();
+  }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneios(); loadItagEntries(); loadItagBillings(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -1815,6 +1938,22 @@ function App() {
     const { error } = await supa.from("clients").upsert(newClient);
     if (error) { showToast(`Erro: ${error.message}`); return; }
     await loadClients();
+
+    // Cria automaticamente o controle de implantação, com o valor total (implantação+treinamento+cloud+customização+setup de integração)
+    const items = p.monthly_items || [];
+    const cloudItem = items.find((it) => it.desc === "Cloud");
+    const customItems = items.filter((it) => !(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração"));
+    const customTotal = customItems.reduce((s, it) => s + (Number(it.value) || 0), 0);
+    const implantacaoTotal = (p.installation_value || 0) + (p.training_value || 0) + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotal;
+    if (implantacaoTotal > 0) {
+      await supa.from("implantacoes").upsert({
+        id: uid(), prospect_id: prospect.id, proposal_id: p.id, client_name: prospect.name,
+        total_value: implantacaoTotal,
+        installments: [{ due_date: new Date().toISOString().slice(0, 10), value: implantacaoTotal, paid: false, paid_date: null }],
+        notes: `Gerada automaticamente ao fechar a proposta nº ${p.number}.`,
+      });
+      await loadImplantacoes();
+    }
     showToast(`${prospect.name} agora é cliente!`);
   }
 
@@ -2342,6 +2481,7 @@ function App() {
             { id: "propostas", label: "Propostas", icon: "📝" },
             { id: "romaneio", label: "Romaneio Etiqueta", icon: "📦" },
             { id: "itag", label: "RFID / ITAG", icon: "🏷️" },
+            { id: "implantacoes", label: "Implantações", icon: "🏗️" },
             { id: "relatorios", label: "Relatórios", icon: "📊" },
             { id: "config", label: "Configurações", icon: "⚙️" },
           ].map((t) => {
@@ -2395,6 +2535,7 @@ function App() {
                 {tab === "propostas" && "Propostas comerciais"}
                 {tab === "romaneio" && "Romaneio Etiqueta de Composição"}
                 {tab === "itag" && "RFID / ITAG"}
+                {tab === "implantacoes" && "Controle de Implantações"}
                 {tab === "relatorios" && "Relatórios"}
                 {tab === "config" && "Configurações de mensagens"}
               </h2>
@@ -3023,6 +3164,67 @@ function App() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {tab === "implantacoes" && (
+            <div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Total em implantações</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(implantacoes.reduce((s, i) => s + (Number(i.total_value) || 0), 0))}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Já recebido</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Em aberto</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
+                </div>
+              </div>
+
+              <div className="flex justify-end mb-3">
+                <button onClick={() => { setEditingImplantacao(null); setShowImplantacaoForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova implantação</button>
+              </div>
+
+              {showImplantacaoForm && <div className="mb-4"><ImplantacaoForm initial={editingImplantacao} prospects={prospects} clients={clients} onSaveProspect={handleSaveProspect} onSave={handleSaveImplantacao} onCancel={() => { setShowImplantacaoForm(false); setEditingImplantacao(null); }} /></div>}
+
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                {implantacoes.length === 0 ? (
+                  <div className="p-10 text-center"><div className="text-3xl mb-2">🏗️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma implantação registrada ainda.</div></div>
+                ) : implantacoes.map((imp, i) => {
+                  const paid = (imp.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                  const open = (imp.total_value || 0) - paid;
+                  return (
+                    <div key={imp.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-3">
+                          <Avatar name={imp.client_name || "?"} size={32} />
+                          <div>
+                            <div className="font-bold text-sm" style={{ color: COLORS.ink }}>{imp.client_name || "Cliente removido"}</div>
+                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>Total {fmtMoney(imp.total_value)} · Recebido {fmtMoney(paid)} · Em aberto {fmtMoney(open)}</div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: open <= 0 ? COLORS.success : COLORS.warn, background: open <= 0 ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>{open <= 0 ? "QUITADA" : "EM ABERTO"}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {(imp.installments || []).map((it, idx) => (
+                          <button key={idx} onClick={() => handleToggleInstallmentPaid(imp, idx)}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-full border"
+                            style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
+                            {it.paid ? "✓" : "○"} {it.due_date ? new Date(it.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {fmtMoney(it.value)}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => { setEditingImplantacao(imp); setShowImplantacaoForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
+                        <button onClick={() => handleDeleteImplantacao(imp.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ Excluir</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

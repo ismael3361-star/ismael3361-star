@@ -1079,6 +1079,85 @@ function ItagEntryForm({ initial, onSave, onCancel }) {
 
 const ITAG_STATUS = ["PAGO", "ABERTO", "ATRASADO"];
 
+function EmployeePicker({ employees, value, onSelect, onCreateNew }) {
+  const [showNew, setShowNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const selected = employees.find((e) => e.id === value);
+
+  return (
+    <div>
+      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Funcionário *</span>
+      <div className="flex gap-2">
+        <select value={value} onChange={(e) => onSelect(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+          <option value="">Selecione...</option>
+          {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+        <button type="button" onClick={() => setShowNew((v) => !v)} className="px-3 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
+          {showNew ? "Cancelar" : "＋ Novo"}
+        </button>
+      </div>
+      {showNew && (
+        <div className="flex gap-2 mt-2">
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nome do funcionário" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <button type="button" onClick={async () => { if (!newName.trim()) return; const emp = await onCreateNew(newName.trim()); onSelect(emp.id); setNewName(""); setShowNew(false); }} className="px-3 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: COLORS.brand }}>Salvar</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
+  const [employeeId, setEmployeeId] = useState(initial?.employee_id || "");
+  const [paymentDate, setPaymentDate] = useState(initial?.payment_date || new Date().toISOString().slice(0, 10));
+  const [daysWorked, setDaysWorked] = useState(initial?.days_worked || "");
+  const [vrValue, setVrValue] = useState(initial?.vr_value ?? "");
+  const [vtValue, setVtValue] = useState(initial?.vt_value ?? "");
+  const [transportDesc, setTransportDesc] = useState(initial?.transport_desc || "");
+  const [paid, setPaid] = useState(initial?.paid || false);
+  const [paidDate, setPaidDate] = useState(initial?.paid_date || "");
+
+  const employee = employees.find((e) => e.id === employeeId);
+  const total = (Number(vrValue) || 0) + (Number(vtValue) || 0);
+  const canSave = employeeId && paymentDate;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Novo lançamento de VT / VR</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <EmployeePicker employees={employees} value={employeeId} onSelect={setEmployeeId} onCreateNew={onCreateEmployee} />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data</span>
+          <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
+        <TextField label="Dias trabalhados" value={daysWorked} onChange={setDaysWorked} placeholder="Ex: 21 dias" />
+        <TextField label="Valor vale refeição" value={vrValue} onChange={setVrValue} type="number" placeholder="735" />
+        <TextField label="Valor vale transporte" value={vtValue} onChange={setVtValue} type="number" placeholder="393.96" />
+        <TextField label="Transporte (conduções)" value={transportDesc} onChange={setTransportDesc} placeholder="Ex: 02 conduções" />
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-bold" style={{ color: COLORS.success }}>Total a receber: {fmtMoney(total)}</span>
+        <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-2.5 py-1 rounded-lg" style={{ color: paid ? COLORS.success : COLORS.inkMuted, background: paid ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)" }}>
+          <input type="checkbox" checked={paid} onChange={(e) => { setPaid(e.target.checked); if (e.target.checked && !paidDate) setPaidDate(new Date().toISOString().slice(0, 10)); }} /> Pago
+        </label>
+        {paid && <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />}
+      </div>
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({
+            id: initial?.id || uid(), employee_id: employeeId, employee_name: employee?.name || "", payment_date: paymentDate,
+            days_worked: daysWorked.trim(), vr_value: Number(vrValue) || 0, vt_value: Number(vtValue) || 0,
+            transport_desc: transportDesc.trim(), total_value: total, paid, paid_date: paid ? (paidDate || null) : null,
+          })}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar lançamento
+        </button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
+}
+
 function ImplantacaoForm({ initial, prospects, clients, onSaveProspect, onSave, onCancel }) {
   const [prospectId, setProspectId] = useState(initial?.prospect_id || "");
   const [showNewProspect, setShowNewProspect] = useState(false);
@@ -1629,6 +1708,10 @@ function App() {
   const [implantacoes, setImplantacoes] = useState([]);
   const [showImplantacaoForm, setShowImplantacaoForm] = useState(false);
   const [editingImplantacao, setEditingImplantacao] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [vtVrRecords, setVtVrRecords] = useState([]);
+  const [showVtVrForm, setShowVtVrForm] = useState(false);
+  const [editingVtVr, setEditingVtVr] = useState(null);
   const mKey = monthKey(monthDate);
 
   useEffect(() => {
@@ -1734,7 +1817,40 @@ function App() {
     await loadImplantacoes();
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); } }, [session]);
+  const loadEmployees = useCallback(async () => {
+    const { data } = await supa.from("employees").select("*").order("name");
+    setEmployees(data || []);
+  }, []);
+  const loadVtVrRecords = useCallback(async () => {
+    const { data } = await supa.from("vt_vr_records").select("*").order("payment_date", { ascending: false });
+    setVtVrRecords(data || []);
+  }, []);
+  async function handleCreateEmployee(name) {
+    const emp = { id: uid(), name, active: true };
+    await supa.from("employees").insert(emp);
+    await loadEmployees();
+    return emp;
+  }
+  async function handleSaveVtVr(rec) {
+    const { error } = await supa.from("vt_vr_records").upsert(rec);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadVtVrRecords();
+    setShowVtVrForm(false); setEditingVtVr(null);
+    showToast("Lançamento salvo.");
+  }
+  async function handleDeleteVtVr(id) {
+    if (!confirm("Remover este lançamento?")) return;
+    await supa.from("vt_vr_records").delete().eq("id", id);
+    await loadVtVrRecords();
+    showToast("Lançamento removido.");
+  }
+  async function handleToggleVtVrPaid(rec) {
+    const paid = !rec.paid;
+    await supa.from("vt_vr_records").update({ paid, paid_date: paid ? new Date().toISOString().slice(0, 10) : null }).eq("id", rec.id);
+    await loadVtVrRecords();
+  }
+
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadEmployees(); loadVtVrRecords(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -2480,8 +2596,9 @@ function App() {
             { id: "boletos", label: "Mensalidades", icon: "📄" },
             { id: "propostas", label: "Propostas", icon: "📝" },
             { id: "romaneio", label: "Romaneio Etiqueta", icon: "📦" },
-            { id: "itag", label: "RFID / ITAG", icon: "🏷️" },
+            { id: "itag", label: "RFID", icon: "🏷️" },
             { id: "implantacoes", label: "Implantações", icon: "🏗️" },
+            { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
             { id: "relatorios", label: "Relatórios", icon: "📊" },
             { id: "config", label: "Configurações", icon: "⚙️" },
           ].map((t) => {
@@ -2534,8 +2651,9 @@ function App() {
                 {tab === "boletos" && "Mensalidades do mês"}
                 {tab === "propostas" && "Propostas comerciais"}
                 {tab === "romaneio" && "Romaneio Etiqueta de Composição"}
-                {tab === "itag" && "RFID / ITAG"}
+                {tab === "itag" && "RFID"}
                 {tab === "implantacoes" && "Controle de Implantações"}
+                {tab === "vtvr" && "Vale Transporte / Vale Refeição"}
                 {tab === "relatorios" && "Relatórios"}
                 {tab === "config" && "Configurações de mensagens"}
               </h2>
@@ -3228,6 +3346,69 @@ function App() {
             </div>
           )}
 
+          {tab === "vtvr" && (
+            <div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Total lançado</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(vtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Já pago</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(vtVrRecords.filter((r) => r.paid).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Em aberto</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(vtVrRecords.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
+                </div>
+              </div>
+
+              <div className="flex justify-end mb-3">
+                <button onClick={() => { setEditingVtVr(null); setShowVtVrForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo lançamento</button>
+              </div>
+
+              {showVtVrForm && <div className="mb-4"><VtVrForm initial={editingVtVr} employees={employees} onCreateEmployee={handleCreateEmployee} onSave={handleSaveVtVr} onCancel={() => { setShowVtVrForm(false); setEditingVtVr(null); }} /></div>}
+
+              <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                {vtVrRecords.length === 0 ? (
+                  <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum lançamento registrado ainda.</div>
+                ) : (
+                  <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted }}>
+                        <th className="text-left p-3">Funcionário</th><th className="text-left p-3">Data</th><th className="text-left p-3">Dias</th>
+                        <th className="text-left p-3">VR</th><th className="text-left p-3">VT</th><th className="text-left p-3">Transporte</th>
+                        <th className="text-left p-3">Total</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vtVrRecords.map((r, i) => (
+                        <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                          <td className="p-3 font-semibold">{r.employee_name}</td>
+                          <td className="p-3">{r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                          <td className="p-3">{r.days_worked || "-"}</td>
+                          <td className="p-3">{fmtMoney(r.vr_value)}</td>
+                          <td className="p-3">{fmtMoney(r.vt_value)}</td>
+                          <td className="p-3">{r.transport_desc || "-"}</td>
+                          <td className="p-3 font-bold">{fmtMoney(r.total_value)}</td>
+                          <td className="p-3">
+                            <button onClick={() => handleToggleVtVrPaid(r)} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: r.paid ? COLORS.success : COLORS.warn, background: r.paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>
+                              {r.paid ? "✓ Pago" : "○ Pendente"}
+                            </button>
+                          </td>
+                          <td className="p-3">
+                            <button onClick={() => { setEditingVtVr(r); setShowVtVrForm(true); }} className="mr-2">✏️</button>
+                            <button onClick={() => handleDeleteVtVr(r.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+
           {tab === "relatorios" && (
             <div className="space-y-4">
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.danger, background: COLORS.card }}>
@@ -3367,6 +3548,27 @@ function App() {
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>RFID — Recebido / Em aberto</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(itagBillings.reduce((s, b) => s + (Number(b.paid_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.warn }}>Em aberto: {fmtMoney(itagBillings.reduce((s, b) => s + (Number(b.open_value) || 0), 0))}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Implantações — total</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(implantacoes.reduce((s, i) => s + (Number(i.total_value) || 0), 0))}</div>
+                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{implantacoes.length} implantação(ões)</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Implantações — recebido</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Implantações — em aberto</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Vale Transp. / Refeição</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(vtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
+                  <div className="text-[11px]" style={{ color: COLORS.warn }}>Em aberto: {fmtMoney(vtVrRecords.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                 </div>
               </div>
 

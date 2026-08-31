@@ -1106,19 +1106,31 @@ function EmployeePicker({ employees, value, onSelect, onCreateNew }) {
   );
 }
 
+const VT_RATES = { "1": 5.4, "2": 9.38 };
+
 function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
   const [employeeId, setEmployeeId] = useState(initial?.employee_id || "");
   const [paymentDate, setPaymentDate] = useState(initial?.payment_date || new Date().toISOString().slice(0, 10));
-  const [daysWorked, setDaysWorked] = useState(initial?.days_worked || "");
-  const [vrValue, setVrValue] = useState(initial?.vr_value ?? "");
+  const [numDays, setNumDays] = useState(initial?.days_worked ? String(initial.days_worked).replace(/\D/g, "") : "");
+  const [numConducoes, setNumConducoes] = useState(initial?.transport_desc?.startsWith("02") ? "2" : initial?.transport_desc?.startsWith("01") ? "1" : "1");
+  const [vtManual, setVtManual] = useState(false);
   const [vtValue, setVtValue] = useState(initial?.vt_value ?? "");
-  const [transportDesc, setTransportDesc] = useState(initial?.transport_desc || "");
+  const [vrDaily, setVrDaily] = useState("35");
+  const [vrValue, setVrValue] = useState(initial?.vr_value ?? "");
   const [paid, setPaid] = useState(initial?.paid || false);
   const [paidDate, setPaidDate] = useState(initial?.paid_date || "");
 
   const employee = employees.find((e) => e.id === employeeId);
+  const dias = Number(numDays) || 0;
+  const vtCalculado = dias * (VT_RATES[numConducoes] || 0) * 2;
+
+  useEffect(() => { if (!vtManual) setVtValue(vtCalculado ? vtCalculado.toFixed(2) : ""); }, [dias, numConducoes, vtManual]);
+
+  function calcularVR() { setVrValue((dias * (Number(vrDaily) || 0)).toFixed(2)); }
+
   const total = (Number(vrValue) || 0) + (Number(vtValue) || 0);
   const canSave = employeeId && paymentDate;
+  const transportDesc = numConducoes === "0" ? "" : `${numConducoes === "1" ? "01 condução" : "02 conduções"}`;
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
@@ -1129,12 +1141,32 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data</span>
           <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
         </label>
-        <TextField label="Dias trabalhados" value={daysWorked} onChange={setDaysWorked} placeholder="Ex: 21 dias" />
-        <TextField label="Valor vale refeição" value={vrValue} onChange={setVrValue} type="number" placeholder="735" />
-        <TextField label="Valor vale transporte" value={vtValue} onChange={setVtValue} type="number" placeholder="393.96" />
-        <TextField label="Transporte (conduções)" value={transportDesc} onChange={setTransportDesc} placeholder="Ex: 02 conduções" />
+        <TextField label="Dias trabalhados" value={numDays} onChange={setNumDays} type="number" placeholder="Ex: 21" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Conduções (para calcular o VT)</span>
+          <select value={numConducoes} onChange={(e) => setNumConducoes(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+            <option value="0">Nenhuma (sem VT)</option>
+            <option value="1">1 condução — R$ 5,40 ida/volta</option>
+            <option value="2">2 conduções — R$ 9,38 ida/volta</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor vale transporte (calculado)</span>
+          <div className="flex gap-2">
+            <input value={vtValue} onChange={(e) => { setVtValue(e.target.value); setVtManual(true); }} type="number" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            {vtManual && <button type="button" onClick={() => setVtManual(false)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Voltar a calcular automático">↺</button>}
+          </div>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor vale refeição</span>
+          <div className="flex gap-2">
+            <input value={vrValue} onChange={(e) => setVrValue(e.target.value)} type="number" placeholder="735" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input value={vrDaily} onChange={(e) => setVrDaily(e.target.value)} type="number" title="Valor diário do VR" className="w-16 rounded-lg border px-2 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <button type="button" onClick={calcularVR} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Calcular: dias × valor diário">🧮</button>
+          </div>
+        </label>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-bold" style={{ color: COLORS.success }}>Total a receber: {fmtMoney(total)}</span>
         <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-2.5 py-1 rounded-lg" style={{ color: paid ? COLORS.success : COLORS.inkMuted, background: paid ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)" }}>
           <input type="checkbox" checked={paid} onChange={(e) => { setPaid(e.target.checked); if (e.target.checked && !paidDate) setPaidDate(new Date().toISOString().slice(0, 10)); }} /> Pago
@@ -1146,8 +1178,8 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
           disabled={!canSave}
           onClick={() => onSave({
             id: initial?.id || uid(), employee_id: employeeId, employee_name: employee?.name || "", payment_date: paymentDate,
-            days_worked: daysWorked.trim(), vr_value: Number(vrValue) || 0, vt_value: Number(vtValue) || 0,
-            transport_desc: transportDesc.trim(), total_value: total, paid, paid_date: paid ? (paidDate || null) : null,
+            days_worked: numDays ? `${numDays} dias` : "", vr_value: Number(vrValue) || 0, vt_value: Number(vtValue) || 0,
+            transport_desc: transportDesc, total_value: total, paid, paid_date: paid ? (paidDate || null) : null,
           })}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
           Salvar lançamento
@@ -1712,6 +1744,7 @@ function App() {
   const [vtVrRecords, setVtVrRecords] = useState([]);
   const [showVtVrForm, setShowVtVrForm] = useState(false);
   const [editingVtVr, setEditingVtVr] = useState(null);
+  const [showPaidVtVr, setShowPaidVtVr] = useState(false);
   const mKey = monthKey(monthDate);
 
   useEffect(() => {
@@ -1848,6 +1881,37 @@ function App() {
     const paid = !rec.paid;
     await supa.from("vt_vr_records").update({ paid, paid_date: paid ? new Date().toISOString().slice(0, 10) : null }).eq("id", rec.id);
     await loadVtVrRecords();
+  }
+  const visibleVtVrRecords = useMemo(() => showPaidVtVr ? vtVrRecords : vtVrRecords.filter((r) => !r.paid), [vtVrRecords, showPaidVtVr]);
+
+  function exportVtVrPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text("Controle de Vale Transporte / Vale Refeição", 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+
+    const rows = visibleVtVrRecords.map((r) => [
+      r.employee_name || "-", r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+      r.days_worked || "-", fmtMoney(r.vr_value), fmtMoney(r.vt_value), r.transport_desc || "-", fmtMoney(r.total_value), r.paid ? "Pago" : "Pendente",
+    ]);
+    const totalGeral = visibleVtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0);
+
+    doc.autoTable({
+      startY: 44,
+      head: [["Funcionário", "Data", "Dias", "VR", "VT", "Transporte", "Total", "Situação"]],
+      body: rows,
+      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalGeral), ""]],
+      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
   useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadEmployees(); loadVtVrRecords(); } }, [session]);
@@ -2291,6 +2355,37 @@ function App() {
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, "Mensalidade x Consultas");
     XLSX.writeFile(wb, `mensalidade-consultas-${monthKey(new Date())}.xlsx`);
+  }
+
+  const vtVrByEmployee = useMemo(() => {
+    const map = {};
+    vtVrRecords.forEach((r) => {
+      const key = r.employee_name || "Sem nome";
+      if (!map[key]) map[key] = { name: key, vr: 0, vt: 0, total: 0, pago: 0, aberto: 0, qtd: 0 };
+      map[key].vr += Number(r.vr_value) || 0;
+      map[key].vt += Number(r.vt_value) || 0;
+      map[key].total += Number(r.total_value) || 0;
+      map[key].qtd += 1;
+      if (r.paid) map[key].pago += Number(r.total_value) || 0;
+      else map[key].aberto += Number(r.total_value) || 0;
+    });
+    return Object.values(map).sort((a, b) => b.total - a.total);
+  }, [vtVrRecords]);
+
+  function exportVtVrExcel() {
+    const rows = vtVrByEmployee.map((e) => ({
+      "Funcionário": e.name, "Lançamentos": e.qtd, "Vale Refeição": e.vr, "Vale Transporte": e.vt,
+      "Total": e.total, "Pago": e.pago, "Em aberto": e.aberto,
+    }));
+    rows.push({
+      "Funcionário": "TOTAL", "Lançamentos": vtVrRecords.length,
+      "Vale Refeição": vtVrByEmployee.reduce((s, e) => s + e.vr, 0), "Vale Transporte": vtVrByEmployee.reduce((s, e) => s + e.vt, 0),
+      "Total": vtVrByEmployee.reduce((s, e) => s + e.total, 0), "Pago": vtVrByEmployee.reduce((s, e) => s + e.pago, 0), "Em aberto": vtVrByEmployee.reduce((s, e) => s + e.aberto, 0),
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "VT-VR por funcionário");
+    XLSX.writeFile(wb, `vt-vr-por-funcionario-${monthKey(new Date())}.xlsx`);
   }
 
   async function sendProposalWhatsApp(p) {
@@ -3363,15 +3458,22 @@ function App() {
                 </div>
               </div>
 
-              <div className="flex justify-end mb-3">
-                <button onClick={() => { setEditingVtVr(null); setShowVtVrForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo lançamento</button>
+              <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+                <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer" style={{ color: COLORS.inkMuted }}>
+                  <input type="checkbox" checked={showPaidVtVr} onChange={(e) => setShowPaidVtVr(e.target.checked)} />
+                  Mostrar lançamentos já pagos
+                </label>
+                <div className="flex gap-2">
+                  <button onClick={exportVtVrPDF} disabled={visibleVtVrRecords.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                  <button onClick={() => { setEditingVtVr(null); setShowVtVrForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo lançamento</button>
+                </div>
               </div>
 
               {showVtVrForm && <div className="mb-4"><VtVrForm initial={editingVtVr} employees={employees} onCreateEmployee={handleCreateEmployee} onSave={handleSaveVtVr} onCancel={() => { setShowVtVrForm(false); setEditingVtVr(null); }} /></div>}
 
               <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                {vtVrRecords.length === 0 ? (
-                  <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum lançamento registrado ainda.</div>
+                {visibleVtVrRecords.length === 0 ? (
+                  <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>{vtVrRecords.length === 0 ? "Nenhum lançamento registrado ainda." : "Nenhum lançamento pendente — tudo pago! 🎉"}</div>
                 ) : (
                   <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                     <thead>
@@ -3382,7 +3484,7 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {vtVrRecords.map((r, i) => (
+                      {visibleVtVrRecords.map((r, i) => (
                         <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                           <td className="p-3 font-semibold">{r.employee_name}</td>
                           <td className="p-3">{r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
@@ -3570,6 +3672,38 @@ function App() {
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(vtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.warn }}>Em aberto: {fmtMoney(vtVrRecords.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                 </div>
+              </div>
+
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Vale Transporte / Refeição — por funcionário</div>
+                  <button onClick={exportVtVrExcel} disabled={vtVrByEmployee.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
+                </div>
+                {vtVrByEmployee.length === 0 ? (
+                  <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum lançamento ainda.</div>
+                ) : (
+                  <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted }}>
+                        <th className="text-left p-3">Funcionário</th><th className="text-left p-3">Lançamentos</th><th className="text-left p-3">VR</th>
+                        <th className="text-left p-3">VT</th><th className="text-left p-3">Total</th><th className="text-left p-3">Pago</th><th className="text-left p-3">Em aberto</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vtVrByEmployee.map((e, i) => (
+                        <tr key={e.name} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                          <td className="p-3 font-semibold">{e.name}</td>
+                          <td className="p-3">{e.qtd}</td>
+                          <td className="p-3">{fmtMoney(e.vr)}</td>
+                          <td className="p-3">{fmtMoney(e.vt)}</td>
+                          <td className="p-3 font-bold">{fmtMoney(e.total)}</td>
+                          <td className="p-3" style={{ color: COLORS.success }}>{fmtMoney(e.pago)}</td>
+                          <td className="p-3" style={{ color: COLORS.warn }}>{fmtMoney(e.aberto)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

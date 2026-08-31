@@ -9,6 +9,52 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<style>
+  * { -webkit-tap-highlight-color: transparent; }
+  body { -webkit-font-smoothing: antialiased; }
+
+  /* Botões com relevo: sombra elevada + brilho sutil no topo + efeito de pressionar */
+  button:not(:disabled) {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 2px rgba(0,0,0,0.35), 0 3px 8px rgba(0,0,0,0.28);
+    transition: transform 0.08s ease, box-shadow 0.12s ease, filter 0.15s ease, background-color 0.15s ease;
+  }
+  button:not(:disabled):hover {
+    filter: brightness(1.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 2px 4px rgba(0,0,0,0.4), 0 5px 14px rgba(0,0,0,0.32);
+    transform: translateY(-1px);
+  }
+  button:not(:disabled):active {
+    transform: translateY(1px);
+    filter: brightness(0.96);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.35);
+  }
+  button:disabled { box-shadow: none; }
+
+  /* Campos "afundados", contraste com os botões elevados */
+  input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.28);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: #9B82FF !important;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.28), 0 0 0 3px rgba(124,92,255,0.25);
+  }
+  input[type="checkbox"] { accent-color: #7C5CFF; width: 16px; height: 16px; cursor: pointer; }
+
+  /* Cartões com profundidade suave */
+  [class*="rounded-2xl"][class*="border"] {
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 4px 14px rgba(0,0,0,0.22);
+  }
+  [class*="rounded-xl"][class*="border"] {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #22304A; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2E3F5F; }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.js"></script>

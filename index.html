@@ -1165,6 +1165,78 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
   );
 }
 
+function SignaturePad({ value, onChange }) {
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
+  const lastRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.strokeStyle = "#0B1220";
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    if (value) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      img.src = value;
+    }
+  }, []);
+
+  function getPos(e) {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (cx - rect.left) * (canvas.width / rect.width), y: (cy - rect.top) * (canvas.height / rect.height) };
+  }
+  function start(e) {
+    e.preventDefault();
+    drawingRef.current = true;
+    lastRef.current = getPos(e);
+  }
+  function move(e) {
+    if (!drawingRef.current) return;
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(lastRef.current.x, lastRef.current.y);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    lastRef.current = pos;
+  }
+  function end() {
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
+    onChange(canvasRef.current.toDataURL("image/png"));
+  }
+  function clear() {
+    const canvas = canvasRef.current;
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+    onChange("");
+  }
+
+  return (
+    <div>
+      <canvas
+        ref={canvasRef} width={500} height={180}
+        className="w-full rounded-lg border touch-none"
+        style={{ borderColor: COLORS.cardBorder, background: "#F1F5F9", cursor: "crosshair" }}
+        onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+        onTouchStart={start} onTouchMove={move} onTouchEnd={end}
+      />
+      <div className="flex items-center justify-between mt-1.5">
+        <span className="text-[11px]" style={{ color: COLORS.inkFaint }}>Assine com o dedo ou o mouse na área acima</span>
+        <button type="button" onClick={clear} className="text-xs font-semibold px-2 py-1 rounded-lg border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>🗑️ Limpar</button>
+      </div>
+    </div>
+  );
+}
+
 function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onPreview, onCancel }) {
   const [prospectId, setProspectId] = useState(initial?.prospect_id || "");
   const [showNewProspect, setShowNewProspect] = useState(false);
@@ -1177,6 +1249,7 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
   const [pixKey, setPixKey] = useState(initial?.pix_key || "");
   const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || "");
   const [freight, setFreight] = useState(initial?.freight || "CIF");
+  const [signatureData, setSignatureData] = useState(initial?.signature_data || "");
 
   const prospect = prospects.find((p) => p.id === prospectId);
 
@@ -1194,6 +1267,7 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
       id: initial?.id || uid(), prospect_id: prospectId, number: number.trim(), order_date: orderDate, seller: seller.trim(),
       items: items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0).map((it) => ({ codigo: it.codigo.trim(), descricao: it.descricao.trim(), quantidade: Number(it.quantidade) || 0, valorUnit: Number(it.valorUnit) || 0 })),
       payment_method: paymentMethod.trim(), payment_term: paymentTerm.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(), freight: freight.trim(),
+      signature_data: signatureData || null,
     };
   }
 
@@ -1256,6 +1330,11 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
           ))}
         </div>
         <button onClick={addItem} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar item</button>
+      </div>
+
+      <div>
+        <span className="text-xs font-bold uppercase tracking-wide mb-2 block" style={{ color: COLORS.brandLight }}>Assinatura de recebimento (opcional)</span>
+        <SignaturePad value={signatureData} onChange={setSignatureData} />
       </div>
 
       <div className="flex gap-2">
@@ -1812,13 +1891,20 @@ function App() {
     if (r.freight) { doc.text(`Frete: ${r.freight}`, 14, y); y += 6; }
 
     y += 12;
-    if (y > 240) { doc.addPage(); y = 20; }
+    if (y > 230) { doc.addPage(); y = 20; }
     doc.setDrawColor(220);
     doc.line(14, y, 196, y);
     y += 10;
     doc.text("RECEBIDO:", 14, y); y += 10;
     doc.text("NOME: ______________________________________", 14, y); y += 12;
-    doc.text("Assinatura: ______________________     Data: ___/___/_____", 14, y); y += 12;
+    if (r.signature_data) {
+      doc.text("Assinatura:", 14, y);
+      try { doc.addImage(r.signature_data, "PNG", 42, y - 12, 60, 21.6); } catch (e) {}
+      doc.text(`Data: ___/___/_____`, 145, y);
+      y += 20;
+    } else {
+      doc.text("Assinatura: ______________________     Data: ___/___/_____", 14, y); y += 12;
+    }
     doc.text("CARIMBO DA EMPRESA", 14, y);
 
     // Rodapé com endereço em todas as páginas
@@ -2149,6 +2235,17 @@ function App() {
     };
   }, [clients, boletos, monthDate]);
 
+  const inadimplentes = useMemo(() => {
+    return clients
+      .filter((c) => !c.cancelled && computeStatus(c, boletos[c.id], monthDate) === "atrasado")
+      .map((c) => ({ ...c, _diasAtraso: daysOverdue(c, monthDate) }))
+      .sort((a, b) => b._diasAtraso - a._diasAtraso);
+  }, [clients, boletos, monthDate]);
+
+  const dueSoonNotSent = useMemo(() => {
+    return clients.filter((c) => !c.cancelled && isDueSoon(c, boletos[c.id], monthDate) && !boletos[c.id]?.sent_whatsapp && !boletos[c.id]?.sent_email);
+  }, [clients, boletos, monthDate]);
+
   const paidValue = useMemo(() => clients.filter((c) => boletos[c.id]?.paid).reduce((s, c) => s + effectiveValue(c), 0), [clients, boletos]);
   const totalPrevisto = stats.totalMonthly + stats.totalAnnual;
   const pendingValue = totalPrevisto - paidValue;
@@ -2298,6 +2395,20 @@ function App() {
 
           {tab === "dashboard" && (
             <div className="space-y-4">
+              {dueSoonNotSent.length > 0 && (
+                <div className="rounded-2xl border p-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: COLORS.warn, background: "rgba(245,158,11,0.1)" }}>
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🔔</span>
+                    <div>
+                      <div className="text-sm font-bold" style={{ color: COLORS.warn }}>{dueSoonNotSent.length} cliente(s) vencem em breve e ainda não receberam lembrete</div>
+                      <div className="text-xs" style={{ color: COLORS.inkMuted }}>{dueSoonNotSent.map((c) => c.name).slice(0, 3).join(", ")}{dueSoonNotSent.length > 3 ? ` e mais ${dueSoonNotSent.length - 3}` : ""}</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => sendBulkWhatsApp(dueSoonNotSent.filter((c) => c.phone))} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: COLORS.wa }}>💬 Enviar lembretes agora</button>
+                  </div>
+                </div>
+              )}
               {/* Linha 1: cards principais */}
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -2894,6 +3005,37 @@ function App() {
 
           {tab === "relatorios" && (
             <div className="space-y-4">
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.danger, background: COLORS.card }}>
+                <div className="flex items-center justify-between px-4 py-3" style={{ background: "rgba(239,68,68,0.1)" }}>
+                  <div className="text-sm font-bold" style={{ color: COLORS.danger }}>⚠️ Relatório de inadimplência — {inadimplentes.length} cliente(s) em atraso</div>
+                  <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{fmtMoney(inadimplentes.reduce((s, c) => s + effectiveValue(c), 0))} em aberto</div>
+                </div>
+                {inadimplentes.length === 0 ? (
+                  <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente em atraso este mês. 🎉</div>
+                ) : (
+                  <div className="divide-y" style={{ borderColor: COLORS.cardBorder }}>
+                    {inadimplentes.map((c) => (
+                      <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar name={c.name} size={32} />
+                          <div>
+                            <div className="font-semibold text-sm flex items-center gap-2" style={{ color: COLORS.ink }}>
+                              {c.name}
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>{c._diasAtraso} dia{c._diasAtraso !== 1 ? "s" : ""} atrasado</span>
+                            </div>
+                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c))} · vence dia {c.due_day || "-"} · {c.phone || "sem WhatsApp"}</div>
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5">
+                          <button onClick={() => sendWhatsApp(c)} disabled={!c.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.wa }}>💬 Cobrar</button>
+                          <button onClick={() => sendEmail(c)} disabled={!c.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.brand }}>📧 Cobrar</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Clientes cloud</div>

@@ -2015,6 +2015,29 @@ function App() {
     XLSX.writeFile(wb, `romaneios-${monthKey(new Date())}.xlsx`);
   }
 
+  function exportConsultasExcel() {
+    const rows = clients
+      .filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(c.consultations_value) > 0))
+      .sort((a, b) => (Number(b.consultations_value) || 0) - (Number(a.consultations_value) || 0))
+      .map((c) => ({
+        "Cliente": c.name,
+        "Banco": c.bank_number || "-",
+        "Mensalidade": Number(c.value) || 0,
+        "Consultas": Number(c.consultations_value) || 0,
+        "Total": effectiveValue(c),
+      }));
+    rows.push({
+      "Cliente": "TOTAL", "Banco": "",
+      "Mensalidade": clients.reduce((s, c) => s + (Number(c.value) || 0), 0),
+      "Consultas": clients.reduce((s, c) => s + (Number(c.consultations_value) || 0), 0),
+      "Total": clients.reduce((s, c) => s + effectiveValue(c), 0),
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Mensalidade x Consultas");
+    XLSX.writeFile(wb, `mensalidade-consultas-${monthKey(new Date())}.xlsx`);
+  }
+
   async function sendProposalWhatsApp(p) {
     const prospect = prospects.find((c) => c.id === p.prospect_id);
     if (!prospect?.phone) { showToast("Cliente sem WhatsApp cadastrado."); return; }
@@ -3057,6 +3080,47 @@ function App() {
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => !c.cloud).length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>de {stats.count} clientes</div>
                 </div>
+              </div>
+
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Mensalidade x Consultas — por cliente</div>
+                  <button onClick={exportConsultasExcel} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
+                </div>
+                {clients.filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(c.consultations_value) > 0)).length === 0 ? (
+                  <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com valores cadastrados.</div>
+                ) : (
+                  <table className="w-full text-sm" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Mensalidade</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Consultas</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clients.filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(c.consultations_value) > 0))
+                        .sort((a, b) => (Number(b.consultations_value) || 0) - (Number(a.consultations_value) || 0))
+                        .map((c, i) => (
+                          <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <td className="p-3 font-semibold">{c.name}</td>
+                            <td className="p-3">{fmtMoney(c.value)}</td>
+                            <td className="p-3" style={{ color: Number(c.consultations_value) > 0 ? COLORS.brandLight : COLORS.inkFaint }}>{fmtMoney(c.consultations_value)}</td>
+                            <td className="p-3 font-bold">{fmtMoney(effectiveValue(c))}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                        <td className="p-3 font-bold">TOTAL</td>
+                        <td className="p-3 font-bold">{fmtMoney(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</td>
+                        <td className="p-3 font-bold" style={{ color: COLORS.brandLight }}>{fmtMoney(clients.reduce((s, c) => s + (Number(c.consultations_value) || 0), 0))}</td>
+                        <td className="p-3 font-bold">{fmtMoney(clients.reduce((s, c) => s + effectiveValue(c), 0))}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -2,12 +2,20 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>ADM / MIRE</title>
+<meta name="theme-color" content="#0B1220" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="ADM MIRE" />
+<link rel="apple-touch-icon" id="apple-touch-icon-link" />
+<link rel="manifest" id="pwa-manifest-link" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   * { -webkit-tap-highlight-color: transparent; }
@@ -105,6 +113,104 @@ const COLORS = {
   success: "#22C55E", warn: "#F59E0B", danger: "#EF4444", info: "#3B82F6",
   wa: "#22C55E", email: "#A78BFA",
 };
+
+// PWA: manifest e ícone dinâmicos a partir do logo (permite "instalar" o sistema como app)
+(function setupPWA() {
+  try {
+    const manifest = {
+      name: "ADM / MIRE", short_name: "ADM MIRE", start_url: ".", display: "standalone",
+      background_color: "#0B1220", theme_color: "#0B1220",
+      icons: [{ src: LOGO_DATA_URI, sizes: "192x192", type: "image/png" }, { src: LOGO_DATA_URI, sizes: "512x512", type: "image/png" }],
+    };
+    const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
+    const manifestLink = document.getElementById("pwa-manifest-link");
+    if (manifestLink) manifestLink.href = URL.createObjectURL(manifestBlob);
+    const iconLink = document.getElementById("apple-touch-icon-link");
+    if (iconLink) iconLink.href = LOGO_DATA_URI;
+    if ("serviceWorker" in navigator) {
+      const swCode = "self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',()=>self.clients.claim());self.addEventListener('fetch',()=>{});";
+      const swBlob = new Blob([swCode], { type: "application/javascript" });
+      navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+    }
+  } catch (e) {}
+})();
+
+// PIX: gera o payload EMV (BR Code / copia-e-cola) e o CRC16 exigido pelo padrão
+function crc16Pix(str) {
+  let crc = 0xFFFF;
+  for (let i = 0; i < str.length; i++) {
+    crc ^= str.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) {
+      crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+      crc &= 0xFFFF;
+    }
+  }
+  return crc.toString(16).toUpperCase().padStart(4, "0");
+}
+function emvField(id, value) {
+  const len = String(value).length.toString().padStart(2, "0");
+  return `${id}${len}${value}`;
+}
+function generatePixPayload({ key, name, city, value, txid }) {
+  if (!key) return "";
+  const merchantName = (name || "MIREDATA").normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 25).toUpperCase();
+  const merchantCity = (city || "SAO PAULO").normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 15).toUpperCase();
+  const gui = emvField("00", "br.gov.bcb.pix");
+  const keyField = emvField("01", key.trim());
+  const merchantAccountInfo = emvField("26", gui + keyField);
+  let payload = emvField("00", "01") + merchantAccountInfo + emvField("52", "0000") + emvField("53", "986");
+  if (value && Number(value) > 0) payload += emvField("54", Number(value).toFixed(2));
+  payload += emvField("58", "BR") + emvField("59", merchantName || "MIREDATA") + emvField("60", merchantCity || "SAO PAULO");
+  payload += emvField("62", emvField("05", (txid || "***").replace(/[^a-zA-Z0-9]/g, "").substring(0, 25) || "***"));
+  payload += "6304";
+  return payload + crc16Pix(payload);
+}
+
+function PixQRModal({ pixKey, favorecido, city, value, label, onClose }) {
+  const canvasRef = useRef(null);
+  const [payload, setPayload] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const p = generatePixPayload({ key: pixKey, name: favorecido, city, value, txid: label });
+    setPayload(p);
+  }, [pixKey, favorecido, city, value, label]);
+
+  useEffect(() => {
+    if (payload && canvasRef.current && window.QRCode) {
+      window.QRCode.toCanvas(canvasRef.current, payload, { width: 220, margin: 1 }, () => {});
+    }
+  }, [payload]);
+
+  function copyPayload() {
+    navigator.clipboard.writeText(payload).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  }
+
+  if (!pixKey) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+        <div className="rounded-2xl p-5 max-w-sm w-full text-center" style={{ background: COLORS.card }} onClick={(e) => e.stopPropagation()}>
+          <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma chave PIX cadastrada. Configure em "Configurações" ou nesse cadastro.</div>
+          <button onClick={onClose} className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Fechar</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="rounded-2xl p-5 max-w-sm w-full" style={{ background: COLORS.card }} onClick={(e) => e.stopPropagation()}>
+        <div className="text-sm font-bold mb-3 text-center" style={{ color: COLORS.ink }}>Pagamento via PIX{value ? ` — ${fmtMoney(value)}` : ""}</div>
+        <div className="flex justify-center mb-3 p-3 rounded-xl" style={{ background: "#fff" }}><canvas ref={canvasRef} /></div>
+        <div className="text-[11px] mb-3 break-all p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", color: COLORS.inkMuted }}>{payload}</div>
+        <div className="flex gap-2">
+          <button onClick={copyPayload} className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: copied ? COLORS.success : COLORS.brand }}>{copied ? "✓ Copiado!" : "📋 Copiar código PIX"}</button>
+          <button onClick={onClose} className="px-3 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
 const STATUS_META = {
@@ -254,6 +360,7 @@ const DEFAULT_SETTINGS = {
   wa_template: "Olá {nome}! Tudo bem? Segue o boleto da sua mensalidade ({plano}) no valor de {valor}, com vencimento {vencimento}. Acesse aqui: {link}",
   email_subject: "Boleto - mensalidade de {mesnome}",
   email_body: "Olá {nome},\n\nSegue o boleto referente à sua mensalidade no valor de {valor}, com vencimento {vencimento}.\n\nLink do boleto: {link}\n\nQualquer dúvida, estou à disposição.",
+  company_pix_key: "", company_pix_favorecido: "", company_pix_city: "SAO PAULO", last_backup_at: null,
 };
 
 const DEFAULT_PROPOSAL_BODY = `Esta proposta tem por objetivo apresentar as vantagens e condições da contratação do Sistema de Gestão Miré, permitindo à empresa cliente obter todos os benefícios da solução desenvolvida pela MireData.
@@ -1613,6 +1720,8 @@ function ClientHistoryModal({ client, onClose }) {
   const [rows, setRows] = useState(null);
   const [notes, setNotes] = useState(null);
   const [newNote, setNewNote] = useState("");
+  const [attachments, setAttachments] = useState(null);
+  const [uploadingAtt, setUploadingAtt] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -1620,6 +1729,8 @@ function ClientHistoryModal({ client, onClose }) {
       setRows(data || []);
       const { data: n } = await supa.from("client_notes").select("*").eq("client_id", client.id).order("note_date", { ascending: false });
       setNotes(n || []);
+      const { data: a } = await supa.from("client_attachments").select("*").eq("client_id", client.id).order("uploaded_at", { ascending: false });
+      setAttachments(a || []);
     })();
   }, [client.id]);
 
@@ -1633,6 +1744,28 @@ function ClientHistoryModal({ client, onClose }) {
   async function removeNote(id) {
     await supa.from("client_notes").delete().eq("id", id);
     setNotes((notes || []).filter((n) => n.id !== id));
+  }
+
+  async function uploadAttachment(file) {
+    if (!file) return;
+    setUploadingAtt(true);
+    try {
+      const path = `anexos/${client.id}/${Date.now()}-${file.name}`;
+      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supa.storage.from("boletos").getPublicUrl(path);
+      const entry = { id: uid(), client_id: client.id, file_name: file.name, file_url: data.publicUrl, uploaded_at: new Date().toISOString() };
+      await supa.from("client_attachments").insert(entry);
+      setAttachments([entry, ...(attachments || [])]);
+    } catch (e) {
+      alert(`Erro ao enviar arquivo: ${e.message}`);
+    }
+    setUploadingAtt(false);
+  }
+  async function removeAttachment(id) {
+    if (!confirm("Remover este anexo?")) return;
+    await supa.from("client_attachments").delete().eq("id", id);
+    setAttachments((attachments || []).filter((a) => a.id !== id));
   }
 
   return (
@@ -1661,6 +1794,30 @@ function ClientHistoryModal({ client, onClose }) {
                     {(b.sent_whatsapp || b.sent_email) && <span className="text-xs" style={{ color: COLORS.brandLight }}>enviado</span>}
                     <StatusBadge status={b.paid ? "pago" : "pendente"} />
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-b" style={{ borderColor: COLORS.cardBorder }}>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-bold" style={{ color: COLORS.ink }}>Anexos (documentos, contratos...)</div>
+            <label className="text-xs font-semibold px-2.5 py-1 rounded-lg border cursor-pointer" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
+              {uploadingAtt ? "Enviando..." : "＋ Anexar"}
+              <input type="file" className="hidden" disabled={uploadingAtt} onChange={(e) => uploadAttachment(e.target.files?.[0])} />
+            </label>
+          </div>
+          {attachments === null ? (
+            <div className="text-xs text-center py-3" style={{ color: COLORS.inkMuted }}>Carregando...</div>
+          ) : attachments.length === 0 ? (
+            <div className="text-xs text-center py-3" style={{ color: COLORS.inkMuted }}>Nenhum anexo ainda.</div>
+          ) : (
+            <div className="space-y-1.5">
+              {attachments.map((a) => (
+                <div key={a.id} className="flex items-center justify-between px-3 py-2 rounded-lg border" style={{ borderColor: COLORS.cardBorder }}>
+                  <a href={a.file_url} target="_blank" className="text-xs underline truncate mr-2" style={{ color: COLORS.brandLight }}>📎 {a.file_name}</a>
+                  <button onClick={() => removeAttachment(a.id)} className="text-xs shrink-0" style={{ color: COLORS.danger }}>remover</button>
                 </div>
               ))}
             </div>
@@ -1793,6 +1950,7 @@ function App() {
   const [editingImplantacao, setEditingImplantacao] = useState(null);
   const [searchImplantacao, setSearchImplantacao] = useState("");
   const [showQuitadas, setShowQuitadas] = useState(false);
+  const [pixModal, setPixModal] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [vtVrRecords, setVtVrRecords] = useState([]);
   const [showVtVrForm, setShowVtVrForm] = useState(false);
@@ -2534,7 +2692,11 @@ function App() {
   }
   async function saveSettings(next) {
     setSettings(next);
-    await supa.from("settings").upsert({ id: "default", wa_template: next.wa_template, email_subject: next.email_subject, email_body: next.email_body });
+    await supa.from("settings").upsert({
+      id: "default", wa_template: next.wa_template, email_subject: next.email_subject, email_body: next.email_body,
+      company_pix_key: next.company_pix_key || null, company_pix_favorecido: next.company_pix_favorecido || null,
+      company_pix_city: next.company_pix_city || null, last_backup_at: next.last_backup_at || null,
+    });
   }
   async function upsertBoleto(clientId, patch) {
     const id = `${mKey}_${clientId}`;
@@ -2582,6 +2744,9 @@ function App() {
     const a = document.createElement("a");
     a.href = url; a.download = `backup-completo-${new Date().toISOString().slice(0, 10)}.json`;
     a.click(); URL.revokeObjectURL(url);
+    const today = new Date().toISOString().slice(0, 10);
+    await saveSettings({ ...settings, last_backup_at: today });
+    showToast("Backup baixado! Guarde esse arquivo em local seguro.");
   }
   function importFullBackup(file) {
     if (!file) return;
@@ -2756,6 +2921,16 @@ function App() {
   const dueSoonValue = useMemo(() => clients.filter((c) => isDueSoon(c, boletos[c.id], monthDate)).reduce((s, c) => s + effectiveValue(c), 0), [clients, boletos, monthDate]);
   const ticketMedio = stats.count > 0 ? totalPrevisto / stats.count : 0;
 
+  const clientsByDueDay = useMemo(() => {
+    const map = {};
+    clients.filter((c) => !c.cancelled && c.due_day).forEach((c) => {
+      const day = Number(c.due_day);
+      if (!map[day]) map[day] = [];
+      map[day].push(c);
+    });
+    return map;
+  }, [clients]);
+
   const dueDayGroups = useMemo(() => {
     const map = {};
     clients.forEach((c) => {
@@ -2814,6 +2989,7 @@ function App() {
           {[
             { group: "Principal", items: [
               { id: "dashboard", label: "Dashboard", icon: "🏠" },
+              { id: "calendario", label: "Calendário", icon: "📅" },
               { id: "relatorios", label: "Relatórios", icon: "📊" },
             ]},
             { group: "Comercial", items: [
@@ -2890,6 +3066,7 @@ function App() {
                 {tab === "romaneio" && "Romaneio Etiqueta de Composição"}
                 {tab === "itag" && "RFID"}
                 {tab === "implantacoes" && "Controle de Implantações"}
+                {tab === "calendario" && "Calendário de Vencimentos"}
                 {tab === "vtvr" && "Vale Transporte / Vale Refeição"}
                 {tab === "relatorios" && "Relatórios"}
                 {tab === "config" && "Configurações de mensagens"}
@@ -2914,6 +3091,22 @@ function App() {
 
           {tab === "dashboard" && (
             <div className="space-y-4">
+              {(() => {
+                const daysSinceBackup = settings.last_backup_at ? Math.floor((new Date() - new Date(settings.last_backup_at + "T00:00:00")) / 86400000) : null;
+                if (daysSinceBackup !== null && daysSinceBackup < 7) return null;
+                return (
+                  <div className="rounded-2xl border p-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: COLORS.brandLight, background: "rgba(124,92,255,0.1)" }}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">💾</span>
+                      <div>
+                        <div className="text-sm font-bold" style={{ color: COLORS.brandLight }}>{daysSinceBackup === null ? "Você ainda não fez nenhum backup completo" : `Já faz ${daysSinceBackup} dias desde o último backup`}</div>
+                        <div className="text-xs" style={{ color: COLORS.inkMuted }}>Recomendado fazer pelo menos uma vez por semana</div>
+                      </div>
+                    </div>
+                    <button onClick={exportFullBackup} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: COLORS.brand }}>💾 Fazer backup agora</button>
+                  </div>
+                );
+              })()}
               {dueSoonNotSent.length > 0 && (
                 <div className="rounded-2xl border p-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: COLORS.warn, background: "rgba(245,158,11,0.1)" }}>
                   <div className="flex items-center gap-3">
@@ -2952,7 +3145,14 @@ function App() {
                     <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(59,130,246,0.15)" }}>💳</span>
                   </div>
                   <div className="text-lg sm:text-xl font-extrabold truncate" title={fmtMoney(paidValue)} style={{ color: COLORS.ink }}>{fmtMoney(paidValue)}</div>
-                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{totalPrevisto > 0 ? ((paidValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</div>
+                  <div className="text-[11px] flex items-center gap-1.5 flex-wrap" style={{ color: COLORS.inkMuted }}>
+                    <span>{totalPrevisto > 0 ? ((paidValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</span>
+                    {prevMonthPaid > 0 && (
+                      <span className="font-bold" style={{ color: momChange >= 0 ? COLORS.success : COLORS.danger }}>
+                        {momChange >= 0 ? "▲" : "▼"} {Math.abs(momChange).toFixed(1)}% vs mês anterior
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="flex items-center justify-between mb-2">
@@ -3080,6 +3280,51 @@ function App() {
               <div className="text-center text-[11px] pt-2" style={{ color: COLORS.inkFaint }}>
                 © {new Date().getFullYear()} ADM / MIRE. Todos os direitos reservados. <span className="ml-2">Versão 3.0.0</span>
               </div>
+            </div>
+          )}
+
+          {tab === "calendario" && (
+            <div>
+              {(() => {
+                const year = monthDate.getFullYear(), month = monthDate.getMonth();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const firstWeekday = new Date(year, month, 1).getDay();
+                const today = new Date();
+                const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+                const cells = [];
+                for (let i = 0; i < firstWeekday; i++) cells.push(null);
+                for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+                return (
+                  <div>
+                    <div className="text-sm mb-3" style={{ color: COLORS.inkMuted }}>{MONTHS_PT[month]} de {year} — clique num cliente pra ver os detalhes na aba Mensalidades</div>
+                    <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+                      {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => (
+                        <div key={d} className="text-center text-[10px] font-bold uppercase" style={{ color: COLORS.inkFaint }}>{d}</div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1.5">
+                      {cells.map((day, i) => {
+                        if (!day) return <div key={i} />;
+                        const dayClients = clientsByDueDay[day] || [];
+                        const total = dayClients.reduce((s, c) => s + effectiveValue(c), 0);
+                        const isToday = isCurrentMonth && today.getDate() === day;
+                        return (
+                          <div key={i} className="rounded-xl border p-2 min-h-[74px] sm:min-h-[92px]" style={{ borderColor: isToday ? COLORS.brandLight : COLORS.cardBorder, background: isToday ? "rgba(124,92,255,0.08)" : COLORS.card }}>
+                            <div className="text-xs font-bold mb-1" style={{ color: isToday ? COLORS.brandLight : COLORS.ink }}>{day}</div>
+                            {dayClients.length > 0 && (
+                              <div>
+                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block mb-1" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }}>{dayClients.length} cliente{dayClients.length > 1 ? "s" : ""}</div>
+                                <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{fmtMoney(total)}</div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -3268,6 +3513,7 @@ function App() {
                         {b?.file_url && <a href={b.file_url} target="_blank" className="text-xs underline px-1" style={{ color: COLORS.brandLight }}>ver PDF</a>}
                         <button onClick={() => sendWhatsApp(c)} disabled={!c.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.wa }}>💬 {b?.sent_whatsapp ? "✓ Reenviar" : "Enviar"} WhatsApp</button>
                         <button onClick={() => sendEmail(c)} disabled={!c.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.brand }}>📧 {b?.sent_email ? "✓ Reenviar" : "Enviar"} e-mail</button>
+                        <button onClick={() => setPixModal({ pixKey: settings.company_pix_key, favorecido: settings.company_pix_favorecido, city: settings.company_pix_city, value: effectiveValue(c), label: c.name })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📱 QR PIX</button>
                       </div>
                     </div>
                   );
@@ -3609,6 +3855,7 @@ function App() {
                         <div className="flex flex-wrap gap-2">
                           {open > 0 && <button onClick={() => sendImplantacaoCobranca(imp, "whatsapp")} disabled={!prospect?.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.wa }}>💬 Cobrar (PIX)</button>}
                           {open > 0 && <button onClick={() => sendImplantacaoCobranca(imp, "email")} disabled={!prospect?.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.brand }}>📧 Cobrar (PIX)</button>}
+                          {open > 0 && <button onClick={() => setPixModal({ pixKey: imp.pix_key || settings.company_pix_key, favorecido: imp.pix_favorecido || settings.company_pix_favorecido, city: settings.company_pix_city, value: open, label: imp.client_name })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📱 QR PIX</button>}
                           <button onClick={() => generateImplantacaoPDF(imp)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                           <button onClick={() => { setEditingImplantacao(imp); setShowImplantacaoForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
                           <button onClick={() => handleDeleteImplantacao(imp.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ Excluir</button>
@@ -3931,20 +4178,41 @@ function App() {
           )}
 
           {tab === "config" && (
-            <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-              <p className="text-xs" style={{ color: COLORS.inkMuted }}>Use {"{nome}"}, {"{valor}"}, {"{vencimento}"}, {"{plano}"}, {"{link}"}, {"{mesnome}"}.</p>
-              <label className="block">
-                <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mensagem do WhatsApp</span>
-                <textarea value={settings.wa_template} onChange={(e) => saveSettings({ ...settings, wa_template: e.target.value })} rows={3} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              </label>
-              <label className="block">
-                <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Assunto do e-mail</span>
-                <input value={settings.email_subject} onChange={(e) => saveSettings({ ...settings, email_subject: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              </label>
-              <label className="block">
-                <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Corpo do e-mail</span>
-                <textarea value={settings.email_body} onChange={(e) => saveSettings({ ...settings, email_body: e.target.value })} rows={5} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              </label>
+            <div className="space-y-4">
+              <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>PIX padrão da empresa</div>
+                <p className="text-[11px]" style={{ color: COLORS.inkMuted }}>Usado para gerar o QR Code de cobrança quando a proposta/romaneio/implantação não tiver uma chave própria cadastrada.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="block">
+                    <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX</span>
+                    <input value={settings.company_pix_key || ""} onChange={(e) => saveSettings({ ...settings, company_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Favorecido</span>
+                    <input value={settings.company_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, company_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cidade</span>
+                    <input value={settings.company_pix_city || ""} onChange={(e) => saveSettings({ ...settings, company_pix_city: e.target.value })} placeholder="Ex: SAO PAULO" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <p className="text-xs" style={{ color: COLORS.inkMuted }}>Use {"{nome}"}, {"{valor}"}, {"{vencimento}"}, {"{plano}"}, {"{link}"}, {"{mesnome}"}.</p>
+                <label className="block">
+                  <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mensagem do WhatsApp</span>
+                  <textarea value={settings.wa_template} onChange={(e) => saveSettings({ ...settings, wa_template: e.target.value })} rows={3} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Assunto do e-mail</span>
+                  <input value={settings.email_subject} onChange={(e) => saveSettings({ ...settings, email_subject: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Corpo do e-mail</span>
+                  <textarea value={settings.email_body} onChange={(e) => saveSettings({ ...settings, email_body: e.target.value })} rows={5} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                </label>
+              </div>
             </div>
           )}
 
@@ -3952,6 +4220,7 @@ function App() {
       </main>
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-lg" style={{ background: COLORS.card, border: `1px solid ${COLORS.cardBorder}` }}>{toast}</div>}
+      {pixModal && <PixQRModal {...pixModal} onClose={() => setPixModal(null)} />}
       {historyClient && <ClientHistoryModal client={historyClient} onClose={() => setHistoryClient(null)} />}
     </div>
   );

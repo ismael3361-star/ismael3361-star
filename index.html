@@ -169,6 +169,25 @@ function isDueSoon(client, b, monthDate) {
   return d !== null && d >= 0 && d <= 3;
 }
 
+function Pagination({ page, setPage, totalItems, pageSize }) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (totalPages <= 1) return null;
+  const start = (page - 1) * pageSize + 1;
+  const end = Math.min(totalItems, page * pageSize);
+  return (
+    <div className="flex items-center justify-between flex-wrap gap-2 px-4 py-3" style={{ borderTop: `1px solid ${COLORS.cardBorder}` }}>
+      <span className="text-xs" style={{ color: COLORS.inkMuted }}>Mostrando {start}–{end} de {totalItems}</span>
+      <div className="flex items-center gap-1.5">
+        <button type="button" onClick={() => setPage(1)} disabled={page === 1} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-30" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>«</button>
+        <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-30" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>‹ Anterior</button>
+        <span className="text-xs font-bold px-2" style={{ color: COLORS.ink }}>{page} / {totalPages}</span>
+        <button type="button" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-30" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Próxima ›</button>
+        <button type="button" onClick={() => setPage(totalPages)} disabled={page === totalPages} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-30" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>»</button>
+      </div>
+    </div>
+  );
+}
+
 function StatusBadge({ status }) {
   const m = STATUS_META[status] || STATUS_META.pendente;
   return (
@@ -1734,6 +1753,9 @@ function App() {
   const [statusFilter, setStatusFilter] = useState("todos");
   const [sortBy, setSortBy] = useState("bank_number");
   const [showCancelled, setShowCancelled] = useState(false);
+  const [clientsPage, setClientsPage] = useState(1);
+  const [boletosPage, setBoletosPage] = useState(1);
+  const PAGE_SIZE = 25;
   const [sortDir, setSortDir] = useState("asc");
   const [editing, setEditing] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -2682,6 +2704,7 @@ function App() {
   }, [filteredClients, sortBy, sortDir, showCancelled]);
 
   const visibleClients = useMemo(() => sortedClients.filter((c) => c.bank_number || (Number(c.value) || 0) > 0 || c.cancelled), [sortedClients]);
+  useEffect(() => { setClientsPage(1); }, [search, sortBy, sortDir, showCancelled]);
 
   const filteredByStatus = useMemo(() => {
     const activeClients = filteredClients.filter((c) => !c.cancelled);
@@ -2691,6 +2714,8 @@ function App() {
     else arr = activeClients.filter((c) => computeStatus(c, boletos[c.id], monthDate) === statusFilter);
     return [...arr].sort((a, b) => (a.bank_number || "").localeCompare(b.bank_number || "", "pt-BR", { numeric: true }));
   }, [filteredClients, boletos, statusFilter, monthDate]);
+  useEffect(() => { setBoletosPage(1); }, [search, statusFilter, monthDate]);
+  const paginatedBoletos = useMemo(() => filteredByStatus.slice((boletosPage - 1) * PAGE_SIZE, boletosPage * PAGE_SIZE), [filteredByStatus, boletosPage]);
 
   const stats = useMemo(() => {
     const monthly = clients.filter((c) => !c.annual);
@@ -3117,7 +3142,7 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {visibleClients.map((c, i) => (
+                      {visibleClients.slice((clientsPage - 1) * PAGE_SIZE, clientsPage * PAGE_SIZE).map((c, i) => (
                         <tr key={c.id} className="hover:bg-white/[0.02] transition-colors" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", opacity: c.cancelled ? 0.5 : 1 }}>
                           <td className="p-3">
                             {c.bank_number ? (
@@ -3153,6 +3178,7 @@ function App() {
                     </tbody>
                   </table>
                 )}
+                <Pagination page={clientsPage} setPage={setClientsPage} totalItems={visibleClients.length} pageSize={PAGE_SIZE} />
               </div>
             </div>
           )}
@@ -3202,7 +3228,7 @@ function App() {
                 </div>
                 {filteredByStatus.length === 0 ? (
                   <div className="p-10 text-center"><div className="text-3xl mb-2">📭</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente nesse filtro.</div></div>
-                ) : filteredByStatus.map((c) => {
+                ) : paginatedBoletos.map((c) => {
                   const b = boletos[c.id];
                   const status = computeStatus(c, b, monthDate);
                   const overdue = status === "atrasado" ? daysOverdue(c, monthDate) : 0;
@@ -3246,6 +3272,7 @@ function App() {
                     </div>
                   );
                 })}
+                <Pagination page={boletosPage} setPage={setBoletosPage} totalItems={filteredByStatus.length} pageSize={PAGE_SIZE} />
               </div>
             </div>
           )}

@@ -1956,6 +1956,7 @@ function App() {
   const [searchImplantacao, setSearchImplantacao] = useState("");
   const [showQuitadas, setShowQuitadas] = useState(false);
   const [pixModal, setPixModal] = useState(null);
+  const [editingNameId, setEditingNameId] = useState(null);
   const [showDetailedReports, setShowDetailedReports] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [vtVrRecords, setVtVrRecords] = useState([]);
@@ -2091,7 +2092,7 @@ function App() {
     const pixFav = imp.pix_favorecido || settings.implantacao_pix_favorecido;
     if (pixKey) msg += ` Pagamento via PIX: ${pixKey}${pixFav ? " — Favorecido: " + pixFav : ""}.`;
     if (channel === "whatsapp") {
-      window.open(`https://wa.me/${waNumber(prospect.phone)}?text=${encodeURIComponent(msg)}`, "_blank");
+      window.open(`https://web.whatsapp.com/send?phone=${waNumber(prospect.phone)}&text=${encodeURIComponent(msg)}`, "_blank");
     } else {
       window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(prospect.email)}&su=${encodeURIComponent("Implantação — pagamento pendente")}&body=${encodeURIComponent(msg)}`, "_blank");
     }
@@ -2271,6 +2272,13 @@ function App() {
     await loadClients();
     showToast("Cliente salvo.");
   }
+  async function handleRenameClient(clientId, newName) {
+    if (!newName.trim()) { setEditingNameId(null); return; }
+    await supa.from("clients").update({ name: newName.trim() }).eq("id", clientId);
+    await loadClients();
+    setEditingNameId(null);
+    showToast("Nome atualizado.");
+  }
   async function handleDeleteClient(id) {
     if (!confirm("Remover este cliente e os boletos/anotações dele?")) return;
     await supa.from("clients").delete().eq("id", id);
@@ -2288,14 +2296,25 @@ function App() {
   function generateProposalPDF(p, prospect) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const COMPANY_ADDRESS_1 = "Rua Ribeiro de Lima, 282 - 6º andar - Sala 602 - Bairro: Bom Retiro";
+    const COMPANY_ADDRESS_2 = "CEP: 01122-000  ·  Tel.: (11) 99246-0999  ·  São Paulo - SP";
+
+    const logoW = 48, logoH = 14.1;
+    try { doc.addImage(LOGO_DATA_URI, "PNG", (pageWidth - logoW) / 2, 10, logoW, logoH); } catch (e) {}
+    let hy = 10 + logoH + 5;
+    doc.setFontSize(8.5);
+    doc.setTextColor(90);
+    doc.text(COMPANY_ADDRESS_1, pageWidth / 2, hy, { align: "center" }); hy += 4;
+    doc.text(COMPANY_ADDRESS_2, pageWidth / 2, hy, { align: "center" }); hy += 4;
+
     doc.setFontSize(9);
     doc.setTextColor(100);
-    doc.text(`Proposta Comercial — Nº ${p.number}`, 130, 15);
+    doc.text(`Proposta Comercial — Nº ${p.number}`, pageWidth / 2, hy + 4, { align: "center" });
+    hy += 12;
 
     doc.setTextColor(30);
     doc.setFontSize(11);
-    let hy = 32;
     doc.text(prospect?.name || "", 14, hy); hy += 6;
     doc.setFontSize(9);
     doc.setTextColor(90);
@@ -2360,6 +2379,15 @@ function App() {
     doc.text(`Forma de pagamento: ${p.payment_method || "-"}`, 14, y); y += 6;
     if (p.pix_key) { doc.text(`Chave PIX: ${p.pix_key}${p.pix_favorecido ? "  —  Favorecido: " + p.pix_favorecido : ""}`, 14, y); y += 6; }
     doc.text(`Validade da proposta: ${p.valid_until ? new Date(p.valid_until + "T00:00:00").toLocaleDateString("pt-BR") : "-"}`, 14, y);
+
+    const pageCountP = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCountP; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7.5);
+      doc.setTextColor(140);
+      doc.text(`${COMPANY_ADDRESS_1}  ·  ${COMPANY_ADDRESS_2}`, pageWidth / 2, 290, { align: "center" });
+      doc.text(`Página ${i} de ${pageCountP}`, pageWidth - 14, 290, { align: "right" });
+    }
     return doc;
   }
 
@@ -2711,7 +2739,7 @@ function App() {
     if (!prospect?.phone) { showToast("Cliente sem WhatsApp cadastrado."); return; }
     if (p.pdf_url) autoDownloadBoleto({ file_url: p.pdf_url, file_name: `proposta-${p.number}.pdf` }, prospect);
     const msg = `Olá ${prospect.name}! Segue nossa proposta comercial (nº ${p.number}) no valor de mensalidade ${fmtMoney(p.monthly_value)}. Acesse aqui: ${p.pdf_url}`;
-    window.open(`https://wa.me/${waNumber(prospect.phone)}?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://web.whatsapp.com/send?phone=${waNumber(prospect.phone)}&text=${encodeURIComponent(msg)}`, "_blank");
     await supa.from("proposals").update({ sent_whatsapp: true }).eq("id", p.id);
     await loadProposals();
   }
@@ -2847,7 +2875,7 @@ function App() {
     const b = boletos[client.id];
     if (b?.file_url) { autoDownloadBoleto(b, client); showToast("Baixando boleto e abrindo WhatsApp..."); }
     const msg = applyTemplate(settings.wa_template, client, monthDate, b?.file_url);
-    window.open(`https://wa.me/${waNumber(client.phone)}?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://web.whatsapp.com/send?phone=${waNumber(client.phone)}&text=${encodeURIComponent(msg)}`, "_blank");
     await upsertBoleto(client.id, { sent_whatsapp: true });
   }
   async function sendEmail(client) {
@@ -2867,7 +2895,7 @@ function App() {
       setTimeout(async () => {
         const b = boletos[c.id];
         const msg = applyTemplate(settings.wa_template, c, monthDate, b?.file_url);
-        window.open(`https://wa.me/${waNumber(c.phone)}?text=${encodeURIComponent(msg)}`, "_blank");
+        window.open(`https://web.whatsapp.com/send?phone=${waNumber(c.phone)}&text=${encodeURIComponent(msg)}`, "_blank");
         await upsertBoleto(c.id, { sent_whatsapp: true });
         if (i === targets.length - 1) setBulkSending(false);
       }, i * 700);
@@ -3038,8 +3066,8 @@ function App() {
   const quickEmailTargets = clients.filter((c) => c.email && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
 
   return (
-    <div className="min-h-screen w-full flex" style={{ background: "transparent", fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-      <aside className="w-20 sm:w-64 shrink-0 border-r p-3 sm:p-5 flex flex-col gap-6" style={{ borderColor: COLORS.cardBorder, background: COLORS.sidebar }}>
+    <div className="h-screen w-full flex overflow-hidden" style={{ background: "transparent", fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
+      <aside className="w-20 sm:w-64 shrink-0 border-r p-3 sm:p-5 flex flex-col gap-6 h-full overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.sidebar }}>
         <div className="hidden sm:flex justify-center">
           <img src={LOGO_DATA_URI} alt="Miré" className="w-36 h-auto object-contain" style={{ filter: "drop-shadow(0 0 14px rgba(124,92,255,0.35))" }} />
         </div>
@@ -3553,7 +3581,18 @@ function App() {
                           <Avatar name={c.name} size={34} />
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-sm" style={{ color: COLORS.ink }}>{c.name}</span>
+                              {editingNameId === c.id ? (
+                                <input
+                                  autoFocus
+                                  defaultValue={c.name}
+                                  onBlur={(e) => handleRenameClient(c.id, e.target.value)}
+                                  onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setEditingNameId(null); }}
+                                  className="rounded-lg border px-2 py-1 text-sm font-bold outline-none"
+                                  style={{ borderColor: COLORS.brandLight, background: "#0E1729", color: COLORS.ink }}
+                                />
+                              ) : (
+                                <span className="font-bold text-sm cursor-pointer hover:underline" onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
+                              )}
                               <StatusBadge status={status} />
                               {overdue > 0 && <span className="text-[11px] font-semibold" style={{ color: COLORS.danger }}>há {overdue} dia{overdue > 1 ? "s" : ""}</span>}
                               {dueSoon && <span className="text-[11px] font-semibold" style={{ color: COLORS.warn }}>vence em {daysUntilDue(c, monthDate)} dia{daysUntilDue(c, monthDate) !== 1 ? "s" : ""}</span>}

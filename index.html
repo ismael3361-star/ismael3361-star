@@ -2093,7 +2093,7 @@ function App() {
     if (channel === "whatsapp") {
       window.open(`https://wa.me/${waNumber(prospect.phone)}?text=${encodeURIComponent(msg)}`, "_blank");
     } else {
-      window.location.href = `mailto:${prospect.email}?subject=${encodeURIComponent("Implantação — pagamento pendente")}&body=${encodeURIComponent(msg)}`;
+      window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(prospect.email)}&su=${encodeURIComponent("Implantação — pagamento pendente")}&body=${encodeURIComponent(msg)}`, "_blank");
     }
   }
 
@@ -2721,7 +2721,7 @@ function App() {
     if (p.pdf_url) autoDownloadBoleto({ file_url: p.pdf_url, file_name: `proposta-${p.number}.pdf` }, prospect);
     const subject = `Proposta comercial nº ${p.number}`;
     const body = `Olá ${prospect.name},\n\nSegue nossa proposta comercial (nº ${p.number}) no valor de mensalidade ${fmtMoney(p.monthly_value)}.\n\nLink da proposta: ${p.pdf_url}\n\nQualquer dúvida, estou à disposição.`;
-    window.location.href = `mailto:${prospect.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(prospect.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank");
     await supa.from("proposals").update({ sent_email: true }).eq("id", p.id);
     await loadProposals();
   }
@@ -2853,10 +2853,10 @@ function App() {
   async function sendEmail(client) {
     if (!client.email) { showToast("Cliente sem e-mail cadastrado."); return; }
     const b = boletos[client.id];
-    if (b?.file_url) { autoDownloadBoleto(b, client); showToast("Baixando boleto e abrindo e-mail..."); }
+    if (b?.file_url) { autoDownloadBoleto(b, client); showToast("Baixando boleto e abrindo o Gmail..."); }
     const subject = applyTemplate(settings.email_subject, client, monthDate, b?.file_url);
     const body = applyTemplate(settings.email_body, client, monthDate, b?.file_url);
-    window.location.href = `mailto:${client.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(client.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank");
     await upsertBoleto(client.id, { sent_email: true });
   }
   function sendBulkWhatsApp(targets) {
@@ -2875,14 +2875,14 @@ function App() {
   }
   function sendBulkEmail(targets) {
     if (targets.length === 0) { showToast("Nenhum cliente pendente com e-mail neste filtro."); return; }
-    if (!confirm(`Abrir o e-mail de ${targets.length} cliente(s)?`)) return;
+    if (!confirm(`Abrir o Gmail de ${targets.length} cliente(s)? O navegador pode pedir para permitir pop-ups.`)) return;
     setBulkSendingEmail(true);
     targets.forEach((c, i) => {
       setTimeout(async () => {
         const b = boletos[c.id];
         const subject = applyTemplate(settings.email_subject, c, monthDate, b?.file_url);
         const body = applyTemplate(settings.email_body, c, monthDate, b?.file_url);
-        window.open(`mailto:${c.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank");
+        window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(c.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank");
         await upsertBoleto(c.id, { sent_email: true });
         if (i === targets.length - 1) setBulkSendingEmail(false);
       }, i * 900);

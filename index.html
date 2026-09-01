@@ -228,7 +228,7 @@ function fmtMoney(v) { return (Number(v) || 0).toLocaleString("pt-BR", { style: 
 function onlyDigits(s) { return (s || "").replace(/\D/g, ""); }
 function waNumber(phone) { let d = onlyDigits(phone); if (d.length <= 11) d = "55" + d; return d; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-function effectiveValue(c) { return (Number(c?.value) || 0) + (Number(c?.consultations_value) || 0); }
+function effectiveValue(c, b) { return (Number(c?.value) || 0) + Number(b?.consultations_value ?? c?.consultations_value ?? 0); }
 
 function maskCNPJ(v) {
   const d = onlyDigits(v).slice(0, 14);
@@ -452,7 +452,6 @@ function ClientForm({ initial, onSave, onCancel }) {
   const [phone, setPhone] = useState(initial?.phone || "");
   const [email, setEmail] = useState(initial?.email || "");
   const [value, setValue] = useState(initial?.value ?? "");
-  const [consultationsValue, setConsultationsValue] = useState(initial?.consultations_value ?? "");
   const [dueDay, setDueDay] = useState(initial?.due_day ?? "");
   const [plan, setPlan] = useState(initial?.plan || "");
   const [notes, setNotes] = useState(initial?.notes || "");
@@ -532,7 +531,6 @@ function ClientForm({ initial, onSave, onCancel }) {
         <TextField label="WhatsApp" value={phone} onChange={setPhone} placeholder="(11) 91234-5678" />
         <TextField label="E-mail" value={email} onChange={setEmail} placeholder="cliente@email.com" />
         <TextField label={annual ? "Valor da mensalidade anual" : "Valor da mensalidade"} value={value} onChange={setValue} type="number" placeholder="150" />
-        <TextField label="Valor de consultas (soma na mensalidade)" value={consultationsValue} onChange={setConsultationsValue} type="number" placeholder="0" />
         <TextField label="Dia do vencimento" value={dueDay} onChange={setDueDay} type="number" placeholder="10" />
         <TextField label="Plano / serviço" value={plan} onChange={setPlan} placeholder="Ex: Plano Premium" />
         <TextField label="Código do banco" value={bankNumber} onChange={setBankNumber} placeholder="Ex: 341 (Itaú)" />
@@ -573,7 +571,7 @@ function ClientForm({ initial, onSave, onCancel }) {
           disabled={!canSave}
           onClick={() => onSave({
             id: initial?.id || uid(), name: name.trim(), phone: phone.trim(), email: email.trim(),
-            value: Number(value) || 0, consultations_value: Number(consultationsValue) || 0, due_day: Number(dueDay) || null,
+            value: Number(value) || 0, due_day: Number(dueDay) || null,
             plan: plan.trim(), notes: notes.trim(), cnpj: cnpj.trim(), cep: cep.trim(), street: street.trim(), number: number.trim(),
             complement: complement.trim(), neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
             bank_number: bankNumber.trim(), integration: integration.trim(), annual, cloud, marketplace: marketplace.trim(),
@@ -1669,7 +1667,6 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
   const [pixKey, setPixKey] = useState(initial?.pix_key || settings?.romaneio_pix_key || "");
   const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || settings?.romaneio_pix_favorecido || "");
   const [freight, setFreight] = useState(initial?.freight || "CIF");
-  const [signatureData, setSignatureData] = useState(initial?.signature_data || "");
   const [deliveryAddress, setDeliveryAddress] = useState(initial?.delivery_address || "");
   const [paymentProofUrl, setPaymentProofUrl] = useState(initial?.payment_proof_url || "");
   const [uploadingProof, setUploadingProof] = useState(false);
@@ -1698,7 +1695,6 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
   async function handleSaveNewProspect(p) { await onSaveRomaneioClient(p); setClientId(p.id); setShowNewProspect(false); }
 
   const total = items.reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
-  const comissao = total * 0.25;
   const canSave = clientId && number.trim();
 
   function buildPayload() {
@@ -1706,8 +1702,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
       id: initial?.id || uid(), romaneio_client_id: clientId, number: number.trim(), order_date: orderDate, seller: seller.trim(),
       items: items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0).map((it) => ({ codigo: it.codigo.trim(), descricao: it.descricao.trim(), quantidade: Number(it.quantidade) || 0, valorUnit: Number(it.valorUnit) || 0 })),
       payment_method: paymentMethod.trim(), payment_term: paymentTerm.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(), freight: freight.trim(),
-      signature_data: signatureData || null, delivery_address: deliveryAddress.trim() || null, payment_proof_url: paymentProofUrl || null,
-      commission_value: comissao,
+      delivery_address: deliveryAddress.trim() || null, payment_proof_url: paymentProofUrl || null,
     };
   }
 
@@ -1766,10 +1761,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Itens</span>
-          <div className="text-right">
-            <div className="text-sm font-bold" style={{ color: COLORS.success }}>Total: {fmtMoney(total)}</div>
-            <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Comissão (25%): <b style={{ color: COLORS.warn }}>{fmtMoney(comissao)}</b></div>
-          </div>
+          <span className="text-sm font-bold" style={{ color: COLORS.success }}>Total: {fmtMoney(total)}</span>
         </div>
         <div className="space-y-2">
           {items.map((it, i) => (
@@ -1783,11 +1775,6 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
           ))}
         </div>
         <button onClick={addItem} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar item</button>
-      </div>
-
-      <div>
-        <span className="text-xs font-bold uppercase tracking-wide mb-2 block" style={{ color: COLORS.brandLight }}>Assinatura de recebimento (opcional)</span>
-        <SignaturePad value={signatureData} onChange={setSignatureData} />
       </div>
 
       <div className="flex gap-2">
@@ -2310,10 +2297,10 @@ function App() {
     (data || []).forEach((b) => {
       const client = clients.find((c) => c.id === b.client_id);
       if (!client || !byMonth[b.month_key]) return;
-      byMonth[b.month_key].emitido += effectiveValue(client);
+      byMonth[b.month_key].emitido += effectiveValue(client, b);
       byMonth[b.month_key].mensalidade += Number(client.value) || 0;
-      byMonth[b.month_key].consultas += Number(client.consultations_value) || 0;
-      if (b.paid) byMonth[b.month_key].pago += effectiveValue(client);
+      byMonth[b.month_key].consultas += Number(b.consultations_value) || 0;
+      if (b.paid) byMonth[b.month_key].pago += effectiveValue(client, b);
     });
     return monthDefs.map((w) => ({ label: w.label, ...byMonth[w.mk] }));
   }
@@ -2615,14 +2602,7 @@ function App() {
     y += 10;
     doc.text("RECEBIDO:", 14, y); y += 10;
     doc.text("NOME: ______________________________________", 14, y); y += 12;
-    if (r.signature_data) {
-      doc.text("Assinatura:", 14, y);
-      try { doc.addImage(r.signature_data, "PNG", 42, y - 12, 60, 21.6); } catch (e) {}
-      doc.text(`Data: ___/___/_____`, 145, y);
-      y += 20;
-    } else {
-      doc.text("Assinatura: ______________________     Data: ___/___/_____", 14, y); y += 12;
-    }
+    doc.text("Assinatura: ______________________     Data: ___/___/_____", 14, y); y += 12;
     doc.text("CARIMBO DA EMPRESA", 14, y);
 
     const pageCount = doc.internal.getNumberOfPages();
@@ -2754,13 +2734,13 @@ function App() {
         "Banco": c.bank_number || "-",
         "Mensalidade": Number(c.value) || 0,
         "Consultas": Number(c.consultations_value) || 0,
-        "Total": effectiveValue(c),
+        "Total": effectiveValue(c, boletos[c.id]),
       }));
     rows.push({
       "Cliente": "TOTAL", "Banco": "",
       "Mensalidade": clients.reduce((s, c) => s + (Number(c.value) || 0), 0),
       "Consultas": clients.reduce((s, c) => s + (Number(c.consultations_value) || 0), 0),
-      "Total": clients.reduce((s, c) => s + effectiveValue(c), 0),
+      "Total": clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
     });
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -2912,6 +2892,29 @@ function App() {
     setBusyId(null);
   }
 
+  async function handleUploadExtra(client, file) {
+    if (!file) return;
+    setBusyId(client.id);
+    try {
+      const path = `${mKey}/${client.id}-extra-${Date.now()}.pdf`;
+      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supa.storage.from("boletos").getPublicUrl(path);
+      const b = boletos[client.id];
+      const extra = [...(b?.extra_files || []), { name: file.name, url: data.publicUrl }];
+      await upsertBoleto(client.id, { extra_files: extra });
+      showToast("Boleto extra anexado.");
+    } catch (e) {
+      showToast(`Erro: ${e.message || "não foi possível enviar o arquivo"}`);
+    }
+    setBusyId(null);
+  }
+  async function handleRemoveExtra(client, idx) {
+    const b = boletos[client.id];
+    const extra = (b?.extra_files || []).filter((_, i) => i !== idx);
+    await upsertBoleto(client.id, { extra_files: extra });
+  }
+
   async function sendWhatsApp(client) {
     if (!client.phone) { showToast("Cliente sem WhatsApp cadastrado."); return; }
     const b = boletos[client.id];
@@ -3025,9 +3028,9 @@ function App() {
     const dueToday = clients.filter((c) => c.due_day === today && !boletos[c.id]?.paid);
     return {
       count: clients.length, sent, sentWa, sentEmail, paid, overdue, dueSoon,
-      countMonthly: monthly.length, totalMonthly: monthly.reduce((s, c) => s + effectiveValue(c), 0),
-      countAnnual: annualC.length, totalAnnual: annualC.reduce((s, c) => s + effectiveValue(c), 0),
-      dueTodayCount: dueToday.length, dueTodayValue: dueToday.reduce((s, c) => s + effectiveValue(c), 0),
+      countMonthly: monthly.length, totalMonthly: monthly.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
+      countAnnual: annualC.length, totalAnnual: annualC.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
+      dueTodayCount: dueToday.length, dueTodayValue: dueToday.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
     };
   }, [clients, boletos, monthDate]);
 
@@ -3042,13 +3045,13 @@ function App() {
     return clients.filter((c) => !c.cancelled && isDueSoon(c, boletos[c.id], monthDate) && !boletos[c.id]?.sent_whatsapp && !boletos[c.id]?.sent_email);
   }, [clients, boletos, monthDate]);
 
-  const paidValue = useMemo(() => clients.filter((c) => boletos[c.id]?.paid).reduce((s, c) => s + effectiveValue(c), 0), [clients, boletos]);
+  const paidValue = useMemo(() => clients.filter((c) => boletos[c.id]?.paid).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos]);
   const totalPrevisto = stats.totalMonthly + stats.totalAnnual;
   const pendingValue = totalPrevisto - paidValue;
   const yearTotal = useMemo(() => yearHistory.reduce((s, h) => s + (h.pago || 0), 0), [yearHistory]);
   const momChange = prevMonthPaid > 0 ? ((paidValue - prevMonthPaid) / prevMonthPaid) * 100 : (paidValue > 0 ? 100 : 0);
-  const overdueValue = useMemo(() => clients.filter((c) => computeStatus(c, boletos[c.id], monthDate) === "atrasado").reduce((s, c) => s + effectiveValue(c), 0), [clients, boletos, monthDate]);
-  const dueSoonValue = useMemo(() => clients.filter((c) => isDueSoon(c, boletos[c.id], monthDate)).reduce((s, c) => s + effectiveValue(c), 0), [clients, boletos, monthDate]);
+  const overdueValue = useMemo(() => clients.filter((c) => computeStatus(c, boletos[c.id], monthDate) === "atrasado").reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos, monthDate]);
+  const dueSoonValue = useMemo(() => clients.filter((c) => isDueSoon(c, boletos[c.id], monthDate)).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos, monthDate]);
   const ticketMedio = stats.count > 0 ? totalPrevisto / stats.count : 0;
 
   const clientsByDueDay = useMemo(() => {
@@ -3067,7 +3070,7 @@ function App() {
       if (!c.due_day) return;
       if (!map[c.due_day]) map[c.due_day] = { day: c.due_day, count: 0, value: 0 };
       map[c.due_day].count++;
-      map[c.due_day].value += effectiveValue(c);
+      map[c.due_day].value += effectiveValue(c, boletos[c.id]);
     });
     return Object.values(map).sort((a, b) => a.day - b.day);
   }, [clients]);
@@ -3378,7 +3381,7 @@ function App() {
                               <div className="text-xs font-semibold truncate" style={{ color: COLORS.ink }}>{c.name}</div>
                               <div className="text-[10px]" style={{ color: COLORS.inkMuted }}>{new Date(b.updated_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
                             </div>
-                            <span className="text-xs font-bold" style={{ color: COLORS.ink }}>{fmtMoney(effectiveValue(c))}</span>
+                            <span className="text-xs font-bold" style={{ color: COLORS.ink }}>{fmtMoney(effectiveValue(c, boletos[c.id]))}</span>
                           </div>
                         );
                       })}
@@ -3437,7 +3440,7 @@ function App() {
                       {cells.map((day, i) => {
                         if (!day) return <div key={i} />;
                         const dayClients = clientsByDueDay[day] || [];
-                        const total = dayClients.reduce((s, c) => s + effectiveValue(c), 0);
+                        const total = dayClients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0);
                         const isToday = isCurrentMonth && today.getDate() === day;
                         return (
                           <div key={i} className="rounded-xl border p-2 min-h-[74px] sm:min-h-[92px]" style={{ borderColor: isToday ? COLORS.brandLight : COLORS.cardBorder, background: isToday ? "rgba(124,92,255,0.08)" : COLORS.card }}>
@@ -3538,7 +3541,7 @@ function App() {
                               </div>
                             </div>
                           </td>
-                          <td className="p-3 font-semibold">{fmtMoney(effectiveValue(c))}</td>
+                          <td className="p-3 font-semibold">{fmtMoney(effectiveValue(c, boletos[c.id]))}</td>
                           <td className="p-3">{c.due_day ? `dia ${c.due_day}` : "-"}</td>
                           <td className="p-3">
                             <div className="flex gap-1 justify-end">
@@ -3628,9 +3631,15 @@ function App() {
                               {overdue > 0 && <span className="text-[11px] font-semibold" style={{ color: COLORS.danger }}>há {overdue} dia{overdue > 1 ? "s" : ""}</span>}
                               {dueSoon && <span className="text-[11px] font-semibold" style={{ color: COLORS.warn }}>vence em {daysUntilDue(c, monthDate)} dia{daysUntilDue(c, monthDate) !== 1 ? "s" : ""}</span>}
                             </div>
-                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c))} · vence dia {c.due_day || "-"} · {c.annual ? "anual" : "mensal"}</div>
+                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c, boletos[c.id]))} · vence dia {c.due_day || "-"} · {c.annual ? "anual" : "mensal"}</div>
                           </div>
                         </div>
+                        <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
+                          Consultas
+                          <input type="number" key={`cons-${c.id}-${mKey}`} defaultValue={b?.consultations_value || ""} placeholder="0"
+                            onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(b?.consultations_value) || 0)) upsertBoleto(c.id, { consultations_value: v }); }}
+                            className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                        </label>
                         <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer px-2.5 py-1 rounded-full" style={{ color: b?.paid ? COLORS.success : COLORS.inkMuted, background: b?.paid ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)" }}>
                           <input type="checkbox" checked={!!b?.paid} onChange={(e) => upsertBoleto(c.id, { paid: e.target.checked })} /> Pago
                         </label>
@@ -3641,10 +3650,24 @@ function App() {
                           <input type="file" accept="application/pdf" className="hidden" onChange={(e) => handleUpload(c, e.target.files?.[0])} />
                         </label>
                         {b?.file_url && <a href={b.file_url} target="_blank" className="text-xs underline px-1" style={{ color: COLORS.brandLight }}>ver PDF</a>}
+                        <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Pra clientes que precisam de mais de um boleto no mesmo mês">
+                          ＋ Anexar outro boleto
+                          <input type="file" accept="application/pdf" className="hidden" onChange={(e) => handleUploadExtra(c, e.target.files?.[0])} />
+                        </label>
                         <button onClick={() => sendWhatsApp(c)} disabled={!c.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.wa }}>💬 {b?.sent_whatsapp ? "✓ Reenviar" : "Enviar"} WhatsApp</button>
                         <button onClick={() => sendEmail(c)} disabled={!c.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.brand }}>📧 {b?.sent_email ? "✓ Reenviar" : "Enviar"} e-mail</button>
-                        <button onClick={() => setPixModal({ pixKey: settings.mensalidade_pix_key, favorecido: settings.mensalidade_pix_favorecido, city: settings.company_pix_city, value: effectiveValue(c), label: c.name })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📱 QR PIX</button>
+                        <button onClick={() => setPixModal({ pixKey: settings.mensalidade_pix_key, favorecido: settings.mensalidade_pix_favorecido, city: settings.company_pix_city, value: effectiveValue(c, boletos[c.id]), label: c.name })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📱 QR PIX</button>
                       </div>
+                      {(b?.extra_files || []).length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 pl-[54px] mt-1.5">
+                          {b.extra_files.map((f, idx) => (
+                            <span key={idx} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg" style={{ background: "rgba(124,92,255,0.1)", color: COLORS.brandLight }}>
+                              <a href={f.url} target="_blank" className="underline">📎 {f.name}</a>
+                              <button onClick={() => handleRemoveExtra(c, idx)} style={{ color: COLORS.danger }}>✕</button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -3766,7 +3789,6 @@ function App() {
                             <div className="text-xs" style={{ color: COLORS.inkMuted }}>
                               {r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {(r.items || []).length} item(ns) · Total {fmtMoney(total)} · {r.payment_method || "-"}
                             </div>
-                            <div className="text-[11px] font-bold" style={{ color: COLORS.warn }}>Comissão (25%): {fmtMoney(r.commission_value ?? total * 0.25)}</div>
                           </div>
                         </div>
                       </div>
@@ -4082,7 +4104,7 @@ function App() {
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.danger, background: COLORS.card }}>
                 <div className="flex items-center justify-between px-4 py-3" style={{ background: "rgba(239,68,68,0.1)" }}>
                   <div className="text-sm font-bold" style={{ color: COLORS.danger }}>⚠️ Relatório de inadimplência — {inadimplentes.length} cliente(s) em atraso</div>
-                  <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{fmtMoney(inadimplentes.reduce((s, c) => s + effectiveValue(c), 0))} em aberto</div>
+                  <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{fmtMoney(inadimplentes.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))} em aberto</div>
                 </div>
                 {inadimplentes.length === 0 ? (
                   <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente em atraso este mês. 🎉</div>
@@ -4097,7 +4119,7 @@ function App() {
                               {c.name}
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>{c._diasAtraso} dia{c._diasAtraso !== 1 ? "s" : ""} atrasado</span>
                             </div>
-                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c))} · vence dia {c.due_day || "-"} · {c.phone || "sem WhatsApp"}</div>
+                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c, boletos[c.id]))} · vence dia {c.due_day || "-"} · {c.phone || "sem WhatsApp"}</div>
                           </div>
                         </div>
                         <div className="flex gap-1.5">
@@ -4142,10 +4164,10 @@ function App() {
               {showDetailedReports && (
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Mensalidade x Consultas — por cliente</div>
+                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Mensalidade x Consultas — por cliente ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</div>
                   <button onClick={exportConsultasExcel} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
                 </div>
-                {clients.filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(c.consultations_value) > 0)).length === 0 ? (
+                {clients.filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0)).length === 0 ? (
                   <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com valores cadastrados.</div>
                 ) : (
                   <table className="w-full text-sm" style={{ color: COLORS.ink }}>
@@ -4158,14 +4180,14 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {clients.filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(c.consultations_value) > 0))
-                        .sort((a, b) => (Number(b.consultations_value) || 0) - (Number(a.consultations_value) || 0))
+                      {clients.filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
+                        .sort((a, b) => (Number(boletos[b.id]?.consultations_value) || 0) - (Number(boletos[a.id]?.consultations_value) || 0))
                         .map((c, i) => (
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                             <td className="p-3 font-semibold">{c.name}</td>
                             <td className="p-3">{fmtMoney(c.value)}</td>
-                            <td className="p-3" style={{ color: Number(c.consultations_value) > 0 ? COLORS.brandLight : COLORS.inkFaint }}>{fmtMoney(c.consultations_value)}</td>
-                            <td className="p-3 font-bold">{fmtMoney(effectiveValue(c))}</td>
+                            <td className="p-3" style={{ color: Number(boletos[c.id]?.consultations_value) > 0 ? COLORS.brandLight : COLORS.inkFaint }}>{fmtMoney(boletos[c.id]?.consultations_value)}</td>
+                            <td className="p-3 font-bold">{fmtMoney(effectiveValue(c, boletos[c.id]))}</td>
                           </tr>
                         ))}
                     </tbody>
@@ -4173,8 +4195,8 @@ function App() {
                       <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
                         <td className="p-3 font-bold">TOTAL</td>
                         <td className="p-3 font-bold">{fmtMoney(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</td>
-                        <td className="p-3 font-bold" style={{ color: COLORS.brandLight }}>{fmtMoney(clients.reduce((s, c) => s + (Number(c.consultations_value) || 0), 0))}</td>
-                        <td className="p-3 font-bold">{fmtMoney(clients.reduce((s, c) => s + effectiveValue(c), 0))}</td>
+                        <td className="p-3 font-bold" style={{ color: COLORS.brandLight }}>{fmtMoney(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
+                        <td className="p-3 font-bold">{fmtMoney(clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -4202,11 +4224,6 @@ function App() {
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.info }}>Romaneios gerados</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{romaneios.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>etiqueta de composição</div>
-                </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Comissão dos romaneios</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(romaneios.reduce((s, r) => s + (r.commission_value ?? ((r.items || []).reduce((s2, it) => s2 + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0) * 0.25)), 0))}</div>
-                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>25% sobre o total vendido</div>
                 </div>
               </div>
 

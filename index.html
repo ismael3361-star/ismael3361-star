@@ -1614,12 +1614,30 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
   const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || "");
   const [freight, setFreight] = useState(initial?.freight || "CIF");
   const [signatureData, setSignatureData] = useState(initial?.signature_data || "");
+  const [deliveryAddress, setDeliveryAddress] = useState(initial?.delivery_address || "");
+  const [paymentProofUrl, setPaymentProofUrl] = useState(initial?.payment_proof_url || "");
+  const [uploadingProof, setUploadingProof] = useState(false);
 
   const prospect = prospects.find((p) => p.id === prospectId);
 
   function updateItem(i, field, val) { setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [field]: val } : it))); }
   function addItem() { setItems((prev) => [...prev, { codigo: "", descricao: "", quantidade: "", valorUnit: "" }]); }
   function removeItem(i) { setItems((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev)); }
+
+  async function uploadProof(file) {
+    if (!file) return;
+    setUploadingProof(true);
+    try {
+      const path = `comprovantes/${initial?.id || uid()}/${Date.now()}-${file.name}`;
+      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supa.storage.from("boletos").getPublicUrl(path);
+      setPaymentProofUrl(data.publicUrl);
+    } catch (e) {
+      alert(`Erro ao enviar comprovante: ${e.message}`);
+    }
+    setUploadingProof(false);
+  }
 
   async function handleSaveNewProspect(p) { await onSaveProspect(p); setProspectId(p.id); setShowNewProspect(false); }
 
@@ -1631,7 +1649,7 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
       id: initial?.id || uid(), prospect_id: prospectId, number: number.trim(), order_date: orderDate, seller: seller.trim(),
       items: items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0).map((it) => ({ codigo: it.codigo.trim(), descricao: it.descricao.trim(), quantidade: Number(it.quantidade) || 0, valorUnit: Number(it.valorUnit) || 0 })),
       payment_method: paymentMethod.trim(), payment_term: paymentTerm.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(), freight: freight.trim(),
-      signature_data: signatureData || null,
+      signature_data: signatureData || null, delivery_address: deliveryAddress.trim() || null, payment_proof_url: paymentProofUrl || null,
     };
   }
 
@@ -1675,6 +1693,20 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
         <TextField label="Prazo de pagamento" value={paymentTerm} onChange={setPaymentTerm} placeholder="Ex: A pronta entrega / 30 dias" />
         <TextField label="Chave PIX" value={pixKey} onChange={setPixKey} placeholder="CNPJ, e-mail ou telefone" />
         <TextField label="PIX favorecido" value={pixFavorecido} onChange={setPixFavorecido} placeholder="Nome de quem recebe o PIX" />
+        <div className="sm:col-span-2">
+          <TextField label="Endereço de entrega (se diferente do cadastro)" value={deliveryAddress} onChange={setDeliveryAddress} placeholder="Deixe em branco pra usar o endereço cadastrado do cliente" />
+        </div>
+      </div>
+
+      <div>
+        <span className="text-xs font-bold uppercase tracking-wide mb-2 block" style={{ color: COLORS.brandLight }}>Comprovante de pagamento PIX (anexar quando o cliente confirmar)</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <label className="px-3 py-2 rounded-lg text-sm font-semibold border cursor-pointer" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>
+            {uploadingProof ? "Enviando..." : paymentProofUrl ? "🔄 Trocar comprovante" : "📎 Anexar comprovante"}
+            <input type="file" accept="image/*,.pdf" className="hidden" disabled={uploadingProof} onChange={(e) => uploadProof(e.target.files?.[0])} />
+          </label>
+          {paymentProofUrl && <a href={paymentProofUrl} target="_blank" className="text-sm underline" style={{ color: COLORS.success }}>✓ Ver comprovante anexado</a>}
+        </div>
       </div>
 
       <div>
@@ -2423,13 +2455,24 @@ function App() {
   function generateRomaneioPDF(r, prospect) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const COMPANY_ADDRESS_1 = "Rua Ribeiro de Lima, 282 - 6º andar - Sala 602 - Bairro: Bom Retiro";
+    const COMPANY_ADDRESS_2 = "CEP: 01122-000  ·  Tel.: (11) 99246-0999  ·  São Paulo - SP";
+
+    const logoW = 48, logoH = 14.1;
+    try { doc.addImage(LOGO_DATA_URI, "PNG", (pageWidth - logoW) / 2, 10, logoW, logoH); } catch (e) {}
+    let y = 10 + logoH + 5;
+    doc.setFontSize(8.5);
+    doc.setTextColor(90);
+    doc.text(COMPANY_ADDRESS_1, pageWidth / 2, y, { align: "center" }); y += 4;
+    doc.text(COMPANY_ADDRESS_2, pageWidth / 2, y, { align: "center" }); y += 4;
+
     doc.setFontSize(9);
     doc.setTextColor(90);
-    doc.text(`Número: ${r.number}`, 130, 15);
-    doc.text(`Emissão: ${r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}`, 130, 20);
+    doc.text(`Número: ${r.number}`, 14, y + 4);
+    doc.text(`Emissão: ${r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}`, pageWidth - 14, y + 4, { align: "right" });
+    y += 10;
 
-    let y = 32;
     doc.setDrawColor(220);
     doc.line(14, y, 196, y);
     y += 6;
@@ -2445,6 +2488,7 @@ function App() {
     if (prospect?.cnpj) { doc.text(`CNPJ: ${prospect.cnpj}`, 14, y); y += 5; }
     const contact = [prospect?.phone, prospect?.email].filter(Boolean).join("  ·  ");
     if (contact) { doc.text(contact, 14, y); y += 5; }
+    if (r.delivery_address) { doc.setTextColor(30); doc.text(`Endereço de entrega: ${r.delivery_address}`, 14, y); y += 5; doc.setTextColor(60); }
 
     y += 3;
     doc.setDrawColor(220);
@@ -2482,7 +2526,8 @@ function App() {
     const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
     doc.setFontSize(11);
     doc.setTextColor(30);
-    doc.text(`Total: ${fmtMoney(total)}`, 150, y);
+    doc.text("Total:", 150, y);
+    doc.text(fmtMoney(total), 175, y);
     y += 12;
 
     doc.setFontSize(9);
@@ -2508,6 +2553,15 @@ function App() {
       doc.text("Assinatura: ______________________     Data: ___/___/_____", 14, y); y += 12;
     }
     doc.text("CARIMBO DA EMPRESA", 14, y);
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7.5);
+      doc.setTextColor(140);
+      doc.text(`${COMPANY_ADDRESS_1}  ·  ${COMPANY_ADDRESS_2}`, pageWidth / 2, 290, { align: "center" });
+      doc.text(`Página ${i} de ${pageCount}`, pageWidth - 14, 290, { align: "right" });
+    }
 
     // Rodapé com endereço em todas as páginas
     const pageCount = doc.internal.getNumberOfPages();
@@ -2557,6 +2611,21 @@ function App() {
     await supa.from("romaneios").delete().eq("id", id);
     await loadRomaneios();
     showToast("Romaneio removido.");
+  }
+
+  async function quickUploadProof(r, file) {
+    if (!file) return;
+    try {
+      const path = `comprovantes/${r.id}/${Date.now()}-${file.name}`;
+      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supa.storage.from("boletos").getPublicUrl(path);
+      await supa.from("romaneios").update({ payment_proof_url: data.publicUrl }).eq("id", r.id);
+      await loadRomaneios();
+      showToast("Comprovante anexado!");
+    } catch (e) {
+      showToast(`Erro: ${e.message}`);
+    }
   }
 
   function exportRomaneioExcel(r) {
@@ -3647,6 +3716,14 @@ function App() {
                           </>
                         )}
                         <button onClick={() => exportRomaneioExcel(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
+                        {r.payment_proof_url ? (
+                          <a href={r.payment_proof_url} target="_blank" className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>✓ Comprovante</a>
+                        ) : (
+                          <label className="px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
+                            📎 Anexar comprovante
+                            <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => quickUploadProof(r, e.target.files?.[0])} />
+                          </label>
+                        )}
                         <button onClick={() => { setEditingRomaneio(r); setShowRomaneioForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
                         <button onClick={() => handleDeleteRomaneio(r.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ Excluir</button>
                       </div>

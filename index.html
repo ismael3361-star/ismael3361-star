@@ -363,7 +363,10 @@ const DEFAULT_SETTINGS = {
   wa_template: "Olá {nome}! Tudo bem? Segue o boleto da sua mensalidade ({plano}) no valor de {valor}, com vencimento {vencimento}. Acesse aqui: {link}",
   email_subject: "Boleto - mensalidade de {mesnome}",
   email_body: "Olá {nome},\n\nSegue o boleto referente à sua mensalidade no valor de {valor}, com vencimento {vencimento}.\n\nLink do boleto: {link}\n\nQualquer dúvida, estou à disposição.",
-  company_pix_key: "", company_pix_favorecido: "", company_pix_city: "SAO PAULO", last_backup_at: null,
+  company_pix_city: "SAO PAULO", last_backup_at: null,
+  mensalidade_pix_key: "", mensalidade_pix_favorecido: "",
+  implantacao_pix_key: "", implantacao_pix_favorecido: "",
+  romaneio_pix_key: "", romaneio_pix_favorecido: "",
 };
 
 const DEFAULT_PROPOSAL_BODY = `Esta proposta tem por objetivo apresentar as vantagens e condições da contratação do Sistema de Gestão Miré, permitindo à empresa cliente obter todos os benefícios da solução desenvolvida pela MireData.
@@ -739,6 +742,56 @@ function ClientPicker({ prospects, clients, value, onSelect, onCreateNew }) {
               className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition flex items-center justify-between gap-2">
               <span style={{ color: COLORS.ink }}>{o.name}</span>
               <span className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" style={{ color: o.source === "client" ? COLORS.info : COLORS.brandLight, background: o.source === "client" ? "rgba(59,130,246,0.15)" : "rgba(124,92,255,0.15)" }}>{o.sub}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RomaneioClientPicker({ romaneioClients, value, onSelect }) {
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = romaneioClients.find((p) => p.id === value);
+
+  const results = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    return romaneioClients.filter((p) => p.name.toLowerCase().includes(q));
+  }, [romaneioClients, search]);
+
+  return (
+    <div className="relative">
+      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente *</span>
+      {selected ? (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>{selected.name}</div>
+          <button onClick={() => { onSelect(""); setSearch(""); }} className="px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>Trocar</button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <input
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setOpen(e.target.value.trim().length > 0); }}
+            onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); e.target.blur(); } }}
+            placeholder="Digite para buscar o cliente do romaneio..."
+            className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
+            style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}
+          />
+          {open && (
+            <button type="button" onMouseDown={(e) => { e.preventDefault(); setOpen(false); }} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.inkMuted }} title="Fechar busca">✕</button>
+          )}
+        </div>
+      )}
+      {open && !selected && (
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border shadow-lg" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+          {results.length === 0 ? (
+            <div className="p-3 text-xs" style={{ color: COLORS.inkMuted }}>Nenhum resultado para "{search}".</div>
+          ) : results.map((o) => (
+            <button key={o.id} type="button" onMouseDown={(e) => { e.preventDefault(); onSelect(o.id); setOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition">
+              <span style={{ color: COLORS.ink }}>{o.name}</span>
             </button>
           ))}
         </div>
@@ -1341,12 +1394,12 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
   );
 }
 
-function ImplantacaoForm({ initial, prospects, clients, onSaveProspect, onSave, onCancel }) {
+function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect, onSave, onCancel }) {
   const [prospectId, setProspectId] = useState(initial?.prospect_id || "");
   const [showNewProspect, setShowNewProspect] = useState(false);
   const [installments, setInstallments] = useState(initial?.installments?.length ? initial.installments : [{ due_date: new Date().toISOString().slice(0, 10), value: "", paid: false, paid_date: "" }]);
-  const [pixKey, setPixKey] = useState(initial?.pix_key || "");
-  const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || "");
+  const [pixKey, setPixKey] = useState(initial?.pix_key || settings?.implantacao_pix_key || "");
+  const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || settings?.implantacao_pix_favorecido || "");
   const [notes, setNotes] = useState(initial?.notes || "");
 
   const prospect = prospects.find((p) => p.id === prospectId);
@@ -1604,8 +1657,8 @@ function SignaturePad({ value, onChange }) {
   );
 }
 
-function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onPreview, onCancel }) {
-  const [prospectId, setProspectId] = useState(initial?.prospect_id || "");
+function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient, onSave, onPreview, onCancel }) {
+  const [clientId, setClientId] = useState(initial?.romaneio_client_id || "");
   const [showNewProspect, setShowNewProspect] = useState(false);
   const [number, setNumber] = useState(initial?.number || `${String(new Date().getFullYear())}/${String(Date.now()).slice(-4)}`);
   const [orderDate, setOrderDate] = useState(initial?.order_date || new Date().toISOString().slice(0, 10));
@@ -1613,15 +1666,15 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
   const [items, setItems] = useState(initial?.items?.length ? initial.items : [{ codigo: "", descricao: "", quantidade: "", valorUnit: "" }]);
   const [paymentMethod, setPaymentMethod] = useState(initial?.payment_method || "À vista no PIX");
   const [paymentTerm, setPaymentTerm] = useState(initial?.payment_term || "A pronta entrega");
-  const [pixKey, setPixKey] = useState(initial?.pix_key || "");
-  const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || "");
+  const [pixKey, setPixKey] = useState(initial?.pix_key || settings?.romaneio_pix_key || "");
+  const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || settings?.romaneio_pix_favorecido || "");
   const [freight, setFreight] = useState(initial?.freight || "CIF");
   const [signatureData, setSignatureData] = useState(initial?.signature_data || "");
   const [deliveryAddress, setDeliveryAddress] = useState(initial?.delivery_address || "");
   const [paymentProofUrl, setPaymentProofUrl] = useState(initial?.payment_proof_url || "");
   const [uploadingProof, setUploadingProof] = useState(false);
 
-  const prospect = prospects.find((p) => p.id === prospectId);
+  const prospect = romaneioClients.find((p) => p.id === clientId);
 
   function updateItem(i, field, val) { setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [field]: val } : it))); }
   function addItem() { setItems((prev) => [...prev, { codigo: "", descricao: "", quantidade: "", valorUnit: "" }]); }
@@ -1642,17 +1695,19 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
     setUploadingProof(false);
   }
 
-  async function handleSaveNewProspect(p) { await onSaveProspect(p); setProspectId(p.id); setShowNewProspect(false); }
+  async function handleSaveNewProspect(p) { await onSaveRomaneioClient(p); setClientId(p.id); setShowNewProspect(false); }
 
   const total = items.reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
-  const canSave = prospectId && number.trim();
+  const comissao = total * 0.25;
+  const canSave = clientId && number.trim();
 
   function buildPayload() {
     return {
-      id: initial?.id || uid(), prospect_id: prospectId, number: number.trim(), order_date: orderDate, seller: seller.trim(),
+      id: initial?.id || uid(), romaneio_client_id: clientId, number: number.trim(), order_date: orderDate, seller: seller.trim(),
       items: items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0).map((it) => ({ codigo: it.codigo.trim(), descricao: it.descricao.trim(), quantidade: Number(it.quantidade) || 0, valorUnit: Number(it.valorUnit) || 0 })),
       payment_method: paymentMethod.trim(), payment_term: paymentTerm.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(), freight: freight.trim(),
       signature_data: signatureData || null, delivery_address: deliveryAddress.trim() || null, payment_proof_url: paymentProofUrl || null,
+      commission_value: comissao,
     };
   }
 
@@ -1666,11 +1721,7 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
       <div>
         <div className="flex items-end gap-2 mb-2">
           <div className="flex-1">
-            <ClientPicker prospects={prospects} clients={clients} value={prospectId} onSelect={setProspectId} onCreateNew={async (c) => {
-              const p = { id: uid(), name: c.name, cnpj: c.cnpj || "", phone: c.phone || "", email: c.email || "", cep: c.cep || "", street: c.street || "", number: c.number || "", complement: c.complement || "", neighborhood: c.neighborhood || "", city: c.city || "", state: c.state || "" };
-              await onSaveProspect(p);
-              return p;
-            }} />
+            <RomaneioClientPicker romaneioClients={romaneioClients} value={clientId} onSelect={setClientId} />
           </div>
           <button onClick={() => setShowNewProspect((v) => !v)} className="px-3 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
             {showNewProspect ? "Cancelar" : "＋ Novo cliente"}
@@ -1715,7 +1766,10 @@ function RomaneioForm({ initial, prospects, clients, onSaveProspect, onSave, onP
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Itens</span>
-          <span className="text-sm font-bold" style={{ color: COLORS.success }}>Total: {fmtMoney(total)}</span>
+          <div className="text-right">
+            <div className="text-sm font-bold" style={{ color: COLORS.success }}>Total: {fmtMoney(total)}</div>
+            <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Comissão (25%): <b style={{ color: COLORS.warn }}>{fmtMoney(comissao)}</b></div>
+          </div>
         </div>
         <div className="space-y-2">
           {items.map((it, i) => (
@@ -1968,6 +2022,7 @@ function App() {
   const [recentSent, setRecentSent] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [prospects, setProspects] = useState([]);
+  const [romaneioClients, setRomaneioClients] = useState([]);
   const [showProposalForm, setShowProposalForm] = useState(false);
   const [editingProposal, setEditingProposal] = useState(null);
   const [romaneios, setRomaneios] = useState([]);
@@ -1986,6 +2041,7 @@ function App() {
   const [searchImplantacao, setSearchImplantacao] = useState("");
   const [showQuitadas, setShowQuitadas] = useState(false);
   const [pixModal, setPixModal] = useState(null);
+  const [showDetailedReports, setShowDetailedReports] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [vtVrRecords, setVtVrRecords] = useState([]);
   const [showVtVrForm, setShowVtVrForm] = useState(false);
@@ -2027,6 +2083,16 @@ function App() {
     await supa.from("prospects").upsert(p);
     await loadProspects();
     showToast("Cliente da proposta salvo.");
+    return p;
+  }
+  const loadRomaneioClients = useCallback(async () => {
+    const { data } = await supa.from("romaneio_clients").select("*").order("name");
+    setRomaneioClients(data || []);
+  }, []);
+  async function handleSaveRomaneioClient(p) {
+    await supa.from("romaneio_clients").upsert(p);
+    await loadRomaneioClients();
+    showToast("Cliente do romaneio salvo.");
     return p;
   }
   async function handleDeleteProspect(id) {
@@ -2106,7 +2172,9 @@ function App() {
     let msg = `Olá ${prospect?.name || imp.client_name}! Sobre a implantação do sistema, você tem ${fmtMoney(totalAberto)} em aberto`;
     if (proxima?.due_date) msg += ` (próxima parcela vence em ${new Date(proxima.due_date + "T00:00:00").toLocaleDateString("pt-BR")})`;
     msg += `.`;
-    if (imp.pix_key) msg += ` Pagamento via PIX: ${imp.pix_key}${imp.pix_favorecido ? " — Favorecido: " + imp.pix_favorecido : ""}.`;
+    const pixKey = imp.pix_key || settings.implantacao_pix_key;
+    const pixFav = imp.pix_favorecido || settings.implantacao_pix_favorecido;
+    if (pixKey) msg += ` Pagamento via PIX: ${pixKey}${pixFav ? " — Favorecido: " + pixFav : ""}.`;
     if (channel === "whatsapp") {
       window.open(`https://wa.me/${waNumber(prospect.phone)}?text=${encodeURIComponent(msg)}`, "_blank");
     } else {
@@ -2231,7 +2299,7 @@ function App() {
     doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadEmployees(); loadVtVrRecords(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadEmployees(); loadVtVrRecords(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -2577,7 +2645,7 @@ function App() {
   }
 
   async function handleSaveRomaneio(r) {
-    const prospect = prospects.find((p) => p.id === r.prospect_id);
+    const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
     try {
       const doc = generateRomaneioPDF(r, prospect);
       const blob = doc.output("blob");
@@ -2620,7 +2688,7 @@ function App() {
   }
 
   function exportRomaneioExcel(r) {
-    const prospect = prospects.find((p) => p.id === r.prospect_id);
+    const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
     const rows = (r.items || []).map((it) => ({
       "Código": it.codigo || "",
       "Descrição": it.descricao || "",
@@ -2656,7 +2724,7 @@ function App() {
 
   function exportAllRomaneiosExcel() {
     const rows = romaneios.map((r) => {
-      const prospect = prospects.find((p) => p.id === r.prospect_id);
+      const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
       const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
       return {
         "Número": r.number,
@@ -2754,8 +2822,10 @@ function App() {
     setSettings(next);
     await supa.from("settings").upsert({
       id: "default", wa_template: next.wa_template, email_subject: next.email_subject, email_body: next.email_body,
-      company_pix_key: next.company_pix_key || null, company_pix_favorecido: next.company_pix_favorecido || null,
       company_pix_city: next.company_pix_city || null, last_backup_at: next.last_backup_at || null,
+      mensalidade_pix_key: next.mensalidade_pix_key || null, mensalidade_pix_favorecido: next.mensalidade_pix_favorecido || null,
+      implantacao_pix_key: next.implantacao_pix_key || null, implantacao_pix_favorecido: next.implantacao_pix_favorecido || null,
+      romaneio_pix_key: next.romaneio_pix_key || null, romaneio_pix_favorecido: next.romaneio_pix_favorecido || null,
     });
   }
   async function upsertBoleto(clientId, patch) {
@@ -2932,7 +3002,7 @@ function App() {
   useEffect(() => { setClientsPage(1); }, [search, sortBy, sortDir, showCancelled]);
 
   const filteredByStatus = useMemo(() => {
-    const activeClients = filteredClients.filter((c) => !c.cancelled);
+    const activeClients = filteredClients.filter((c) => !c.cancelled && (c.bank_number || (Number(c.value) || 0) > 0));
     let arr;
     if (statusFilter === "todos") arr = activeClients;
     else if (statusFilter === "em_breve") arr = activeClients.filter((c) => isDueSoon(c, boletos[c.id], monthDate));
@@ -3573,7 +3643,7 @@ function App() {
                         {b?.file_url && <a href={b.file_url} target="_blank" className="text-xs underline px-1" style={{ color: COLORS.brandLight }}>ver PDF</a>}
                         <button onClick={() => sendWhatsApp(c)} disabled={!c.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.wa }}>💬 {b?.sent_whatsapp ? "✓ Reenviar" : "Enviar"} WhatsApp</button>
                         <button onClick={() => sendEmail(c)} disabled={!c.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.brand }}>📧 {b?.sent_email ? "✓ Reenviar" : "Enviar"} e-mail</button>
-                        <button onClick={() => setPixModal({ pixKey: settings.company_pix_key, favorecido: settings.company_pix_favorecido, city: settings.company_pix_city, value: effectiveValue(c), label: c.name })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📱 QR PIX</button>
+                        <button onClick={() => setPixModal({ pixKey: settings.mensalidade_pix_key, favorecido: settings.mensalidade_pix_favorecido, city: settings.company_pix_city, value: effectiveValue(c), label: c.name })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📱 QR PIX</button>
                       </div>
                     </div>
                   );
@@ -3676,7 +3746,7 @@ function App() {
 
               {showRomaneioForm && (
                 <div className="mb-4">
-                  <RomaneioForm initial={editingRomaneio} prospects={prospects} clients={clients} onSaveProspect={handleSaveProspect} onSave={handleSaveRomaneio} onPreview={previewRomaneioPDF} onCancel={() => { setShowRomaneioForm(false); setEditingRomaneio(null); }} />
+                  <RomaneioForm initial={editingRomaneio} romaneioClients={romaneioClients} settings={settings} onSaveRomaneioClient={handleSaveRomaneioClient} onSave={handleSaveRomaneio} onPreview={previewRomaneioPDF} onCancel={() => { setShowRomaneioForm(false); setEditingRomaneio(null); }} />
                 </div>
               )}
 
@@ -3684,7 +3754,7 @@ function App() {
                 {romaneios.length === 0 ? (
                   <div className="p-10 text-center"><div className="text-3xl mb-2">📦</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio gerado ainda.</div></div>
                 ) : romaneios.map((r, i) => {
-                  const prospect = prospects.find((p) => p.id === r.prospect_id);
+                  const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
                   const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
                   return (
                     <div key={r.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
@@ -3696,6 +3766,7 @@ function App() {
                             <div className="text-xs" style={{ color: COLORS.inkMuted }}>
                               {r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {(r.items || []).length} item(ns) · Total {fmtMoney(total)} · {r.payment_method || "-"}
                             </div>
+                            <div className="text-[11px] font-bold" style={{ color: COLORS.warn }}>Comissão (25%): {fmtMoney(r.commission_value ?? total * 0.25)}</div>
                           </div>
                         </div>
                       </div>
@@ -3872,7 +3943,7 @@ function App() {
                 <button onClick={() => { setEditingImplantacao(null); setShowImplantacaoForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova implantação</button>
               </div>
 
-              {showImplantacaoForm && <div className="mb-4"><ImplantacaoForm initial={editingImplantacao} prospects={prospects} clients={clients} onSaveProspect={handleSaveProspect} onSave={handleSaveImplantacao} onCancel={() => { setShowImplantacaoForm(false); setEditingImplantacao(null); }} /></div>}
+              {showImplantacaoForm && <div className="mb-4"><ImplantacaoForm initial={editingImplantacao} prospects={prospects} clients={clients} settings={settings} onSaveProspect={handleSaveProspect} onSave={handleSaveImplantacao} onCancel={() => { setShowImplantacaoForm(false); setEditingImplantacao(null); }} /></div>}
 
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 {(() => {
@@ -3923,7 +3994,7 @@ function App() {
                         <div className="flex flex-wrap gap-2">
                           {open > 0 && <button onClick={() => sendImplantacaoCobranca(imp, "whatsapp")} disabled={!prospect?.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.wa }}>💬 Cobrar (PIX)</button>}
                           {open > 0 && <button onClick={() => sendImplantacaoCobranca(imp, "email")} disabled={!prospect?.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.brand }}>📧 Cobrar (PIX)</button>}
-                          {open > 0 && <button onClick={() => setPixModal({ pixKey: imp.pix_key || settings.company_pix_key, favorecido: imp.pix_favorecido || settings.company_pix_favorecido, city: settings.company_pix_city, value: open, label: imp.client_name })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📱 QR PIX</button>}
+                          {open > 0 && <button onClick={() => setPixModal({ pixKey: imp.pix_key || settings.implantacao_pix_key, favorecido: imp.pix_favorecido || settings.implantacao_pix_favorecido, city: settings.company_pix_city, value: open, label: imp.client_name })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📱 QR PIX</button>}
                           <button onClick={() => generateImplantacaoPDF(imp)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                           <button onClick={() => { setEditingImplantacao(imp); setShowImplantacaoForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
                           <button onClick={() => handleDeleteImplantacao(imp.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ Excluir</button>
@@ -4062,6 +4133,13 @@ function App() {
                 </div>
               </div>
 
+              <div className="flex justify-center">
+                <button onClick={() => setShowDetailedReports((v) => !v)} className="px-4 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
+                  {showDetailedReports ? "▲ Ocultar tabelas detalhadas" : "▼ Ver tabelas detalhadas (mensalidade x consultas, VT/VR por funcionário)"}
+                </button>
+              </div>
+
+              {showDetailedReports && (
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
                   <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Mensalidade x Consultas — por cliente</div>
@@ -4102,6 +4180,7 @@ function App() {
                   </table>
                 )}
               </div>
+              )}
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -4123,6 +4202,11 @@ function App() {
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.info }}>Romaneios gerados</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{romaneios.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>etiqueta de composição</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Comissão dos romaneios</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(romaneios.reduce((s, r) => s + (r.commission_value ?? ((r.items || []).reduce((s2, it) => s2 + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0) * 0.25)), 0))}</div>
+                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>25% sobre o total vendido</div>
                 </div>
               </div>
 
@@ -4248,19 +4332,54 @@ function App() {
           {tab === "config" && (
             <div className="space-y-4">
               <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>PIX padrão da empresa</div>
-                <p className="text-[11px]" style={{ color: COLORS.inkMuted }}>Usado para gerar o QR Code de cobrança quando a proposta/romaneio/implantação não tiver uma chave própria cadastrada.</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <label className="block">
-                    <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX</span>
-                    <input value={settings.company_pix_key || ""} onChange={(e) => saveSettings({ ...settings, company_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Favorecido</span>
-                    <input value={settings.company_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, company_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-                  </label>
-                  <label className="block">
-                    <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cidade</span>
+                <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Chaves PIX por módulo</div>
+                <p className="text-[11px]" style={{ color: COLORS.inkMuted }}>Cada módulo usa sua própria chave PIX padrão pra gerar o QR Code de cobrança. Numa proposta, romaneio ou implantação específica, você ainda pode colocar uma chave diferente naquele cadastro — ela sempre tem prioridade sobre a padrão daqui.</p>
+
+                <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+                  <div className="text-xs font-bold mb-2" style={{ color: COLORS.ink }}>📄 Mensalidades</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX</span>
+                      <input value={settings.mensalidade_pix_key || ""} onChange={(e) => saveSettings({ ...settings, mensalidade_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    </label>
+                    <label className="block">
+                      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Favorecido</span>
+                      <input value={settings.mensalidade_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, mensalidade_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+                  <div className="text-xs font-bold mb-2" style={{ color: COLORS.ink }}>🏗️ Implantações</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX</span>
+                      <input value={settings.implantacao_pix_key || ""} onChange={(e) => saveSettings({ ...settings, implantacao_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    </label>
+                    <label className="block">
+                      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Favorecido</span>
+                      <input value={settings.implantacao_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, implantacao_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+                  <div className="text-xs font-bold mb-2" style={{ color: COLORS.ink }}>📦 Romaneio Etiqueta</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block">
+                      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX</span>
+                      <input value={settings.romaneio_pix_key || ""} onChange={(e) => saveSettings({ ...settings, romaneio_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    </label>
+                    <label className="block">
+                      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Favorecido</span>
+                      <input value={settings.romaneio_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, romaneio_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+                  <label className="block max-w-xs">
+                    <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cidade (usada em todos os QR Codes)</span>
                     <input value={settings.company_pix_city || ""} onChange={(e) => saveSettings({ ...settings, company_pix_city: e.target.value })} placeholder="Ex: SAO PAULO" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
                   </label>
                 </div>

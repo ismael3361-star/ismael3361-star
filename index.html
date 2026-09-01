@@ -11,7 +11,15 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   * { -webkit-tap-highlight-color: transparent; }
-  body { -webkit-font-smoothing: antialiased; }
+  body {
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(ellipse 900px 500px at 8% -5%, rgba(124,92,255,0.16), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 100% 0%, rgba(34,197,94,0.08), transparent 55%),
+      radial-gradient(ellipse 800px 600px at 50% 100%, rgba(124,92,255,0.07), transparent 60%),
+      #0B1220;
+    background-attachment: fixed;
+  }
 
   /* Botões com relevo: sombra elevada + brilho sutil no topo + efeito de pressionar */
   button:not(:disabled) {
@@ -42,9 +50,14 @@
   }
   input[type="checkbox"] { accent-color: #7C5CFF; width: 16px; height: 16px; cursor: pointer; }
 
-  /* Cartões com profundidade suave */
+  /* Cartões com profundidade suave e brilho fino de borda */
   [class*="rounded-2xl"][class*="border"] {
-    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 4px 14px rgba(0,0,0,0.22);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 18px rgba(0,0,0,0.28), 0 0 0 1px rgba(124,92,255,0.04);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    backdrop-filter: blur(2px);
+  }
+  [class*="rounded-2xl"][class*="border"]:hover {
+    box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 6px 22px rgba(0,0,0,0.32), 0 0 0 1px rgba(124,92,255,0.12);
   }
   [class*="rounded-xl"][class*="border"] {
     box-shadow: 0 4px 12px rgba(0,0,0,0.18);
@@ -1194,6 +1207,8 @@ function ImplantacaoForm({ initial, prospects, clients, onSaveProspect, onSave, 
   const [prospectId, setProspectId] = useState(initial?.prospect_id || "");
   const [showNewProspect, setShowNewProspect] = useState(false);
   const [installments, setInstallments] = useState(initial?.installments?.length ? initial.installments : [{ due_date: new Date().toISOString().slice(0, 10), value: "", paid: false, paid_date: "" }]);
+  const [pixKey, setPixKey] = useState(initial?.pix_key || "");
+  const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || "");
   const [notes, setNotes] = useState(initial?.notes || "");
 
   const prospect = prospects.find((p) => p.id === prospectId);
@@ -1267,6 +1282,11 @@ function ImplantacaoForm({ initial, prospects, clients, onSaveProspect, onSave, 
 
       <div className="text-sm font-bold pt-2 border-t" style={{ borderColor: COLORS.cardBorder, color: COLORS.warn }}>Em aberto: {fmtMoney(totalValue - paidValue)}</div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TextField label="Chave PIX (cobrança)" value={pixKey} onChange={setPixKey} placeholder="CNPJ, e-mail ou telefone" />
+        <TextField label="PIX favorecido" value={pixFavorecido} onChange={setPixFavorecido} placeholder="Nome de quem recebe" />
+      </div>
+
       <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
 
       <div className="flex gap-2">
@@ -1276,7 +1296,7 @@ function ImplantacaoForm({ initial, prospects, clients, onSaveProspect, onSave, 
             id: initial?.id || uid(), prospect_id: prospectId, client_name: prospect?.name || "",
             total_value: totalValue,
             installments: installments.filter((it) => it.due_date || Number(it.value) > 0).map((it) => ({ due_date: it.due_date || null, value: Number(it.value) || 0, paid: !!it.paid, paid_date: it.paid_date || null })),
-            notes: notes.trim(),
+            pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(), notes: notes.trim(),
           })}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 shadow-sm hover:opacity-90 transition"
           style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>
@@ -1740,6 +1760,8 @@ function App() {
   const [implantacoes, setImplantacoes] = useState([]);
   const [showImplantacaoForm, setShowImplantacaoForm] = useState(false);
   const [editingImplantacao, setEditingImplantacao] = useState(null);
+  const [searchImplantacao, setSearchImplantacao] = useState("");
+  const [showQuitadas, setShowQuitadas] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [vtVrRecords, setVtVrRecords] = useState([]);
   const [showVtVrForm, setShowVtVrForm] = useState(false);
@@ -1848,6 +1870,77 @@ function App() {
     const newInstallments = imp.installments.map((it, i) => i === idx ? { ...it, paid: !it.paid, paid_date: !it.paid ? new Date().toISOString().slice(0, 10) : null } : it);
     await supa.from("implantacoes").update({ installments: newInstallments }).eq("id", imp.id);
     await loadImplantacoes();
+  }
+
+  function sendImplantacaoCobranca(imp, channel) {
+    const prospect = prospects.find((p) => p.id === imp.prospect_id);
+    if (channel === "whatsapp" && !prospect?.phone) { showToast("Cliente sem WhatsApp cadastrado."); return; }
+    if (channel === "email" && !prospect?.email) { showToast("Cliente sem e-mail cadastrado."); return; }
+    const pendentes = (imp.installments || []).filter((it) => !it.paid);
+    const totalAberto = pendentes.reduce((s, it) => s + (Number(it.value) || 0), 0);
+    const proxima = pendentes[0];
+    let msg = `Olá ${prospect?.name || imp.client_name}! Sobre a implantação do sistema, você tem ${fmtMoney(totalAberto)} em aberto`;
+    if (proxima?.due_date) msg += ` (próxima parcela vence em ${new Date(proxima.due_date + "T00:00:00").toLocaleDateString("pt-BR")})`;
+    msg += `.`;
+    if (imp.pix_key) msg += ` Pagamento via PIX: ${imp.pix_key}${imp.pix_favorecido ? " — Favorecido: " + imp.pix_favorecido : ""}.`;
+    if (channel === "whatsapp") {
+      window.open(`https://wa.me/${waNumber(prospect.phone)}?text=${encodeURIComponent(msg)}`, "_blank");
+    } else {
+      window.location.href = `mailto:${prospect.email}?subject=${encodeURIComponent("Implantação — pagamento pendente")}&body=${encodeURIComponent(msg)}`;
+    }
+  }
+
+  function generateImplantacaoPDF(imp) {
+    const prospect = prospects.find((p) => p.id === imp.prospect_id);
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text("Comprovante de Implantação", 14, 32);
+    doc.setFontSize(10);
+    doc.setTextColor(60);
+    doc.text(prospect?.name || imp.client_name || "-", 14, 40);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    let y = 46;
+    if (prospect?.cnpj) { doc.text(`CNPJ: ${prospect.cnpj}`, 14, y); y += 5; }
+    if (prospect?.phone || prospect?.email) { doc.text([prospect?.phone, prospect?.email].filter(Boolean).join("  ·  "), 14, y); y += 5; }
+    y += 4;
+    const rows = (imp.installments || []).map((it) => [
+      it.due_date ? new Date(it.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+      fmtMoney(it.value), it.paid ? "Pago" : "Pendente", it.paid_date ? new Date(it.paid_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+    ]);
+    doc.autoTable({
+      startY: y,
+      head: [["Vencimento", "Valor", "Situação", "Data pagamento"]],
+      body: rows,
+      foot: [["TOTAL", fmtMoney(imp.total_value), "", ""]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      margin: { left: 14, right: 14 },
+    });
+    let y2 = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(9);
+    doc.setTextColor(60);
+    if (imp.pix_key) { doc.text(`Chave PIX: ${imp.pix_key}${imp.pix_favorecido ? "  —  Favorecido: " + imp.pix_favorecido : ""}`, 14, y2); y2 += 6; }
+    if (imp.notes) { doc.text(doc.splitTextToSize(`Observações: ${imp.notes}`, 180), 14, y2); }
+    doc.save(`implantacao-${(prospect?.name || imp.client_name || "cliente").replace(/\s+/g, "_")}.pdf`);
+  }
+
+  function exportImplantacoesExcel() {
+    const rows = implantacoes.map((imp) => {
+      const paid = (imp.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+      return {
+        "Cliente": imp.client_name, "Total": imp.total_value, "Pago": paid, "Em aberto": (imp.total_value || 0) - paid,
+        "Parcelas": (imp.installments || []).length, "Situação": (imp.total_value || 0) - paid <= 0 ? "Quitada" : "Em aberto",
+      };
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Implantações");
+    XLSX.writeFile(wb, `implantacoes-${monthKey(new Date())}.xlsx`);
   }
 
   const loadEmployees = useCallback(async () => {
@@ -2130,6 +2223,7 @@ function App() {
         id: uid(), prospect_id: prospect.id, proposal_id: p.id, client_name: prospect.name,
         total_value: implantacaoTotal,
         installments: [{ due_date: new Date().toISOString().slice(0, 10), value: implantacaoTotal, paid: false, paid_date: null }],
+        pix_key: p.pix_key || "", pix_favorecido: p.pix_favorecido || "",
         notes: `Gerada automaticamente ao fechar a proposta nº ${p.number}.`,
       });
       await loadImplantacoes();
@@ -2675,42 +2769,56 @@ function App() {
   const quickEmailTargets = clients.filter((c) => c.email && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
 
   return (
-    <div className="min-h-screen w-full flex" style={{ background: COLORS.bg, fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
+    <div className="min-h-screen w-full flex" style={{ background: "transparent", fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
       <aside className="w-20 sm:w-64 shrink-0 border-r p-3 sm:p-5 flex flex-col gap-6" style={{ borderColor: COLORS.cardBorder, background: COLORS.sidebar }}>
-        <div className="hidden sm:block">
-          <img src={LOGO_DATA_URI} alt="Miré" className="w-36 h-auto object-contain mb-1" />
-          <div className="text-[11px] font-bold uppercase tracking-wider mt-1" style={{ color: COLORS.inkMuted }}>ADM</div>
-          <div className="text-[13px] font-extrabold" style={{ color: COLORS.success }}>MIRE</div>
+        <div className="hidden sm:flex justify-center">
+          <img src={LOGO_DATA_URI} alt="Miré" className="w-36 h-auto object-contain" style={{ filter: "drop-shadow(0 0 14px rgba(124,92,255,0.35))" }} />
         </div>
-        <div className="flex sm:hidden justify-center"><img src={LOGO_DATA_URI} alt="Miré" className="w-12 h-auto object-contain" /></div>
+        <div className="flex sm:hidden justify-center"><img src={LOGO_DATA_URI} alt="Miré" className="w-12 h-auto object-contain" style={{ filter: "drop-shadow(0 0 10px rgba(124,92,255,0.4))" }} /></div>
 
         <nav className="flex flex-col gap-1 w-full flex-1 overflow-y-auto">
           {[
-            { id: "dashboard", label: "Dashboard", icon: "🏠" },
-            { id: "clientes", label: "Clientes", icon: "👥" },
-            { id: "boletos", label: "Mensalidades", icon: "📄" },
-            { id: "propostas", label: "Propostas", icon: "📝" },
-            { id: "romaneio", label: "Romaneio Etiqueta", icon: "📦" },
-            { id: "itag", label: "RFID", icon: "🏷️" },
-            { id: "implantacoes", label: "Implantações", icon: "🏗️" },
-            { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
-            { id: "relatorios", label: "Relatórios", icon: "📊" },
-            { id: "config", label: "Configurações", icon: "⚙️" },
-          ].map((t) => {
-            const active = tab === t.id;
-            return (
-              <button key={t.id} onClick={() => setTab(t.id)}
-                className="flex flex-col sm:flex-row items-center sm:gap-3 justify-center sm:justify-start px-2 sm:px-3 py-2.5 rounded-xl font-semibold transition-all"
-                style={{ background: active ? `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` : "transparent", color: active ? "#fff" : COLORS.inkMuted, boxShadow: active ? "0 4px 14px rgba(124,92,255,0.35)" : "none" }}
-                onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
-                onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
-                <span className="text-base leading-none">{t.icon}</span>
-                <span className="text-[10px] sm:text-sm leading-tight text-center sm:text-left mt-0.5 sm:mt-0">{t.label}</span>
-              </button>
-            );
-          })}
+            { group: "Principal", items: [
+              { id: "dashboard", label: "Dashboard", icon: "🏠" },
+              { id: "relatorios", label: "Relatórios", icon: "📊" },
+            ]},
+            { group: "Comercial", items: [
+              { id: "clientes", label: "Clientes", icon: "👥" },
+              { id: "propostas", label: "Propostas", icon: "📝" },
+              { id: "romaneio", label: "Romaneio Etiqueta", icon: "📦" },
+            ]},
+            { group: "Financeiro", items: [
+              { id: "boletos", label: "Mensalidades", icon: "📄" },
+              { id: "implantacoes", label: "Implantações", icon: "🏗️" },
+              { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
+            ]},
+            { group: "Operacional", items: [
+              { id: "itag", label: "RFID", icon: "🏷️" },
+            ]},
+            { group: "Sistema", items: [
+              { id: "config", label: "Configurações", icon: "⚙️" },
+            ]},
+          ].map((g) => (
+            <div key={g.group} className="mb-1">
+              <div className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-3 mb-1 mt-3 first:mt-0" style={{ color: COLORS.inkFaint }}>{g.group}</div>
+              {g.items.map((t) => {
+                const active = tab === t.id;
+                return (
+                  <button key={t.id} onClick={() => setTab(t.id)}
+                    className="flex flex-col sm:flex-row items-center sm:gap-3 justify-center sm:justify-start w-full px-2 sm:px-3 py-2.5 rounded-xl font-semibold transition-all relative overflow-hidden"
+                    style={{ background: active ? `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` : "transparent", color: active ? "#fff" : COLORS.inkMuted, boxShadow: active ? "0 4px 18px rgba(124,92,255,0.45), inset 0 1px 0 rgba(255,255,255,0.2)" : "none" }}
+                    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(124,92,255,0.08)"; }}
+                    onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
+                    {active && <span className="hidden sm:block absolute left-0 top-0 bottom-0 w-1" style={{ background: "#fff", opacity: 0.6 }} />}
+                    <span className="text-base leading-none">{t.icon}</span>
+                    <span className="text-[10px] sm:text-sm leading-tight text-center sm:text-left mt-0.5 sm:mt-0">{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
 
-          <div className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-3 mb-1 mt-4" style={{ color: COLORS.inkFaint }}>Envio rápido</div>
+          <div className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-3 mb-1 mt-3" style={{ color: COLORS.inkFaint }}>Envio rápido</div>
           <button onClick={() => { setTab("boletos"); sendBulkWhatsApp(quickWaTargets); }} disabled={bulkSending}
             className="flex items-center justify-center sm:justify-start gap-2 px-3 py-2.5 rounded-xl font-semibold text-sm border disabled:opacity-50"
             style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }} title="Enviar WhatsApp para pendentes/atrasados do mês">
@@ -2799,25 +2907,25 @@ function App() {
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.success }}>Total previsto (mês)</span>
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(34,197,94,0.15)" }}>💲</span>
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(34,197,94,0.15)" }}>💲</span>
                   </div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalPrevisto)}</div>
+                  <div className="text-lg sm:text-xl font-extrabold truncate" title={fmtMoney(totalPrevisto)} style={{ color: COLORS.ink }}>{fmtMoney(totalPrevisto)}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Mensalidades + Consultas</div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.info }}>Total pago (mês)</span>
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(59,130,246,0.15)" }}>💳</span>
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(59,130,246,0.15)" }}>💳</span>
                   </div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(paidValue)}</div>
+                  <div className="text-lg sm:text-xl font-extrabold truncate" title={fmtMoney(paidValue)} style={{ color: COLORS.ink }}>{fmtMoney(paidValue)}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{totalPrevisto > 0 ? ((paidValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.warn }}>Em aberto</span>
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(245,158,11,0.15)" }}>⚠️</span>
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(245,158,11,0.15)" }}>⚠️</span>
                   </div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(pendingValue)}</div>
+                  <div className="text-lg sm:text-xl font-extrabold truncate" title={fmtMoney(pendingValue)} style={{ color: COLORS.ink }}>{fmtMoney(pendingValue)}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{totalPrevisto > 0 ? ((pendingValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -2929,7 +3037,7 @@ function App() {
                       <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs" style={{ background: `${s.c}22` }}>{s.icon}</span>
                       <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: s.c }}>{s.l}</span>
                     </div>
-                    <div className="text-base font-extrabold" style={{ color: COLORS.ink }}>{s.v}</div>
+                    <div className="text-base font-extrabold truncate" title={s.v} style={{ color: COLORS.ink }}>{s.v}</div>
                     <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{s.sub}</div>
                   </div>
                 ))}
@@ -3397,46 +3505,75 @@ function App() {
                 </div>
               </div>
 
-              <div className="flex justify-end mb-3">
+              <div className="flex items-center flex-wrap gap-2 mb-3">
+                <input value={searchImplantacao} onChange={(e) => setSearchImplantacao(e.target.value)} placeholder="🔍 Buscar por nome do cliente..." className="rounded-lg border px-3 py-2 text-sm outline-none max-w-xs w-full" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
+                <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer" style={{ color: COLORS.inkMuted }}>
+                  <input type="checkbox" checked={showQuitadas} onChange={(e) => setShowQuitadas(e.target.checked)} />
+                  Mostrar quitadas
+                </label>
+                <button onClick={exportImplantacoesExcel} disabled={implantacoes.length === 0} className="ml-auto px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
                 <button onClick={() => { setEditingImplantacao(null); setShowImplantacaoForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova implantação</button>
               </div>
 
               {showImplantacaoForm && <div className="mb-4"><ImplantacaoForm initial={editingImplantacao} prospects={prospects} clients={clients} onSaveProspect={handleSaveProspect} onSave={handleSaveImplantacao} onCancel={() => { setShowImplantacaoForm(false); setEditingImplantacao(null); }} /></div>}
 
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                {implantacoes.length === 0 ? (
-                  <div className="p-10 text-center"><div className="text-3xl mb-2">🏗️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma implantação registrada ainda.</div></div>
-                ) : implantacoes.map((imp, i) => {
-                  const paid = (imp.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                  const open = (imp.total_value || 0) - paid;
-                  return (
-                    <div key={imp.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-3">
-                          <Avatar name={imp.client_name || "?"} size={32} />
-                          <div>
-                            <div className="font-bold text-sm" style={{ color: COLORS.ink }}>{imp.client_name || "Cliente removido"}</div>
-                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>Total {fmtMoney(imp.total_value)} · Recebido {fmtMoney(paid)} · Em aberto {fmtMoney(open)}</div>
+                {(() => {
+                  const q = searchImplantacao.trim().toLowerCase();
+                  const visible = implantacoes.filter((imp) => {
+                    const paid = (imp.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                    const open = (imp.total_value || 0) - paid;
+                    if (!showQuitadas && open <= 0) return false;
+                    if (q && !(imp.client_name || "").toLowerCase().includes(q)) return false;
+                    return true;
+                  });
+                  if (visible.length === 0) {
+                    return <div className="p-10 text-center"><div className="text-3xl mb-2">🏗️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>{implantacoes.length === 0 ? "Nenhuma implantação registrada ainda." : "Nenhuma implantação em aberto encontrada."}</div></div>;
+                  }
+                  const today = new Date().toISOString().slice(0, 10);
+                  return visible.map((imp, i) => {
+                    const paid = (imp.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                    const open = (imp.total_value || 0) - paid;
+                    const prospect = prospects.find((p) => p.id === imp.prospect_id);
+                    return (
+                      <div key={imp.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-3">
+                            <Avatar name={imp.client_name || "?"} size={32} />
+                            <div>
+                              <div className="font-bold text-sm" style={{ color: COLORS.ink }}>{imp.client_name || "Cliente removido"}</div>
+                              <div className="text-xs" style={{ color: COLORS.inkMuted }}>Total {fmtMoney(imp.total_value)} · Recebido {fmtMoney(paid)} · Em aberto {fmtMoney(open)}</div>
+                            </div>
                           </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: open <= 0 ? COLORS.success : COLORS.warn, background: open <= 0 ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>{open <= 0 ? "QUITADA" : "EM ABERTO"}</span>
                         </div>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: open <= 0 ? COLORS.success : COLORS.warn, background: open <= 0 ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>{open <= 0 ? "QUITADA" : "EM ABERTO"}</span>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {(imp.installments || []).map((it, idx) => {
+                            const overdue = !it.paid && it.due_date && it.due_date < today;
+                            return (
+                              <button key={idx} onClick={() => handleToggleInstallmentPaid(imp, idx)}
+                                className="text-[11px] font-semibold px-2.5 py-1 rounded-full border"
+                                style={{
+                                  borderColor: it.paid ? COLORS.success : overdue ? COLORS.danger : COLORS.cardBorder,
+                                  color: it.paid ? COLORS.success : overdue ? COLORS.danger : COLORS.inkMuted,
+                                  background: it.paid ? "rgba(34,197,94,0.1)" : overdue ? "rgba(239,68,68,0.1)" : "transparent",
+                                }}>
+                                {it.paid ? "✓" : overdue ? "⚠️" : "○"} {it.due_date ? new Date(it.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {fmtMoney(it.value)}{overdue ? " · atrasada" : ""}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {open > 0 && <button onClick={() => sendImplantacaoCobranca(imp, "whatsapp")} disabled={!prospect?.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.wa }}>💬 Cobrar (PIX)</button>}
+                          {open > 0 && <button onClick={() => sendImplantacaoCobranca(imp, "email")} disabled={!prospect?.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.brand }}>📧 Cobrar (PIX)</button>}
+                          <button onClick={() => generateImplantacaoPDF(imp)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                          <button onClick={() => { setEditingImplantacao(imp); setShowImplantacaoForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
+                          <button onClick={() => handleDeleteImplantacao(imp.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ Excluir</button>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {(imp.installments || []).map((it, idx) => (
-                          <button key={idx} onClick={() => handleToggleInstallmentPaid(imp, idx)}
-                            className="text-[11px] font-semibold px-2.5 py-1 rounded-full border"
-                            style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
-                            {it.paid ? "✓" : "○"} {it.due_date ? new Date(it.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {fmtMoney(it.value)}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => { setEditingImplantacao(imp); setShowImplantacaoForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
-                        <button onClick={() => handleDeleteImplantacao(imp.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ Excluir</button>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  });
+                })()}
               </div>
             </div>
           )}

@@ -1919,7 +1919,9 @@ function App() {
   const PAGE_SIZE = 25;
   const [sortDir, setSortDir] = useState("asc");
   const [editing, setEditing] = useState(null);
+  const clientFormRef = useRef(null);
   const [showForm, setShowForm] = useState(false);
+  useEffect(() => { if (showForm && clientFormRef.current) clientFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); }, [showForm]);
   const [monthDate, setMonthDate] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [boletos, setBoletos] = useState({});
   const [busyId, setBusyId] = useState(null);
@@ -3446,7 +3448,7 @@ function App() {
                 <span className="text-[11px] ml-auto" style={{ color: COLORS.inkFaint }}>💾 O backup completo salva clientes, boletos e anotações.</span>
               </div>
 
-              {showForm && <div className="mb-4"><ClientForm initial={editing} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></div>}
+              {showForm && <div className="mb-4" ref={clientFormRef}><ClientForm initial={editing} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></div>}
 
               <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
                 {sortedClients.length > visibleClients.length ? (

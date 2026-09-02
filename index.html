@@ -1523,64 +1523,175 @@ function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect
   );
 }
 
-function TechImplementationForm({ initial, employees, onSave, onCancel }) {
+function CheckField({ label, checked, onChange }) {
+  return (
+    <label className="flex items-center gap-2 text-sm cursor-pointer px-3 py-2 rounded-lg border" style={{ borderColor: checked ? COLORS.success : COLORS.cardBorder, background: checked ? "rgba(34,197,94,0.08)" : "transparent", color: checked ? COLORS.success : COLORS.ink }}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {label}
+    </label>
+  );
+}
+
+function TechImplementationForm({ initial, onSave, onCancel }) {
   const [clientName, setClientName] = useState(initial?.client_name || "");
   const [technicianEmail, setTechnicianEmail] = useState(initial?.technician_email || "");
+  const [technicianName, setTechnicianName] = useState(initial?.technician_name || "");
   const [targetDate, setTargetDate] = useState(initial?.target_date || "");
-  const [checklist, setChecklist] = useState(initial?.checklist?.length ? initial.checklist : [
-    { label: "Migração de dados", done: false, done_at: null },
-    { label: "Migração do banco do cliente", done: false, done_at: null },
-  ]);
-  const [newItemLabel, setNewItemLabel] = useState("");
 
-  function addItem() {
-    if (!newItemLabel.trim()) return;
-    setChecklist((prev) => [...prev, { label: newItemLabel.trim(), done: false, done_at: null }]);
-    setNewItemLabel("");
-  }
-  function removeItem(i) { setChecklist((prev) => prev.filter((_, idx) => idx !== i)); }
+  const [dbMigrationDone, setDbMigrationDone] = useState(initial?.db_migration_done || false);
+  const [productsMigrationDone, setProductsMigrationDone] = useState(initial?.products_migration_done || false);
+  const [clientsMigrationDone, setClientsMigrationDone] = useState(initial?.clients_migration_done || false);
 
-  const canSave = clientName.trim() && checklist.length > 0;
+  const [installationDone, setInstallationDone] = useState(initial?.installation_done || false);
+  const [installationDate, setInstallationDate] = useState(initial?.installation_date || "");
+  const [computersCount, setComputersCount] = useState(initial?.computers_count ?? "");
+  const [cloud, setCloud] = useState(initial?.cloud === true ? "sim" : initial?.cloud === false ? "nao" : "");
+  const [modLoja, setModLoja] = useState(initial?.modules_installed?.loja || false);
+  const [modFinanceiro, setModFinanceiro] = useState(initial?.modules_installed?.financeiro || false);
+  const [modProducao, setModProducao] = useState(initial?.modules_installed?.producao || false);
+  const [modNfe, setModNfe] = useState(initial?.modules_installed?.nfe || false);
+  const [modRfid, setModRfid] = useState(initial?.modules_installed?.rfid || false);
+  const [nfeCertInstalled, setNfeCertInstalled] = useState(initial?.nfe_certificate_installed || false);
+  const [labelPrinterConfigured, setLabelPrinterConfigured] = useState(initial?.label_printer_configured || false);
+  const [networkTested, setNetworkTested] = useState(initial?.network_tested || false);
+  const [remoteAccessConfigured, setRemoteAccessConfigured] = useState(initial?.remote_access_configured || false);
+  const [remoteAccessInfo, setRemoteAccessInfo] = useState(initial?.remote_access_info || "");
+  const [backupConfigured, setBackupConfigured] = useState(initial?.backup_configured || false);
+
+  const [trainingDone, setTrainingDone] = useState(initial?.training_done || false);
+  const [trainingDate, setTrainingDate] = useState(initial?.training_date || "");
+  const [trainingGivenTo, setTrainingGivenTo] = useState(initial?.training_given_to || "");
+
+  const [nfeTestDone, setNfeTestDone] = useState(initial?.nfe_test_done || false);
+  const [boletoTestDone, setBoletoTestDone] = useState(initial?.boleto_test_done || false);
+
+  const [contractSigned, setContractSigned] = useState(initial?.contract_signed || false);
+  const [supportContactName, setSupportContactName] = useState(initial?.support_contact_name || "");
+  const [supportContactPhone, setSupportContactPhone] = useState(initial?.support_contact_phone || "");
+  const [followupDate, setFollowupDate] = useState(initial?.followup_date || "");
+  const [notes, setNotes] = useState(initial?.notes || "");
+
+  const canSave = clientName.trim();
 
   return (
-    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
-      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Nova implantação técnica</div>
+    <div className="rounded-xl p-4 border space-y-4" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Ficha técnica de instalação</div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <TextField label="Cliente" value={clientName} onChange={setClientName} placeholder="Nome do cliente" required />
-        <TextField label="E-mail do técnico responsável" value={technicianEmail} onChange={setTechnicianEmail} placeholder="tecnico@email.com" />
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data prevista de conclusão</span>
-          <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-        </label>
+        <TextField label="E-mail do técnico (login de acesso)" value={technicianEmail} onChange={setTechnicianEmail} placeholder="tecnico@email.com" />
+        <TextField label="Nome do técnico responsável" value={technicianName} onChange={setTechnicianName} placeholder="Quem fez a instalação" />
       </div>
 
-      <div>
-        <span className="text-xs font-bold uppercase tracking-wide mb-2 block" style={{ color: COLORS.inkMuted }}>Etapas da implantação</span>
-        <div className="space-y-1.5">
-          {checklist.map((it, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input value={it.label} onChange={(e) => setChecklist((prev) => prev.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              <button type="button" onClick={() => removeItem(i)} className="px-2 py-2 text-sm" style={{ color: COLORS.danger }}>🗑️</button>
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-2 mt-2">
-          <input value={newItemLabel} onChange={(e) => setNewItemLabel(e.target.value)} placeholder="Nova etapa (ex: Treinamento da equipe)" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-          <button type="button" onClick={addItem} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar</button>
+      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>📦 Migração de dados</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <CheckField label="Migração do banco de dados" checked={dbMigrationDone} onChange={setDbMigrationDone} />
+          <CheckField label="Migração de produtos/estoque" checked={productsMigrationDone} onChange={setProductsMigrationDone} />
+          <CheckField label="Migração de clientes/fornecedores" checked={clientsMigrationDone} onChange={setClientsMigrationDone} />
         </div>
       </div>
+
+      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>🖥️ Instalação</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
+          <CheckField label="Instalação concluída" checked={installationDone} onChange={setInstallationDone} />
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de término</span>
+            <input type="date" value={installationDate} onChange={(e) => setInstallationDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          </label>
+          <TextField label="Quantos computadores instalados" value={computersCount} onChange={setComputersCount} type="number" placeholder="0" />
+        </div>
+        <div className="mb-2">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cloud</span>
+          <div className="flex gap-2">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer" style={{ borderColor: cloud === "sim" ? COLORS.success : COLORS.cardBorder, color: cloud === "sim" ? COLORS.success : COLORS.ink }}>
+              <input type="radio" name="cloud" checked={cloud === "sim"} onChange={() => setCloud("sim")} /> Sim
+            </label>
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer" style={{ borderColor: cloud === "nao" ? COLORS.danger : COLORS.cardBorder, color: cloud === "nao" ? COLORS.danger : COLORS.ink }}>
+              <input type="radio" name="cloud" checked={cloud === "nao"} onChange={() => setCloud("nao")} /> Não
+            </label>
+          </div>
+        </div>
+        <div className="mb-2">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Módulos instalados</span>
+          <div className="flex flex-wrap gap-2">
+            <CheckField label="Loja" checked={modLoja} onChange={setModLoja} />
+            <CheckField label="Financeiro" checked={modFinanceiro} onChange={setModFinanceiro} />
+            <CheckField label="Produção" checked={modProducao} onChange={setModProducao} />
+            <CheckField label="NF-e" checked={modNfe} onChange={setModNfe} />
+            <CheckField label="RFID / Etiqueta" checked={modRfid} onChange={setModRfid} />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+          <CheckField label="Certificado digital de NF-e instalado" checked={nfeCertInstalled} onChange={setNfeCertInstalled} />
+          <CheckField label="Impressora de etiqueta/código de barras configurada" checked={labelPrinterConfigured} onChange={setLabelPrinterConfigured} />
+          <CheckField label="Internet/rede testada e funcionando" checked={networkTested} onChange={setNetworkTested} />
+          <CheckField label="Backup inicial configurado" checked={backupConfigured} onChange={setBackupConfigured} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <CheckField label="Acesso remoto configurado (suporte futuro)" checked={remoteAccessConfigured} onChange={setRemoteAccessConfigured} />
+          <TextField label="Ferramenta / ID de acesso remoto" value={remoteAccessInfo} onChange={setRemoteAccessInfo} placeholder="Ex: AnyDesk 123 456 789" />
+        </div>
+      </div>
+
+      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>🎓 Treinamento</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <CheckField label="Treinamento realizado" checked={trainingDone} onChange={setTrainingDone} />
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do treinamento</span>
+            <input type="date" value={trainingDate} onChange={(e) => setTrainingDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          </label>
+          <TextField label="Para quem foi dado o treinamento" value={trainingGivenTo} onChange={setTrainingGivenTo} placeholder="Ex: Maria (gerente da loja)" />
+        </div>
+      </div>
+
+      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>✅ Testes</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <CheckField label="Teste de emissão de nota fiscal realizado" checked={nfeTestDone} onChange={setNfeTestDone} />
+          <CheckField label="Teste de emissão de boleto realizado" checked={boletoTestDone} onChange={setBoletoTestDone} />
+        </div>
+      </div>
+
+      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>🤝 Encerramento</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+          <CheckField label="Contrato assinado" checked={contractSigned} onChange={setContractSigned} />
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de retorno / follow-up</span>
+            <input type="date" value={followupDate} onChange={(e) => setFollowupDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          </label>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TextField label="Contato principal de suporte (nome)" value={supportContactName} onChange={setSupportContactName} placeholder="Nome" />
+          <TextField label="Telefone do contato de suporte" value={supportContactPhone} onChange={setSupportContactPhone} placeholder="(11) 91234-5678" />
+        </div>
+      </div>
+
+      <TextField label="Observações / pendências" value={notes} onChange={setNotes} placeholder="Opcional" />
 
       <div className="flex gap-2">
         <button
           disabled={!canSave}
           onClick={() => onSave({
-            id: initial?.id || uid(), client_name: clientName.trim(), technician_email: technicianEmail.trim() || null,
-            target_date: targetDate || null, checklist, status: initial?.status || "nao_iniciado", notes: initial?.notes || "",
+            id: initial?.id || uid(), client_name: clientName.trim(), technician_email: technicianEmail.trim() || null, technician_name: technicianName.trim() || null,
+            db_migration_done: dbMigrationDone, products_migration_done: productsMigrationDone, clients_migration_done: clientsMigrationDone,
+            installation_done: installationDone, installation_date: installationDate || null, computers_count: computersCount ? Number(computersCount) : null,
+            cloud: cloud === "sim" ? true : cloud === "nao" ? false : null,
+            modules_installed: { loja: modLoja, financeiro: modFinanceiro, producao: modProducao, nfe: modNfe, rfid: modRfid },
+            nfe_certificate_installed: nfeCertInstalled, label_printer_configured: labelPrinterConfigured, network_tested: networkTested,
+            remote_access_configured: remoteAccessConfigured, remote_access_info: remoteAccessInfo.trim() || null, backup_configured: backupConfigured,
+            training_done: trainingDone, training_date: trainingDate || null, training_given_to: trainingGivenTo.trim() || null,
+            nfe_test_done: nfeTestDone, boleto_test_done: boletoTestDone,
+            contract_signed: contractSigned, support_contact_name: supportContactName.trim() || null, support_contact_phone: supportContactPhone.trim() || null,
+            followup_date: followupDate || null, notes: notes.trim(),
           })}
-          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
-          Salvar implantação técnica
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar ficha técnica
         </button>
-        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>Cancelar</button>
+        <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
       </div>
     </div>
   );
@@ -2202,12 +2313,28 @@ function App() {
     await loadTechImplementations();
     showToast("Removida.");
   }
-  async function handleToggleTechChecklistItem(t, idx) {
-    const newChecklist = (t.checklist || []).map((it, i) => i === idx ? { ...it, done: !it.done, done_at: !it.done ? new Date().toISOString().slice(0, 10) : null } : it);
-    const allDone = newChecklist.length > 0 && newChecklist.every((it) => it.done);
-    const anyDone = newChecklist.some((it) => it.done);
-    const newStatus = allDone ? "concluido" : anyDone ? "em_andamento" : "nao_iniciado";
-    await supa.from("tech_implementations").update({ checklist: newChecklist, status: newStatus }).eq("id", t.id);
+  const TECH_FIELDS = [
+    { key: "db_migration_done", label: "Migração do banco de dados" },
+    { key: "products_migration_done", label: "Migração de produtos/estoque" },
+    { key: "clients_migration_done", label: "Migração de clientes/fornecedores" },
+    { key: "installation_done", label: "Instalação concluída" },
+    { key: "nfe_certificate_installed", label: "Certificado NF-e instalado" },
+    { key: "label_printer_configured", label: "Impressora de etiqueta configurada" },
+    { key: "network_tested", label: "Rede testada" },
+    { key: "remote_access_configured", label: "Acesso remoto configurado" },
+    { key: "backup_configured", label: "Backup inicial configurado" },
+    { key: "training_done", label: "Treinamento realizado" },
+    { key: "nfe_test_done", label: "Teste de NF-e realizado" },
+    { key: "boleto_test_done", label: "Teste de boleto realizado" },
+    { key: "contract_signed", label: "Contrato assinado" },
+  ];
+
+  async function handleToggleTechField(t, key) {
+    const newVal = !t[key];
+    const patch = { [key]: newVal };
+    if (key === "training_done" && newVal && !t.training_date) patch.training_date = new Date().toISOString().slice(0, 10);
+    if (key === "installation_done" && newVal && !t.installation_date) patch.installation_date = new Date().toISOString().slice(0, 10);
+    await supa.from("tech_implementations").update(patch).eq("id", t.id);
     await loadTechImplementations();
   }
   async function handleUpdateTechNotes(t, notes) {
@@ -4296,12 +4423,11 @@ function App() {
               {(() => {
                 const isTech = userRole === "tecnico";
                 const list = isTech ? techImplementations.filter((t) => t.technician_email === session?.user?.email) : techImplementations;
-                const statusInfo = { nao_iniciado: { label: "Não iniciado", color: COLORS.inkMuted }, em_andamento: { label: "Em andamento", color: COLORS.warn }, concluido: { label: "Concluído", color: COLORS.success } };
                 return (
                   <>
                     {!isTech && (
                       <div className="flex justify-end mb-3">
-                        <button onClick={() => { setEditingTech(null); setShowTechForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova implantação técnica</button>
+                        <button onClick={() => { setEditingTech(null); setShowTechForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova ficha técnica</button>
                       </div>
                     )}
                     {showTechForm && !isTech && <div className="mb-4"><TechImplementationForm initial={editingTech} onSave={handleSaveTechImplementation} onCancel={() => { setShowTechForm(false); setEditingTech(null); }} /></div>}
@@ -4309,14 +4435,17 @@ function App() {
                     {list.length === 0 ? (
                       <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                         <div className="text-3xl mb-2">🛠️</div>
-                        <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma implantação técnica {isTech ? "atribuída a você" : "registrada"} ainda.</div>
+                        <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma ficha técnica {isTech ? "atribuída a você" : "registrada"} ainda.</div>
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {list.map((t) => {
-                          const doneCount = (t.checklist || []).filter((it) => it.done).length;
-                          const total = (t.checklist || []).length;
-                          const st = statusInfo[t.status] || statusInfo.nao_iniciado;
+                          const doneCount = TECH_FIELDS.filter((f) => t[f.key]).length;
+                          const total = TECH_FIELDS.length;
+                          const pct = Math.round((doneCount / total) * 100);
+                          const statusColor = pct === 100 ? COLORS.success : pct > 0 ? COLORS.warn : COLORS.inkMuted;
+                          const mods = t.modules_installed || {};
+                          const modsList = [mods.loja && "Loja", mods.financeiro && "Financeiro", mods.producao && "Produção", mods.nfe && "NF-e", mods.rfid && "RFID"].filter(Boolean);
                           return (
                             <div key={t.id} className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -4325,11 +4454,21 @@ function App() {
                                   <div>
                                     <div className="font-bold text-sm flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
                                       {t.client_name}
-                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: st.color, background: `${st.color}22` }}>{st.label}</span>
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: statusColor, background: `${statusColor}22` }}>{pct}% concluído</span>
                                     </div>
                                     <div className="text-xs" style={{ color: COLORS.inkMuted }}>
-                                      {doneCount}/{total} etapas concluídas · {t.technician_email || "sem técnico atribuído"}{t.target_date ? ` · previsto: ${fmtDate(t.target_date)}` : ""}
+                                      {t.technician_name || t.technician_email || "sem técnico atribuído"}
+                                      {t.computers_count ? ` · ${t.computers_count} computador(es)` : ""}
+                                      {t.cloud !== null && t.cloud !== undefined ? ` · Cloud: ${t.cloud ? "Sim" : "Não"}` : ""}
+                                      {modsList.length > 0 ? ` · Módulos: ${modsList.join(", ")}` : ""}
                                     </div>
+                                    {(t.training_done || t.training_given_to) && (
+                                      <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>🎓 Treinamento: {t.training_given_to || "-"}{t.training_date ? ` em ${fmtDate(t.training_date)}` : ""}</div>
+                                    )}
+                                    {(t.support_contact_name || t.support_contact_phone) && (
+                                      <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>📞 Suporte: {t.support_contact_name || "-"} {t.support_contact_phone ? `· ${t.support_contact_phone}` : ""}</div>
+                                    )}
+                                    {t.followup_date && <div className="text-[11px]" style={{ color: COLORS.brandLight }}>🔁 Retorno previsto: {fmtDate(t.followup_date)}</div>}
                                   </div>
                                 </div>
                                 {!isTech && (
@@ -4341,20 +4480,23 @@ function App() {
                               </div>
 
                               <div className="w-full h-1.5 rounded-full mb-3" style={{ background: "rgba(255,255,255,0.08)" }}>
-                                <div className="h-1.5 rounded-full" style={{ width: `${total > 0 ? (doneCount / total) * 100 : 0}%`, background: st.color }} />
+                                <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: statusColor }} />
                               </div>
 
                               <div className="flex flex-wrap gap-2 mb-3">
-                                {(t.checklist || []).map((it, idx) => (
-                                  <button key={idx} onClick={() => handleToggleTechChecklistItem(t, idx)}
-                                    className="text-xs font-semibold px-2.5 py-1.5 rounded-full border"
-                                    style={{ borderColor: it.done ? COLORS.success : COLORS.cardBorder, color: it.done ? COLORS.success : COLORS.inkMuted, background: it.done ? "rgba(34,197,94,0.1)" : "transparent" }}>
-                                    {it.done ? "✓" : "○"} {it.label}
+                                {TECH_FIELDS.map((f) => (
+                                  <button key={f.key} onClick={() => handleToggleTechField(t, f.key)}
+                                    className="text-[11px] font-semibold px-2.5 py-1.5 rounded-full border"
+                                    style={{ borderColor: t[f.key] ? COLORS.success : COLORS.cardBorder, color: t[f.key] ? COLORS.success : COLORS.inkMuted, background: t[f.key] ? "rgba(34,197,94,0.1)" : "transparent" }}>
+                                    {t[f.key] ? "✓" : "○"} {f.label}
                                   </button>
                                 ))}
                               </div>
 
+                              {t.remote_access_info && <div className="text-[11px] mb-2" style={{ color: COLORS.inkMuted }}>🖥️ Acesso remoto: {t.remote_access_info}</div>}
+
                               <textarea
+                                key={`notes-${t.id}`}
                                 defaultValue={t.notes || ""}
                                 placeholder="Anotações sobre o andamento..."
                                 onBlur={(e) => { if (e.target.value !== (t.notes || "")) handleUpdateTechNotes(t, e.target.value); }}

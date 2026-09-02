@@ -1940,6 +1940,8 @@ function App() {
   const [statusFilter, setStatusFilter] = useState("todos");
   const [sortBy, setSortBy] = useState("bank_number");
   const [showCancelled, setShowCancelled] = useState(false);
+  const [filterAnnualOnly, setFilterAnnualOnly] = useState(false);
+  const [filterCloudOnly, setFilterCloudOnly] = useState(false);
   const [clientsPage, setClientsPage] = useState(1);
   const [boletosPage, setBoletosPage] = useState(1);
   const PAGE_SIZE = 25;
@@ -2988,8 +2990,12 @@ function App() {
     return arr;
   }, [filteredClients, sortBy, sortDir, showCancelled]);
 
-  const visibleClients = useMemo(() => sortedClients.filter((c) => c.bank_number || (Number(c.value) || 0) > 0 || c.cancelled || c.annual), [sortedClients]);
-  useEffect(() => { setClientsPage(1); }, [search, sortBy, sortDir, showCancelled]);
+  const visibleClients = useMemo(() => sortedClients
+    .filter((c) => c.bank_number || (Number(c.value) || 0) > 0 || c.cancelled || c.annual)
+    .filter((c) => !filterAnnualOnly || c.annual)
+    .filter((c) => !filterCloudOnly || c.cloud),
+    [sortedClients, filterAnnualOnly, filterCloudOnly]);
+  useEffect(() => { setClientsPage(1); }, [search, sortBy, sortDir, showCancelled, filterAnnualOnly, filterCloudOnly]);
 
   const filteredByStatus = useMemo(() => {
     const activeClients = filteredClients.filter((c) => !c.cancelled && !c.annual && (c.bank_number || (Number(c.value) || 0) > 0));
@@ -3457,7 +3463,7 @@ function App() {
 
           {tab === "clientes" && (
             <div>
-              <div className="flex flex-col sm:flex-row gap-2 mb-3 sm:items-center">
+              <div className="flex flex-col sm:flex-row gap-2 mb-2 sm:items-center">
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 Buscar por nome ou nº do banco..." className="rounded-lg border px-3 py-2 text-sm outline-none max-w-sm w-full" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
                 <div className="flex gap-2">
                   <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-lg border px-2 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink, background: COLORS.card }}>
@@ -3468,6 +3474,13 @@ function App() {
                   </select>
                   <button onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))} className="px-3 py-2 rounded-lg text-sm font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>{sortDir === "asc" ? "↑" : "↓"}</button>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkFaint }}>Filtros:</span>
+                <button onClick={() => setFilterAnnualOnly((v) => !v)} className="text-xs font-bold px-2.5 py-1 rounded-full border" style={{ borderColor: filterAnnualOnly ? "#D4AF37" : COLORS.cardBorder, color: filterAnnualOnly ? "#D4AF37" : COLORS.inkMuted, background: filterAnnualOnly ? "rgba(212,175,55,0.12)" : "transparent" }}>⭐ Anual</button>
+                <button onClick={() => setFilterCloudOnly((v) => !v)} className="text-xs font-bold px-2.5 py-1 rounded-full border" style={{ borderColor: filterCloudOnly ? COLORS.success : COLORS.cardBorder, color: filterCloudOnly ? COLORS.success : COLORS.inkMuted, background: filterCloudOnly ? "rgba(34,197,94,0.12)" : "transparent" }}>☁️ Cloud</button>
+                {(filterAnnualOnly || filterCloudOnly) && <button onClick={() => { setFilterAnnualOnly(false); setFilterCloudOnly(false); }} className="text-xs underline" style={{ color: COLORS.inkFaint }}>limpar filtros</button>}
               </div>
 
               <div className="rounded-xl border p-2.5 flex items-center gap-2 flex-wrap mb-4" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.015)" }}>

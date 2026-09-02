@@ -453,6 +453,7 @@ function ClientForm({ initial, onSave, onCancel }) {
   const [email, setEmail] = useState(initial?.email || "");
   const [value, setValue] = useState(initial?.value ?? "");
   const [dueDay, setDueDay] = useState(initial?.due_day ?? "");
+  const [annualDueDate, setAnnualDueDate] = useState(initial?.annual_due_date || "");
   const [plan, setPlan] = useState(initial?.plan || "");
   const [notes, setNotes] = useState(initial?.notes || "");
   const [cnpj, setCnpj] = useState(initial?.cnpj || "");
@@ -531,7 +532,14 @@ function ClientForm({ initial, onSave, onCancel }) {
         <TextField label="WhatsApp" value={phone} onChange={setPhone} placeholder="(11) 91234-5678" />
         <TextField label="E-mail" value={email} onChange={setEmail} placeholder="cliente@email.com" />
         <TextField label={annual ? "Valor da mensalidade anual" : "Valor da mensalidade"} value={value} onChange={setValue} type="number" placeholder="150" />
-        <TextField label="Dia do vencimento" value={dueDay} onChange={setDueDay} type="number" placeholder="10" />
+        {annual ? (
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento anual (dia/mês/ano)</span>
+            <input type="date" value={annualDueDate} onChange={(e) => setAnnualDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          </label>
+        ) : (
+          <TextField label="Dia do vencimento" value={dueDay} onChange={setDueDay} type="number" placeholder="10" />
+        )}
         <TextField label="Plano / serviço" value={plan} onChange={setPlan} placeholder="Ex: Plano Premium" />
         <TextField label="Código do banco" value={bankNumber} onChange={setBankNumber} placeholder="Ex: 341 (Itaú)" />
         <TextField label="Integração" value={integration} onChange={setIntegration} placeholder="Ex: API própria, ERP..." />
@@ -571,7 +579,7 @@ function ClientForm({ initial, onSave, onCancel }) {
           disabled={!canSave}
           onClick={() => onSave({
             id: initial?.id || uid(), name: name.trim(), phone: phone.trim(), email: email.trim(),
-            value: Number(value) || 0, due_day: Number(dueDay) || null,
+            value: Number(value) || 0, due_day: Number(dueDay) || null, annual_due_date: annualDueDate || null,
             plan: plan.trim(), notes: notes.trim(), cnpj: cnpj.trim(), cep: cep.trim(), street: street.trim(), number: number.trim(),
             complement: complement.trim(), neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
             bank_number: bankNumber.trim(), integration: integration.trim(), annual, cloud, marketplace: marketplace.trim(),
@@ -2986,14 +2994,14 @@ function App() {
   const stats = useMemo(() => {
     const monthly = clients.filter((c) => !c.annual);
     const annualC = clients.filter((c) => c.annual);
-    const sentWa = clients.filter((c) => boletos[c.id]?.sent_whatsapp).length;
-    const sentEmail = clients.filter((c) => boletos[c.id]?.sent_email).length;
-    const sent = clients.filter((c) => boletos[c.id]?.sent_whatsapp || boletos[c.id]?.sent_email).length;
-    const paid = clients.filter((c) => boletos[c.id]?.paid).length;
-    const overdue = clients.filter((c) => computeStatus(c, boletos[c.id], monthDate) === "atrasado").length;
-    const dueSoon = clients.filter((c) => isDueSoon(c, boletos[c.id], monthDate)).length;
+    const sentWa = monthly.filter((c) => boletos[c.id]?.sent_whatsapp).length;
+    const sentEmail = monthly.filter((c) => boletos[c.id]?.sent_email).length;
+    const sent = monthly.filter((c) => boletos[c.id]?.sent_whatsapp || boletos[c.id]?.sent_email).length;
+    const paid = monthly.filter((c) => boletos[c.id]?.paid).length;
+    const overdue = monthly.filter((c) => computeStatus(c, boletos[c.id], monthDate) === "atrasado").length;
+    const dueSoon = monthly.filter((c) => isDueSoon(c, boletos[c.id], monthDate)).length;
     const today = new Date().getDate();
-    const dueToday = clients.filter((c) => c.due_day === today && !boletos[c.id]?.paid);
+    const dueToday = monthly.filter((c) => c.due_day === today && !boletos[c.id]?.paid);
     return {
       count: clients.length, sent, sentWa, sentEmail, paid, overdue, dueSoon,
       countMonthly: monthly.length, totalMonthly: monthly.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
@@ -3004,17 +3012,17 @@ function App() {
 
   const inadimplentes = useMemo(() => {
     return clients
-      .filter((c) => !c.cancelled && computeStatus(c, boletos[c.id], monthDate) === "atrasado")
+      .filter((c) => !c.cancelled && !c.annual && computeStatus(c, boletos[c.id], monthDate) === "atrasado")
       .map((c) => ({ ...c, _diasAtraso: daysOverdue(c, monthDate) }))
       .sort((a, b) => b._diasAtraso - a._diasAtraso);
   }, [clients, boletos, monthDate]);
 
   const dueSoonNotSent = useMemo(() => {
-    return clients.filter((c) => !c.cancelled && isDueSoon(c, boletos[c.id], monthDate) && !boletos[c.id]?.sent_whatsapp && !boletos[c.id]?.sent_email);
+    return clients.filter((c) => !c.cancelled && !c.annual && isDueSoon(c, boletos[c.id], monthDate) && !boletos[c.id]?.sent_whatsapp && !boletos[c.id]?.sent_email);
   }, [clients, boletos, monthDate]);
 
-  const paidValue = useMemo(() => clients.filter((c) => boletos[c.id]?.paid).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos]);
-  const totalPrevisto = stats.totalMonthly + stats.totalAnnual;
+  const paidValue = useMemo(() => clients.filter((c) => !c.annual && boletos[c.id]?.paid).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos]);
+  const totalPrevisto = stats.totalMonthly;
   const pendingValue = totalPrevisto - paidValue;
   const yearTotal = useMemo(() => yearHistory.reduce((s, h) => s + (h.pago || 0), 0), [yearHistory]);
   const momChange = prevMonthPaid > 0 ? ((paidValue - prevMonthPaid) / prevMonthPaid) * 100 : (paidValue > 0 ? 100 : 0);
@@ -3698,7 +3706,7 @@ function App() {
                                       onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(c.value) || 0)) handleUpdateClientValue(c.id, v); }}
                                       className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
                                   </span>
-                                  · vence dia {c.due_day || "-"}
+                                  · vence em {c.annual_due_date ? new Date(c.annual_due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
                                 </div>
                               </div>
                             </div>
@@ -4210,7 +4218,7 @@ function App() {
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                             <td className="p-3 font-semibold">{c.name}</td>
                             <td className="p-3">{fmtMoney(effectiveValue(c, b))}</td>
-                            <td className="p-3">{c.due_day ? `dia ${c.due_day}` : "-"}</td>
+                            <td className="p-3">{c.annual_due_date ? new Date(c.annual_due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                             <td className="p-3"><StatusBadge status={b?.paid ? "pago" : "pendente"} /></td>
                           </tr>
                         );

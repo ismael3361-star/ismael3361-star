@@ -3450,6 +3450,8 @@ function App() {
 
               {showForm && <div className="mb-4" ref={clientFormRef}><ClientForm initial={editing} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></div>}
 
+              {!showForm && (
+              <>
               <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
                 {sortedClients.length > visibleClients.length ? (
                   <p className="text-[11px]" style={{ color: COLORS.inkFaint }}>
@@ -3515,6 +3517,8 @@ function App() {
                 )}
                 <Pagination page={clientsPage} setPage={setClientsPage} totalItems={visibleClients.length} pageSize={PAGE_SIZE} />
               </div>
+              </>
+              )}
             </div>
           )}
 
@@ -3661,6 +3665,8 @@ function App() {
                 </div>
               )}
 
+              {!showProposalForm && (
+              <>
               <div className="rounded-2xl border overflow-hidden mb-6" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 {proposals.length === 0 ? (
                   <div className="p-10 text-center"><div className="text-3xl mb-2">📝</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma proposta gerada ainda.</div></div>
@@ -3716,6 +3722,8 @@ function App() {
                   </div>
                 ))}
               </div>
+              </>
+              )}
             </div>
           )}
 
@@ -3741,6 +3749,7 @@ function App() {
                 </div>
               )}
 
+              {!showRomaneioForm && (
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 {romaneios.length === 0 ? (
                   <div className="p-10 text-center"><div className="text-3xl mb-2">📦</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio gerado ainda.</div></div>
@@ -3783,6 +3792,7 @@ function App() {
                   );
                 })}
               </div>
+              )}
             </div>
           )}
 

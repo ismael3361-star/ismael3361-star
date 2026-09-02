@@ -2281,6 +2281,10 @@ function App() {
     setEditingNameId(null);
     showToast("Nome atualizado.");
   }
+  async function handleUpdateClientValue(clientId, newValue) {
+    await supa.from("clients").update({ value: Number(newValue) || 0 }).eq("id", clientId);
+    await loadClients();
+  }
   async function handleDeleteClient(id) {
     if (!confirm("Remover este cliente e os boletos/anotações dele?")) return;
     await supa.from("clients").delete().eq("id", id);
@@ -3604,7 +3608,7 @@ function App() {
                                   style={{ borderColor: COLORS.brandLight, background: "#0E1729", color: COLORS.ink }}
                                 />
                               ) : (
-                                <span className="font-bold text-sm cursor-pointer hover:underline" onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
+                                <span className="font-bold text-sm cursor-pointer hover:underline" style={{ color: COLORS.ink }} onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
                               )}
                               <StatusBadge status={status} />
                               {overdue > 0 && <span className="text-[11px] font-semibold" style={{ color: COLORS.danger }}>há {overdue} dia{overdue > 1 ? "s" : ""}</span>}
@@ -3613,6 +3617,12 @@ function App() {
                             <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c, boletos[c.id]))} · vence dia {c.due_day || "-"} · {c.annual ? "anual" : "mensal"}</div>
                           </div>
                         </div>
+                        <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
+                          Mensalidade
+                          <input type="number" key={`val-${c.id}`} defaultValue={c.value || ""} placeholder="0"
+                            onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(c.value) || 0)) handleUpdateClientValue(c.id, v); }}
+                            className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                        </label>
                         <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
                           Consultas
                           <input type="number" key={`cons-${c.id}-${mKey}`} defaultValue={b?.consultations_value || ""} placeholder="0"
@@ -3676,12 +3686,20 @@ function App() {
                                       onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setEditingNameId(null); }}
                                       className="rounded-lg border px-2 py-1 text-sm font-bold outline-none" style={{ borderColor: COLORS.brandLight, background: "#0E1729", color: COLORS.ink }} />
                                   ) : (
-                                    <span className="font-bold text-sm cursor-pointer hover:underline" onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
+                                    <span className="font-bold text-sm cursor-pointer hover:underline" style={{ color: COLORS.ink }} onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
                                   )}
                                   <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full" style={{ color: "#1a1a1a", background: "#D4AF37" }}>⭐ ANUAL</span>
                                   <StatusBadge status={status} />
                                 </div>
-                                <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c, b))}/ano · vence dia {c.due_day || "-"}</div>
+                                <div className="text-xs flex items-center gap-2 flex-wrap" style={{ color: COLORS.inkMuted }}>
+                                  <span className="flex items-center gap-1">
+                                    Valor/ano:
+                                    <input type="number" key={`val-annual-${c.id}`} defaultValue={c.value || ""} placeholder="0"
+                                      onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(c.value) || 0)) handleUpdateClientValue(c.id, v); }}
+                                      className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                                  </span>
+                                  · vence dia {c.due_day || "-"}
+                                </div>
                               </div>
                             </div>
                             <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer px-2.5 py-1 rounded-full" style={{ color: b?.paid ? COLORS.success : COLORS.inkMuted, background: b?.paid ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)" }}>

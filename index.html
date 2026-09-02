@@ -2072,6 +2072,11 @@ function App() {
     await loadItagEntries();
     showToast("Entrada removida.");
   }
+  async function handleToggleEntryPaid(entry, which) {
+    const field = which === 1 ? "due1_paid" : "due2_paid";
+    await supa.from("itag_entries").update({ [field]: !entry[field] }).eq("id", entry.id);
+    await loadItagEntries();
+  }
   async function handleSaveItagBilling(b) {
     const { error } = await supa.from("itag_billings").upsert(b);
     if (error) { showToast(`Erro: ${error.message}`); return; }
@@ -3961,7 +3966,8 @@ function App() {
                         <thead>
                           <tr style={{ color: COLORS.inkMuted }}>
                             <th className="text-left p-3">Data</th><th className="text-left p-3">NF</th><th className="text-left p-3">Qtd</th><th className="text-left p-3">Vr. Unit.</th>
-                            <th className="text-left p-3">Venc. 1</th><th className="text-left p-3">Valor 1</th><th className="text-left p-3">Venc. 2</th><th className="text-left p-3">Valor 2</th>
+                            <th className="text-left p-3">Venc. 1</th><th className="text-left p-3">Valor 1</th><th className="text-left p-3">Situação 1</th>
+                            <th className="text-left p-3">Venc. 2</th><th className="text-left p-3">Valor 2</th><th className="text-left p-3">Situação 2</th>
                             <th className="text-left p-3">Total</th><th className="text-left p-3"></th>
                           </tr>
                         </thead>
@@ -3974,8 +3980,22 @@ function App() {
                               <td className="p-3">{fmtMoney(e.unit_value)}</td>
                               <td className="p-3">{e.due1_date ? new Date(e.due1_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                               <td className="p-3">{fmtMoney(e.due1_value)}</td>
+                              <td className="p-3">
+                                {e.due1_value > 0 && (
+                                  <button onClick={() => handleToggleEntryPaid(e, 1)} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: e.due1_paid ? COLORS.success : COLORS.warn, background: e.due1_paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>
+                                    {e.due1_paid ? "✓ Pago" : "○ Em aberto"}
+                                  </button>
+                                )}
+                              </td>
                               <td className="p-3">{e.due2_date ? new Date(e.due2_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                               <td className="p-3">{fmtMoney(e.due2_value)}</td>
+                              <td className="p-3">
+                                {e.due2_value > 0 && (
+                                  <button onClick={() => handleToggleEntryPaid(e, 2)} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: e.due2_paid ? COLORS.success : COLORS.warn, background: e.due2_paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>
+                                    {e.due2_paid ? "✓ Pago" : "○ Em aberto"}
+                                  </button>
+                                )}
+                              </td>
                               <td className="p-3 font-bold">{fmtMoney(e.total_value)}</td>
                               <td className="p-3">
                                 <button onClick={() => { setEditingItagEntry(e); setShowItagEntryForm(true); }} className="mr-2">✏️</button>
@@ -4364,6 +4384,77 @@ function App() {
                 </div>
               </div>
 
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <div className="px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>📞 Relatório de Consultas — {MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()}</div>
+                </div>
+                {clients.filter((c) => !c.cancelled && Number(boletos[c.id]?.consultations_value) > 0).length === 0 ? (
+                  <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma consulta lançada nesse mês.</div>
+                ) : (
+                  <table className="w-full text-sm" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Valor de consultas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clients.filter((c) => !c.cancelled && Number(boletos[c.id]?.consultations_value) > 0)
+                        .sort((a, b) => (Number(boletos[b.id]?.consultations_value) || 0) - (Number(boletos[a.id]?.consultations_value) || 0))
+                        .map((c, i) => (
+                          <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <td className="p-3 font-semibold">{c.name}</td>
+                            <td className="p-3" style={{ color: COLORS.brandLight }}>{fmtMoney(boletos[c.id]?.consultations_value)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                        <td className="p-3 font-bold">TOTAL</td>
+                        <td className="p-3 font-bold" style={{ color: COLORS.brandLight }}>{fmtMoney(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
+              </div>
+
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>📦 Relatório de Romaneios</div>
+                  <div className="text-sm font-bold" style={{ color: COLORS.info }}>Total vendido: {fmtMoney(romaneios.reduce((s, r) => s + (r.items || []).reduce((s2, it) => s2 + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0), 0))}</div>
+                </div>
+                {romaneios.length === 0 ? (
+                  <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio gerado ainda.</div>
+                ) : (
+                  <table className="w-full text-sm" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Nº</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Data</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Itens</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {romaneios.map((r, i) => {
+                        const rc = romaneioClients.find((p) => p.id === r.romaneio_client_id);
+                        const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+                        return (
+                          <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <td className="p-3 font-semibold">{r.number}</td>
+                            <td className="p-3">{rc?.name || "-"}</td>
+                            <td className="p-3">{r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                            <td className="p-3">{(r.items || []).length}</td>
+                            <td className="p-3 font-bold">{fmtMoney(total)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>RFID — Entradas</div>
@@ -4405,6 +4496,42 @@ function App() {
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(vtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.warn }}>Em aberto: {fmtMoney(vtVrRecords.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                 </div>
+              </div>
+
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <div className="px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>🏗️ Relatório de Implantações</div>
+                </div>
+                {implantacoes.length === 0 ? (
+                  <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma implantação registrada ainda.</div>
+                ) : (
+                  <table className="w-full text-sm" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Total</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Recebido</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Em aberto</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Situação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {implantacoes.map((imp, i) => {
+                        const paid = (imp.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                        const open = (imp.total_value || 0) - paid;
+                        return (
+                          <tr key={imp.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <td className="p-3 font-semibold">{imp.client_name}</td>
+                            <td className="p-3">{fmtMoney(imp.total_value)}</td>
+                            <td className="p-3" style={{ color: COLORS.success }}>{fmtMoney(paid)}</td>
+                            <td className="p-3" style={{ color: COLORS.warn }}>{fmtMoney(open)}</td>
+                            <td className="p-3"><StatusBadge status={open <= 0 ? "pago" : "pendente"} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
               </div>
 
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>

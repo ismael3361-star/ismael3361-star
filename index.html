@@ -1523,6 +1523,69 @@ function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect
   );
 }
 
+function TechImplementationForm({ initial, employees, onSave, onCancel }) {
+  const [clientName, setClientName] = useState(initial?.client_name || "");
+  const [technicianEmail, setTechnicianEmail] = useState(initial?.technician_email || "");
+  const [targetDate, setTargetDate] = useState(initial?.target_date || "");
+  const [checklist, setChecklist] = useState(initial?.checklist?.length ? initial.checklist : [
+    { label: "Migração de dados", done: false, done_at: null },
+    { label: "Migração do banco do cliente", done: false, done_at: null },
+  ]);
+  const [newItemLabel, setNewItemLabel] = useState("");
+
+  function addItem() {
+    if (!newItemLabel.trim()) return;
+    setChecklist((prev) => [...prev, { label: newItemLabel.trim(), done: false, done_at: null }]);
+    setNewItemLabel("");
+  }
+  function removeItem(i) { setChecklist((prev) => prev.filter((_, idx) => idx !== i)); }
+
+  const canSave = clientName.trim() && checklist.length > 0;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Nova implantação técnica</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <TextField label="Cliente" value={clientName} onChange={setClientName} placeholder="Nome do cliente" required />
+        <TextField label="E-mail do técnico responsável" value={technicianEmail} onChange={setTechnicianEmail} placeholder="tecnico@email.com" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data prevista de conclusão</span>
+          <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
+      </div>
+
+      <div>
+        <span className="text-xs font-bold uppercase tracking-wide mb-2 block" style={{ color: COLORS.inkMuted }}>Etapas da implantação</span>
+        <div className="space-y-1.5">
+          {checklist.map((it, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input value={it.label} onChange={(e) => setChecklist((prev) => prev.map((x, idx) => idx === i ? { ...x, label: e.target.value } : x))} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <button type="button" onClick={() => removeItem(i)} className="px-2 py-2 text-sm" style={{ color: COLORS.danger }}>🗑️</button>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 mt-2">
+          <input value={newItemLabel} onChange={(e) => setNewItemLabel(e.target.value)} placeholder="Nova etapa (ex: Treinamento da equipe)" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <button type="button" onClick={addItem} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar</button>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({
+            id: initial?.id || uid(), client_name: clientName.trim(), technician_email: technicianEmail.trim() || null,
+            target_date: targetDate || null, checklist, status: initial?.status || "nao_iniciado", notes: initial?.notes || "",
+          })}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar implantação técnica
+        </button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 function ItagBillingForm({ initial, onSave, onCancel }) {
   const [clientName, setClientName] = useState(initial?.client_name || "");
   const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "");
@@ -1992,6 +2055,9 @@ function App() {
   const [showItagBillingForm, setShowItagBillingForm] = useState(false);
   const [editingItagBilling, setEditingItagBilling] = useState(null);
   const [implantacoes, setImplantacoes] = useState([]);
+  const [techImplementations, setTechImplementations] = useState([]);
+  const [showTechForm, setShowTechForm] = useState(false);
+  const [editingTech, setEditingTech] = useState(null);
   const [showImplantacaoForm, setShowImplantacaoForm] = useState(false);
   const [editingImplantacao, setEditingImplantacao] = useState(null);
   const [searchImplantacao, setSearchImplantacao] = useState("");
@@ -2004,6 +2070,7 @@ function App() {
   const [showVtVrForm, setShowVtVrForm] = useState(false);
   const [editingVtVr, setEditingVtVr] = useState(null);
   const [showPaidVtVr, setShowPaidVtVr] = useState(false);
+  const [userRole, setUserRole] = useState(null);
   const mKey = monthKey(monthDate);
 
   useEffect(() => {
@@ -2011,6 +2078,12 @@ function App() {
     const { data: sub } = supa.auth.onAuthStateChange((_event, s) => setSession(s));
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session?.user?.email) { setUserRole(null); return; }
+    supa.from("user_roles").select("role").eq("email", session.user.email).maybeSingle()
+      .then(({ data }) => setUserRole(data?.role || "admin"));
+  }, [session]);
 
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2500); };
 
@@ -2112,6 +2185,35 @@ function App() {
     const { data } = await supa.from("implantacoes").select("*").order("created_at", { ascending: false });
     setImplantacoes(data || []);
   }, []);
+  const loadTechImplementations = useCallback(async () => {
+    const { data } = await supa.from("tech_implementations").select("*").order("created_at", { ascending: false });
+    setTechImplementations(data || []);
+  }, []);
+  async function handleSaveTechImplementation(t) {
+    const { error } = await supa.from("tech_implementations").upsert(t);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadTechImplementations();
+    setShowTechForm(false); setEditingTech(null);
+    showToast("Implantação técnica salva.");
+  }
+  async function handleDeleteTechImplementation(id) {
+    if (!confirm("Remover esta implantação técnica?")) return;
+    await supa.from("tech_implementations").delete().eq("id", id);
+    await loadTechImplementations();
+    showToast("Removida.");
+  }
+  async function handleToggleTechChecklistItem(t, idx) {
+    const newChecklist = (t.checklist || []).map((it, i) => i === idx ? { ...it, done: !it.done, done_at: !it.done ? new Date().toISOString().slice(0, 10) : null } : it);
+    const allDone = newChecklist.length > 0 && newChecklist.every((it) => it.done);
+    const anyDone = newChecklist.some((it) => it.done);
+    const newStatus = allDone ? "concluido" : anyDone ? "em_andamento" : "nao_iniciado";
+    await supa.from("tech_implementations").update({ checklist: newChecklist, status: newStatus }).eq("id", t.id);
+    await loadTechImplementations();
+  }
+  async function handleUpdateTechNotes(t, notes) {
+    await supa.from("tech_implementations").update({ notes }).eq("id", t.id);
+    await loadTechImplementations();
+  }
   async function handleSaveImplantacao(imp) {
     const { error } = await supa.from("implantacoes").upsert(imp);
     if (error) { showToast(`Erro: ${error.message}`); return; }
@@ -2268,7 +2370,7 @@ function App() {
     doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadEmployees(); loadVtVrRecords(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -3142,7 +3244,11 @@ function App() {
         <div className="flex sm:hidden justify-center"><img src={LOGO_DATA_URI} alt="Miré" className="w-12 h-auto object-contain" style={{ filter: "drop-shadow(0 0 10px rgba(124,92,255,0.4))" }} /></div>
 
         <nav className="flex flex-col gap-1 w-full flex-1 overflow-y-auto">
-          {[
+          {(userRole === "tecnico" ? [
+            { group: "Técnico", items: [
+              { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
+            ]},
+          ] : [
             { group: "Principal", items: [
               { id: "dashboard", label: "Dashboard", icon: "🏠" },
               { id: "calendario", label: "Calendário", icon: "📅" },
@@ -3156,6 +3262,7 @@ function App() {
             { group: "Financeiro", items: [
               { id: "boletos", label: "Mensalidades", icon: "📄" },
               { id: "implantacoes", label: "Implantações", icon: "🏗️" },
+              { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
               { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
             ]},
             { group: "Operacional", items: [
@@ -3164,7 +3271,7 @@ function App() {
             { group: "Sistema", items: [
               { id: "config", label: "Configurações", icon: "⚙️" },
             ]},
-          ].map((g) => (
+          ]).map((g) => (
             <div key={g.group} className="mb-1">
               <div className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-3 mb-1 mt-3 first:mt-0" style={{ color: COLORS.inkFaint }}>{g.group}</div>
               {g.items.map((t) => {
@@ -3184,6 +3291,8 @@ function App() {
             </div>
           ))}
 
+          {userRole !== "tecnico" && (
+          <>
           <div className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-3 mb-1 mt-3" style={{ color: COLORS.inkFaint }}>Envio rápido</div>
           <button onClick={() => { setTab("boletos"); sendBulkWhatsApp(quickWaTargets); }} disabled={bulkSending}
             className="flex items-center justify-center sm:justify-start gap-2 px-3 py-2.5 rounded-xl font-semibold text-sm border disabled:opacity-50"
@@ -3197,6 +3306,8 @@ function App() {
             <span className="text-base leading-none">📧</span>
             <span className="hidden sm:inline">{bulkSendingEmail ? "Enviando..." : `E-mail (${quickEmailTargets.length})`}</span>
           </button>
+          </>
+          )}
         </nav>
 
         <div className="rounded-xl p-3 border flex items-center gap-2" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.02)" }}>
@@ -3222,6 +3333,7 @@ function App() {
                 {tab === "romaneio" && "Romaneio Etiqueta de Composição"}
                 {tab === "itag" && "RFID"}
                 {tab === "implantacoes" && "Controle de Implantações"}
+                {tab === "implantacao_tecnica" && "Implantação Técnica"}
                 {tab === "calendario" && "Calendário de Vencimentos"}
                 {tab === "vtvr" && "Vale Transporte / Vale Refeição"}
                 {tab === "relatorios" && "Relatórios"}
@@ -4176,6 +4288,88 @@ function App() {
                   });
                 })()}
               </div>
+            </div>
+          )}
+
+          {tab === "implantacao_tecnica" && (
+            <div>
+              {(() => {
+                const isTech = userRole === "tecnico";
+                const list = isTech ? techImplementations.filter((t) => t.technician_email === session?.user?.email) : techImplementations;
+                const statusInfo = { nao_iniciado: { label: "Não iniciado", color: COLORS.inkMuted }, em_andamento: { label: "Em andamento", color: COLORS.warn }, concluido: { label: "Concluído", color: COLORS.success } };
+                return (
+                  <>
+                    {!isTech && (
+                      <div className="flex justify-end mb-3">
+                        <button onClick={() => { setEditingTech(null); setShowTechForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova implantação técnica</button>
+                      </div>
+                    )}
+                    {showTechForm && !isTech && <div className="mb-4"><TechImplementationForm initial={editingTech} onSave={handleSaveTechImplementation} onCancel={() => { setShowTechForm(false); setEditingTech(null); }} /></div>}
+
+                    {list.length === 0 ? (
+                      <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        <div className="text-3xl mb-2">🛠️</div>
+                        <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma implantação técnica {isTech ? "atribuída a você" : "registrada"} ainda.</div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {list.map((t) => {
+                          const doneCount = (t.checklist || []).filter((it) => it.done).length;
+                          const total = (t.checklist || []).length;
+                          const st = statusInfo[t.status] || statusInfo.nao_iniciado;
+                          return (
+                            <div key={t.id} className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <div className="flex items-center gap-3">
+                                  <Avatar name={t.client_name} size={34} />
+                                  <div>
+                                    <div className="font-bold text-sm flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
+                                      {t.client_name}
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: st.color, background: `${st.color}22` }}>{st.label}</span>
+                                    </div>
+                                    <div className="text-xs" style={{ color: COLORS.inkMuted }}>
+                                      {doneCount}/{total} etapas concluídas · {t.technician_email || "sem técnico atribuído"}{t.target_date ? ` · previsto: ${fmtDate(t.target_date)}` : ""}
+                                    </div>
+                                  </div>
+                                </div>
+                                {!isTech && (
+                                  <div className="flex gap-1.5">
+                                    <button onClick={() => { setEditingTech(t); setShowTechForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
+                                    <button onClick={() => handleDeleteTechImplementation(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="w-full h-1.5 rounded-full mb-3" style={{ background: "rgba(255,255,255,0.08)" }}>
+                                <div className="h-1.5 rounded-full" style={{ width: `${total > 0 ? (doneCount / total) * 100 : 0}%`, background: st.color }} />
+                              </div>
+
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                {(t.checklist || []).map((it, idx) => (
+                                  <button key={idx} onClick={() => handleToggleTechChecklistItem(t, idx)}
+                                    className="text-xs font-semibold px-2.5 py-1.5 rounded-full border"
+                                    style={{ borderColor: it.done ? COLORS.success : COLORS.cardBorder, color: it.done ? COLORS.success : COLORS.inkMuted, background: it.done ? "rgba(34,197,94,0.1)" : "transparent" }}>
+                                    {it.done ? "✓" : "○"} {it.label}
+                                  </button>
+                                ))}
+                              </div>
+
+                              <textarea
+                                defaultValue={t.notes || ""}
+                                placeholder="Anotações sobre o andamento..."
+                                onBlur={(e) => { if (e.target.value !== (t.notes || "")) handleUpdateTechNotes(t, e.target.value); }}
+                                rows={2}
+                                className="w-full rounded-lg border px-3 py-2 text-xs outline-none"
+                                style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 

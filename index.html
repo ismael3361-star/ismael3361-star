@@ -225,10 +225,16 @@ const STATUS_META = {
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function fmtMoney(v) { return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function fmtDate(d) { return d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "-"; }
 function onlyDigits(s) { return (s || "").replace(/\D/g, ""); }
 function waNumber(phone) { let d = onlyDigits(phone); if (d.length <= 11) d = "55" + d; return d; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-function effectiveValue(c, b) { return (Number(c?.value) || 0) + Number(b?.consultations_value ?? c?.consultations_value ?? 0); }
+function effectiveValue(c, b) {
+  return (Number(c?.value) || 0)
+    + Number(b?.consultations_value ?? c?.consultations_value ?? 0)
+    + Number(b?.vpn_value || 0)
+    + Number(b?.server_change_value || 0);
+}
 
 function maskCNPJ(v) {
   const d = onlyDigits(v).slice(0, 14);
@@ -437,6 +443,20 @@ async function autoDownloadBoleto(b, client) {
   }
 }
 
+function MiniMoneyField({ label, value, onSave, fieldKey, title }) {
+  return (
+    <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }} title={title}>
+      {label}
+      <span className="flex items-center rounded-lg border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: "#0E1729" }}>
+        <span className="pl-2 text-[11px]" style={{ color: COLORS.inkFaint }}>R$</span>
+        <input type="number" step="0.01" key={fieldKey} defaultValue={value || ""} placeholder="0,00"
+          onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(value) || 0)) onSave(v); }}
+          className="w-16 pl-1 pr-2 py-1 text-xs outline-none" style={{ background: "transparent", color: COLORS.ink }} />
+      </span>
+    </label>
+  );
+}
+
 function TextField({ label, value, onChange, type = "text", placeholder, required }) {
   return (
     <label className="block">
@@ -452,8 +472,7 @@ function ClientForm({ initial, onSave, onCancel }) {
   const [phone, setPhone] = useState(initial?.phone || "");
   const [email, setEmail] = useState(initial?.email || "");
   const [value, setValue] = useState(initial?.value ?? "");
-  const [dueDay, setDueDay] = useState(initial?.due_day ?? "");
-  const [annualDueDate, setAnnualDueDate] = useState(initial?.annual_due_date || "");
+  const [nextDueDate, setNextDueDate] = useState(initial?.next_due_date || initial?.annual_due_date || "");
   const [plan, setPlan] = useState(initial?.plan || "");
   const [notes, setNotes] = useState(initial?.notes || "");
   const [cnpj, setCnpj] = useState(initial?.cnpj || "");
@@ -532,14 +551,10 @@ function ClientForm({ initial, onSave, onCancel }) {
         <TextField label="WhatsApp" value={phone} onChange={setPhone} placeholder="(11) 91234-5678" />
         <TextField label="E-mail" value={email} onChange={setEmail} placeholder="cliente@email.com" />
         <TextField label={annual ? "Valor da mensalidade anual" : "Valor da mensalidade"} value={value} onChange={setValue} type="number" placeholder="150" />
-        {annual ? (
-          <label className="block">
-            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento anual (dia/mês/ano)</span>
-            <input type="date" value={annualDueDate} onChange={(e) => setAnnualDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-          </label>
-        ) : (
-          <TextField label="Dia do vencimento" value={dueDay} onChange={setDueDay} type="number" placeholder="10" />
-        )}
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento (dia/mês/ano)</span>
+          <input type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
         <TextField label="Plano / serviço" value={plan} onChange={setPlan} placeholder="Ex: Plano Premium" />
         <TextField label="Código do banco" value={bankNumber} onChange={setBankNumber} placeholder="Ex: 341 (Itaú)" />
         <TextField label="Integração" value={integration} onChange={setIntegration} placeholder="Ex: API própria, ERP..." />
@@ -579,7 +594,7 @@ function ClientForm({ initial, onSave, onCancel }) {
           disabled={!canSave}
           onClick={() => onSave({
             id: initial?.id || uid(), name: name.trim(), phone: phone.trim(), email: email.trim(),
-            value: Number(value) || 0, due_day: Number(dueDay) || null, annual_due_date: annualDueDate || null,
+            value: Number(value) || 0, due_day: nextDueDate ? Number(nextDueDate.slice(8, 10)) : null, next_due_date: nextDueDate || null, annual_due_date: annual ? (nextDueDate || null) : null,
             plan: plan.trim(), notes: notes.trim(), cnpj: cnpj.trim(), cep: cep.trim(), street: street.trim(), number: number.trim(),
             complement: complement.trim(), neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
             bank_number: bankNumber.trim(), integration: integration.trim(), annual, cloud, marketplace: marketplace.trim(),
@@ -812,6 +827,7 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
   const [number, setNumber] = useState(initial?.number || `${String(new Date().getFullYear()).slice(2)}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(Date.now()).slice(-2)}`);
   const [installationValue, setInstallationValue] = useState(initial?.installation_value ?? "");
   const [trainingValue, setTrainingValue] = useState(initial?.training_value ?? "");
+  const [dbTransferValue, setDbTransferValue] = useState(initial?.db_transfer_value ?? "");
   const [paymentMethod, setPaymentMethod] = useState(initial?.payment_method || "À vista no PIX");
   const [pixKey, setPixKey] = useState(initial?.pix_key || "");
   const [monthlyDueDay, setMonthlyDueDay] = useState(initial?.monthly_due_day ?? "");
@@ -867,8 +883,9 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
   const customTotal = customizations.reduce((s, it) => s + (Number(it.value) || 0), 0);
   const installationTotal = Number(installationValue) || 0;
   const trainingTotal = Number(trainingValue) || 0;
+  const dbTransferTotal = Number(dbTransferValue) || 0;
   const monthlyTotal = Math.max(0, mensalidadeBaseTotal - (Number(discountValue) || 0));
-  const implantacaoTotal = installationTotal + trainingTotal + customTotal + cloudTotal + integrationSetupTotal;
+  const implantacaoTotal = installationTotal + trainingTotal + dbTransferTotal + customTotal + cloudTotal + integrationSetupTotal;
   const grandTotal = monthlyTotal + implantacaoTotal;
 
   async function handleSaveNewProspect(p) {
@@ -915,6 +932,7 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
         </label>
         <TextField label="Valor de implantação" value={installationValue} onChange={setInstallationValue} type="number" placeholder="2000" />
         <TextField label="Valor de treinamento" value={trainingValue} onChange={setTrainingValue} type="number" placeholder="0" />
+        <TextField label="Transferência de banco de dados (se houver)" value={dbTransferValue} onChange={setDbTransferValue} type="number" placeholder="0" />
         <TextField label="Forma de pagamento" value={paymentMethod} onChange={setPaymentMethod} placeholder="Ex: À vista no PIX" />
         <TextField label="Chave PIX" value={pixKey} onChange={setPixKey} placeholder="CNPJ, e-mail ou telefone" />
         <TextField label="PIX favorecido" value={pixFavorecido} onChange={setPixFavorecido} placeholder="Nome de quem recebe o PIX" />
@@ -1073,7 +1091,7 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
             ];
             onPreview({
               id: initial?.id || uid(), prospect_id: prospectId, number: number.trim(),
-              installation_value: Number(installationValue) || 0, training_value: Number(trainingValue) || 0,
+              installation_value: Number(installationValue) || 0, training_value: Number(trainingValue) || 0, db_transfer_value: Number(dbTransferValue) || 0,
               payment_method: paymentMethod.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(),
               cloud_description: hasCloud ? cloudDescription.trim() : "",
               monthly_items: builtItems, discount_value: Number(discountValue) || 0,
@@ -1103,7 +1121,7 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
             ];
             onSave({
               id: initial?.id || uid(), prospect_id: prospectId, number: number.trim(),
-              installation_value: Number(installationValue) || 0, training_value: Number(trainingValue) || 0,
+              installation_value: Number(installationValue) || 0, training_value: Number(trainingValue) || 0, db_transfer_value: Number(dbTransferValue) || 0,
               payment_method: paymentMethod.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(),
               cloud_description: hasCloud ? cloudDescription.trim() : "",
               monthly_items: builtItems, discount_value: Number(discountValue) || 0,
@@ -2361,15 +2379,15 @@ function App() {
     if (producaoItem) rows.push(["Produção", "1", "--", fmtMoney(producaoItem.value)]);
     if (p.integration_monthly_value > 0) rows.push([`Mensalidade integração${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, "1", "--", fmtMoney(p.integration_monthly_value)]);
 
-    if (p.installation_value > 0) rows.push(["Implantação / Instalação e configuração do sistema", "1", fmtMoney(p.installation_value), "--"]);
-    if (p.training_value > 0) rows.push(["Treinamento", "1", fmtMoney(p.training_value), "--"]);
+    const installBundle = (p.installation_value || 0) + (p.training_value || 0) + (p.db_transfer_value || 0);
+    if (installBundle > 0) rows.push(["Implantação (inclui treinamento e transferência de banco de dados, quando houver)", "1", fmtMoney(installBundle), "--"]);
     const cloudItem = items.find((it) => it.desc === "Cloud");
     if (cloudItem) rows.push([`Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, "1", fmtMoney(cloudItem.value), "--"]);
     if (p.integration_setup_value > 0) rows.push([`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, "1", fmtMoney(p.integration_setup_value), "--"]);
     items.filter((it) => !(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")).forEach((it) => rows.push([it.desc, "1", fmtMoney(it.value), "--"]));
 
     const customTotalPdf = items.filter((it) => !(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")).reduce((s, it) => s + (Number(it.value) || 0), 0);
-    const implantacaoTotalPdf = (p.installation_value || 0) + (p.training_value || 0) + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotalPdf;
+    const implantacaoTotalPdf = installBundle + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotalPdf;
 
     doc.autoTable({
       startY: y,
@@ -2970,7 +2988,7 @@ function App() {
     return arr;
   }, [filteredClients, sortBy, sortDir, showCancelled]);
 
-  const visibleClients = useMemo(() => sortedClients.filter((c) => c.bank_number || (Number(c.value) || 0) > 0 || c.cancelled), [sortedClients]);
+  const visibleClients = useMemo(() => sortedClients.filter((c) => c.bank_number || (Number(c.value) || 0) > 0 || c.cancelled || c.annual), [sortedClients]);
   useEffect(() => { setClientsPage(1); }, [search, sortBy, sortDir, showCancelled]);
 
   const filteredByStatus = useMemo(() => {
@@ -3066,7 +3084,7 @@ function App() {
     const rows = filteredClients.map((c) => {
       const b = boletos[c.id];
       const st = STATUS_META[computeStatus(c, b, monthDate)].label;
-      return [c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(c.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", c.due_day ? `dia ${c.due_day}` : "-", st];
+      return [c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(c.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", fmtDate(c.next_due_date), st];
     });
     doc.autoTable({ startY: 38, head: [["Cliente", "Mensalidade", "Consultas", "Cloud", "Ciclo", "Vencimento", "Status"]], body: rows, styles: { fontSize: 8 }, headStyles: { fillColor: [124, 92, 255] } });
     doc.save(`mensalidades-${mKey}.pdf`);
@@ -3520,7 +3538,7 @@ function App() {
                             </div>
                           </td>
                           <td className="p-3 font-semibold">{fmtMoney(effectiveValue(c, boletos[c.id]))}</td>
-                          <td className="p-3">{c.due_day ? `dia ${c.due_day}` : "-"}</td>
+                          <td className="p-3">{fmtDate(c.next_due_date)}</td>
                           <td className="p-3">
                             <div className="flex gap-1 justify-end">
                               <button onClick={() => setHistoryClient(c)} className="p-1.5 rounded-lg hover:bg-white/5 transition" title="Histórico e anotações">🕓</button>
@@ -3622,24 +3640,26 @@ function App() {
                               {overdue > 0 && <span className="text-[11px] font-semibold" style={{ color: COLORS.danger }}>há {overdue} dia{overdue > 1 ? "s" : ""}</span>}
                               {dueSoon && <span className="text-[11px] font-semibold" style={{ color: COLORS.warn }}>vence em {daysUntilDue(c, monthDate)} dia{daysUntilDue(c, monthDate) !== 1 ? "s" : ""}</span>}
                             </div>
-                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c, boletos[c.id]))} · vence dia {c.due_day || "-"} · {c.annual ? "anual" : "mensal"}</div>
+                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c, boletos[c.id]))} · vence em {fmtDate(c.next_due_date)} · {c.annual ? "anual" : "mensal"}</div>
                           </div>
                         </div>
-                        <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
-                          Mensalidade
-                          <input type="number" key={`val-${c.id}`} defaultValue={c.value || ""} placeholder="0"
-                            onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(c.value) || 0)) handleUpdateClientValue(c.id, v); }}
-                            className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-                        </label>
-                        <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
-                          Consultas
-                          <input type="number" key={`cons-${c.id}-${mKey}`} defaultValue={b?.consultations_value || ""} placeholder="0"
-                            onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(b?.consultations_value) || 0)) upsertBoleto(c.id, { consultations_value: v }); }}
-                            className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-                        </label>
+                        <MiniMoneyField label="Mensalidade" value={c.value} fieldKey={`val-${c.id}`} onSave={(v) => handleUpdateClientValue(c.id, v)} />
+                        <MiniMoneyField label="Consultas" value={b?.consultations_value} fieldKey={`cons-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { consultations_value: v })} />
+                        <MiniMoneyField label="VPN" value={b?.vpn_value} fieldKey={`vpn-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { vpn_value: v })} title="Cobrança de VPN nesse mês" />
+                        <MiniMoneyField label="Troca servidor" value={b?.server_change_value} fieldKey={`srv-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { server_change_value: v })} title="Cobrança de troca de servidor nesse mês" />
                         <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer px-2.5 py-1 rounded-full" style={{ color: b?.paid ? COLORS.success : COLORS.inkMuted, background: b?.paid ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)" }}>
-                          <input type="checkbox" checked={!!b?.paid} onChange={(e) => upsertBoleto(c.id, { paid: e.target.checked })} /> Pago
+                          <input type="checkbox" checked={!!b?.paid} onChange={(e) => upsertBoleto(c.id, { paid: e.target.checked, paid_value: e.target.checked ? (b?.paid_value || effectiveValue(c, b)) : b?.paid_value })} /> Pago
                         </label>
+                        {b?.paid && (
+                          <>
+                            <MiniMoneyField label="Valor pago" value={b?.paid_value} fieldKey={`paidval-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { paid_value: v })} />
+                            <select value={b?.payment_method || ""} onChange={(e) => upsertBoleto(c.id, { payment_method: e.target.value })} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+                              <option value="">Como pagou?</option>
+                              <option value="boleto">Boleto</option>
+                              <option value="pix">PIX</option>
+                            </select>
+                          </>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-2 pl-[54px]">
                         <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>
@@ -3706,7 +3726,7 @@ function App() {
                                       onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(c.value) || 0)) handleUpdateClientValue(c.id, v); }}
                                       className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
                                   </span>
-                                  · vence em {c.annual_due_date ? new Date(c.annual_due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
+                                  · vence em {fmtDate(c.next_due_date)}
                                 </div>
                               </div>
                             </div>
@@ -4181,7 +4201,7 @@ function App() {
                               {c.name}
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>{c._diasAtraso} dia{c._diasAtraso !== 1 ? "s" : ""} atrasado</span>
                             </div>
-                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c, boletos[c.id]))} · vence dia {c.due_day || "-"} · {c.phone || "sem WhatsApp"}</div>
+                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c, boletos[c.id]))} · vence em {fmtDate(c.next_due_date)} · {c.phone || "sem WhatsApp"}</div>
                           </div>
                         </div>
                         <div className="flex gap-1.5">
@@ -4218,7 +4238,7 @@ function App() {
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                             <td className="p-3 font-semibold">{c.name}</td>
                             <td className="p-3">{fmtMoney(effectiveValue(c, b))}</td>
-                            <td className="p-3">{c.annual_due_date ? new Date(c.annual_due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                            <td className="p-3">{fmtDate(c.next_due_date)}</td>
                             <td className="p-3"><StatusBadge status={b?.paid ? "pago" : "pendente"} /></td>
                           </tr>
                         );

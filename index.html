@@ -2962,7 +2962,7 @@ function App() {
   useEffect(() => { setClientsPage(1); }, [search, sortBy, sortDir, showCancelled]);
 
   const filteredByStatus = useMemo(() => {
-    const activeClients = filteredClients.filter((c) => !c.cancelled && (c.bank_number || (Number(c.value) || 0) > 0));
+    const activeClients = filteredClients.filter((c) => !c.cancelled && !c.annual && (c.bank_number || (Number(c.value) || 0) > 0));
     let arr;
     if (statusFilter === "todos") arr = activeClients;
     else if (statusFilter === "em_breve") arr = activeClients.filter((c) => isDueSoon(c, boletos[c.id], monthDate));
@@ -2971,6 +2971,13 @@ function App() {
   }, [filteredClients, boletos, statusFilter, monthDate]);
   useEffect(() => { setBoletosPage(1); }, [search, statusFilter, monthDate]);
   const paginatedBoletos = useMemo(() => filteredByStatus.slice((boletosPage - 1) * PAGE_SIZE, boletosPage * PAGE_SIZE), [filteredByStatus, boletosPage]);
+
+  const annualClientsList = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return clients
+      .filter((c) => !c.cancelled && c.annual && (!q || (c.name || "").toLowerCase().includes(q)))
+      .sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
+  }, [clients, search]);
 
   const stats = useMemo(() => {
     const monthly = clients.filter((c) => !c.annual);
@@ -3493,7 +3500,7 @@ function App() {
                                 <div className="font-semibold truncate flex items-center gap-1.5 flex-wrap">
                                   {c.name}
                                   {c.cancelled && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>CANCELADA</span>}
-                                  {c.annual && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.15)" }}>ANUAL</span>}
+                                  {c.annual && <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full" style={{ color: "#1a1a1a", background: "#D4AF37" }}>⭐ ANUAL</span>}
                                   {c.cloud && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>CLOUD</span>}
                                 </div>
                                 <div className="text-[11px] truncate" style={{ color: COLORS.inkMuted }}>{c.phone || "sem WhatsApp"} · {c.email || "sem e-mail"}{c.plan ? ` · ${c.plan}` : ""}</div>
@@ -3645,6 +3652,57 @@ function App() {
                 })}
                 <Pagination page={boletosPage} setPage={setBoletosPage} totalItems={filteredByStatus.length} pageSize={PAGE_SIZE} />
               </div>
+
+              {annualClientsList.length > 0 && (
+                <div className="mt-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-lg">⭐</span>
+                    <span className="text-sm font-extrabold uppercase tracking-wide" style={{ color: "#D4AF37" }}>Clientes Anuais</span>
+                    <span className="text-xs" style={{ color: COLORS.inkMuted }}>({annualClientsList.length}) — cobrança feita uma vez por ano, separado dos mensais</span>
+                  </div>
+                  <div className="rounded-2xl border-2 overflow-hidden" style={{ borderColor: "#D4AF37", background: COLORS.card }}>
+                    {annualClientsList.map((c, i) => {
+                      const b = boletos[c.id];
+                      const status = computeStatus(c, b, monthDate);
+                      return (
+                        <div key={c.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <div className="flex items-center gap-3">
+                              <Avatar name={c.name} size={34} />
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {editingNameId === c.id ? (
+                                    <input autoFocus defaultValue={c.name} onBlur={(e) => handleRenameClient(c.id, e.target.value)}
+                                      onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setEditingNameId(null); }}
+                                      className="rounded-lg border px-2 py-1 text-sm font-bold outline-none" style={{ borderColor: COLORS.brandLight, background: "#0E1729", color: COLORS.ink }} />
+                                  ) : (
+                                    <span className="font-bold text-sm cursor-pointer hover:underline" onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
+                                  )}
+                                  <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full" style={{ color: "#1a1a1a", background: "#D4AF37" }}>⭐ ANUAL</span>
+                                  <StatusBadge status={status} />
+                                </div>
+                                <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(effectiveValue(c, b))}/ano · vence dia {c.due_day || "-"}</div>
+                              </div>
+                            </div>
+                            <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer px-2.5 py-1 rounded-full" style={{ color: b?.paid ? COLORS.success : COLORS.inkMuted, background: b?.paid ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)" }}>
+                              <input type="checkbox" checked={!!b?.paid} onChange={(e) => upsertBoleto(c.id, { paid: e.target.checked })} /> Pago
+                            </label>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>
+                              {b?.file_name ? "🔄 Trocar PDF" : "📎 Anexar boleto"}
+                              <input type="file" accept="application/pdf" className="hidden" onChange={(e) => handleUpload(c, e.target.files?.[0])} />
+                            </label>
+                            {b?.file_url && <a href={b.file_url} target="_blank" className="text-xs underline px-1" style={{ color: COLORS.brandLight }}>ver PDF</a>}
+                            <button onClick={() => sendWhatsApp(c)} disabled={!c.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.wa }}>💬 {b?.sent_whatsapp ? "✓ Reenviar" : "Enviar"} WhatsApp</button>
+                            <button onClick={() => sendEmail(c)} disabled={!c.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.brand }}>📧 {b?.sent_email ? "✓ Reenviar" : "Enviar"} e-mail</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -4107,6 +4165,48 @@ function App() {
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border-2 overflow-hidden" style={{ borderColor: "#D4AF37", background: COLORS.card }}>
+                <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2" style={{ background: "rgba(212,175,55,0.12)" }}>
+                  <div className="text-sm font-extrabold" style={{ color: "#D4AF37" }}>⭐ Relatório de Clientes Anuais — {stats.countAnnual} cliente(s)</div>
+                  <div className="text-sm font-bold" style={{ color: "#D4AF37" }}>{fmtMoney(stats.totalAnnual)} em receita anual</div>
+                </div>
+                {stats.countAnnual === 0 ? (
+                  <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente anual cadastrado.</div>
+                ) : (
+                  <table className="w-full text-sm" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Valor/ano</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Vencimento</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Situação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {clients.filter((c) => !c.cancelled && c.annual).map((c, i) => {
+                        const b = boletos[c.id];
+                        return (
+                          <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <td className="p-3 font-semibold">{c.name}</td>
+                            <td className="p-3">{fmtMoney(effectiveValue(c, b))}</td>
+                            <td className="p-3">{c.due_day ? `dia ${c.due_day}` : "-"}</td>
+                            <td className="p-3"><StatusBadge status={b?.paid ? "pago" : "pendente"} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                        <td className="p-3 font-bold">TOTAL</td>
+                        <td className="p-3 font-bold">{fmtMoney(stats.totalAnnual)}</td>
+                        <td className="p-3"></td>
+                        <td className="p-3"></td>
+                      </tr>
+                    </tfoot>
+                  </table>
                 )}
               </div>
 

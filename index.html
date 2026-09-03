@@ -1523,6 +1523,79 @@ function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect
   );
 }
 
+function SignatureCanvas({ value, onChange }) {
+  const canvasRef = useRef(null);
+  const drawingRef = useRef(false);
+  const lastRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.strokeStyle = "#0B1220";
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    if (value) {
+      const img = new Image();
+      img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      img.src = value;
+    }
+  }, []);
+
+  function getPos(e) {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (cx - rect.left) * (canvas.width / rect.width), y: (cy - rect.top) * (canvas.height / rect.height) };
+  }
+  function start(e) { e.preventDefault(); drawingRef.current = true; lastRef.current = getPos(e); }
+  function move(e) {
+    if (!drawingRef.current) return;
+    e.preventDefault();
+    const ctx = canvasRef.current.getContext("2d");
+    const pos = getPos(e);
+    ctx.beginPath(); ctx.moveTo(lastRef.current.x, lastRef.current.y); ctx.lineTo(pos.x, pos.y); ctx.stroke();
+    lastRef.current = pos;
+  }
+  function end() { if (!drawingRef.current) return; drawingRef.current = false; onChange(canvasRef.current.toDataURL("image/png")); }
+  function clear() { canvasRef.current.getContext("2d").clearRect(0, 0, canvasRef.current.width, canvasRef.current.height); onChange(""); }
+
+  return (
+    <div>
+      <canvas ref={canvasRef} width={400} height={130} className="w-full rounded-lg border touch-none"
+        style={{ borderColor: COLORS.cardBorder, background: "#F1F5F9", cursor: "crosshair" }}
+        onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
+        onTouchStart={start} onTouchMove={move} onTouchEnd={end} />
+      <button type="button" onClick={clear} className="text-[11px] font-semibold px-2 py-1 mt-1 rounded-lg border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>🗑️ Limpar assinatura</button>
+    </div>
+  );
+}
+
+function ChecklistSection({ title, items, onChange, withObs }) {
+  function toggle(i) { onChange(items.map((it, idx) => idx === i ? { ...it, done: !it.done } : it)); }
+  function setObs(i, val) { onChange(items.map((it, idx) => idx === i ? { ...it, obs: val } : it)); }
+  return (
+    <div>
+      {title && <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>{title}</div>}
+      <div className="space-y-1.5">
+        {items.map((it, i) => (
+          <div key={i} className="flex items-center gap-2 flex-wrap">
+            <label className="flex items-center gap-2 text-sm cursor-pointer px-3 py-1.5 rounded-lg border shrink-0" style={{ borderColor: it.done ? COLORS.success : COLORS.cardBorder, background: it.done ? "rgba(34,197,94,0.08)" : "transparent", color: it.done ? COLORS.success : COLORS.ink, minWidth: "260px" }}>
+              <input type="checkbox" checked={!!it.done} onChange={() => toggle(i)} />
+              {it.label}
+            </label>
+            {withObs && (
+              <input value={it.obs || ""} onChange={(e) => setObs(i, e.target.value)} placeholder="Observação (opcional)" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CheckField({ label, checked, onChange }) {
   return (
     <label className="flex items-center gap-2 text-sm cursor-pointer px-3 py-2 rounded-lg border" style={{ borderColor: checked ? COLORS.success : COLORS.cardBorder, background: checked ? "rgba(34,197,94,0.08)" : "transparent", color: checked ? COLORS.success : COLORS.ink }}>
@@ -1532,165 +1605,382 @@ function CheckField({ label, checked, onChange }) {
   );
 }
 
+const DEFAULT_CHECKLIST_INSTALACAO = [
+  { label: "Instalação do sistema", done: false, obs: "" },
+  { label: "Configuração do banco de dados", done: false, obs: "" },
+  { label: "Configuração do servidor", done: false, obs: "" },
+  { label: "Configuração das estações", done: false, obs: "" },
+  { label: "Cadastro/configuração de usuários", done: false, obs: "" },
+  { label: "Configuração de permissões", done: false, obs: "" },
+  { label: "Configuração dos parâmetros do sistema", done: false, obs: "" },
+  { label: "Configuração de backup", done: false, obs: "" },
+  { label: "Teste de abertura do sistema", done: false, obs: "" },
+];
+const DEFAULT_CHECKLIST_MIGRACAO = [
+  { label: "Banco de dados", done: false }, { label: "Cadastro de clientes", done: false },
+  { label: "Cadastro de fornecedores", done: false }, { label: "Cadastro de produtos", done: false },
+  { label: "Estoque", done: false }, { label: "Financeiro", done: false },
+  { label: "Contas a receber", done: false }, { label: "Contas a pagar", done: false },
+  { label: "Histórico de vendas", done: false },
+];
+const DEFAULT_CHECKLIST_EQUIPAMENTOS = [
+  { label: "Impressora: driver instalado", done: false }, { label: "Impressora: configurada", done: false },
+  { label: "Impressora: tamanho da etiqueta configurado", done: false }, { label: "Impressora: margens ajustadas", done: false },
+  { label: "Impressora: impressão de teste realizada", done: false },
+  { label: "Leitor: instalado", done: false }, { label: "Leitor: configurado", done: false }, { label: "Leitor: teste realizado", done: false },
+  { label: "Balança", done: false }, { label: "Gaveta de dinheiro", done: false }, { label: "Impressora não fiscal", done: false },
+  { label: "SAT", done: false }, { label: "NFC-e", done: false }, { label: "Certificado Digital", done: false },
+];
+const DEFAULT_CHECKLIST_ETIQUETA = [
+  { label: "Configuração da etiqueta", done: false }, { label: "Ajuste do código de barras", done: false },
+  { label: "Configuração do tamanho da etiqueta", done: false }, { label: "Configuração da impressora", done: false },
+  { label: "Ajuste de margem/alinhamento", done: false }, { label: "Teste de impressão", done: false },
+  { label: "Teste de leitura do código de barras", done: false },
+];
+const DEFAULT_CHECKLIST_CONFIGURACOES = [
+  { label: "Cadastro de usuários", done: false }, { label: "Permissões de acesso", done: false },
+  { label: "Configurações fiscais", done: false }, { label: "Parâmetros tributários", done: false },
+  { label: "Cadastro de empresas/filiais", done: false }, { label: "Configuração de etiquetas", done: false },
+  { label: "Configuração de impressoras", done: false }, { label: "Configuração de backup", done: false },
+  { label: "Integrações", done: false }, { label: "Configuração financeira", done: false }, { label: "Configuração de estoque", done: false },
+];
+const DEFAULT_CHECKLIST_TESTES = [
+  { label: "Login no sistema", done: false, obs: "" }, { label: "Cadastro de cliente", done: false, obs: "" },
+  { label: "Cadastro de produto", done: false, obs: "" }, { label: "Entrada de estoque", done: false, obs: "" },
+  { label: "Saída de estoque", done: false, obs: "" }, { label: "Venda", done: false, obs: "" },
+  { label: "Leitura do código de barras", done: false, obs: "" }, { label: "Impressão de etiqueta", done: false, obs: "" },
+  { label: "Impressão de documento", done: false, obs: "" }, { label: "Emissão fiscal", done: false, obs: "" },
+  { label: "Financeiro", done: false, obs: "" }, { label: "Backup", done: false, obs: "" }, { label: "Integrações", done: false, obs: "" },
+];
+const DEFAULT_CHECKLIST_TREINAMENTO = [
+  { label: "Cadastro de clientes", done: false }, { label: "Produtos", done: false }, { label: "Estoque", done: false },
+  { label: "Vendas", done: false }, { label: "Financeiro", done: false }, { label: "Emissão fiscal", done: false },
+  { label: "Impressão de etiquetas", done: false }, { label: "Relatórios", done: false },
+];
+
 function TechImplementationForm({ initial, onSave, onCancel }) {
-  const [clientName, setClientName] = useState(initial?.client_name || "");
-  const [technicianEmail, setTechnicianEmail] = useState(initial?.technician_email || "");
+  const [numero, setNumero] = useState(initial?.numero || "");
+  const [dataFicha, setDataFicha] = useState(initial?.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10));
   const [technicianName, setTechnicianName] = useState(initial?.technician_name || "");
-  const [targetDate, setTargetDate] = useState(initial?.target_date || "");
+  const [technicianEmail, setTechnicianEmail] = useState(initial?.technician_email || "");
+  const [versaoSistema, setVersaoSistema] = useState(initial?.versao_sistema || "");
 
-  const [dbMigrationDone, setDbMigrationDone] = useState(initial?.db_migration_done || false);
-  const [productsMigrationDone, setProductsMigrationDone] = useState(initial?.products_migration_done || false);
-  const [clientsMigrationDone, setClientsMigrationDone] = useState(initial?.clients_migration_done || false);
+  const [clientName, setClientName] = useState(initial?.client_name || "");
+  const [razaoSocial, setRazaoSocial] = useState(initial?.razao_social || "");
+  const [nomeFantasia, setNomeFantasia] = useState(initial?.nome_fantasia || "");
+  const [cnpj, setCnpj] = useState(initial?.cnpj || "");
+  const [responsavelAtendimento, setResponsavelAtendimento] = useState(initial?.responsavel_atendimento || "");
+  const [telefone, setTelefone] = useState(initial?.telefone || "");
+  const [whatsapp, setWhatsapp] = useState(initial?.whatsapp || "");
+  const [email, setEmail] = useState(initial?.email || "");
+  const [endereco, setEndereco] = useState(initial?.endereco || "");
 
-  const [installationDone, setInstallationDone] = useState(initial?.installation_done || false);
-  const [installationDate, setInstallationDate] = useState(initial?.installation_date || "");
+  const [tipoAtendimento, setTipoAtendimento] = useState(initial?.tipo_atendimento || "");
+  const [dataInicio, setDataInicio] = useState(initial?.data_inicio || "");
+  const [dataConclusao, setDataConclusao] = useState(initial?.data_conclusao || "");
+  const [usuariosEnvolvidos, setUsuariosEnvolvidos] = useState(initial?.usuarios_envolvidos || "");
   const [computersCount, setComputersCount] = useState(initial?.computers_count ?? "");
-  const [cloud, setCloud] = useState(initial?.cloud === true ? "sim" : initial?.cloud === false ? "nao" : "");
-  const [modLoja, setModLoja] = useState(initial?.modules_installed?.loja || false);
-  const [modFinanceiro, setModFinanceiro] = useState(initial?.modules_installed?.financeiro || false);
-  const [modProducao, setModProducao] = useState(initial?.modules_installed?.producao || false);
-  const [modNfe, setModNfe] = useState(initial?.modules_installed?.nfe || false);
-  const [modRfid, setModRfid] = useState(initial?.modules_installed?.rfid || false);
-  const [nfeCertInstalled, setNfeCertInstalled] = useState(initial?.nfe_certificate_installed || false);
-  const [labelPrinterConfigured, setLabelPrinterConfigured] = useState(initial?.label_printer_configured || false);
-  const [networkTested, setNetworkTested] = useState(initial?.network_tested || false);
-  const [remoteAccessConfigured, setRemoteAccessConfigured] = useState(initial?.remote_access_configured || false);
-  const [remoteAccessInfo, setRemoteAccessInfo] = useState(initial?.remote_access_info || "");
-  const [backupConfigured, setBackupConfigured] = useState(initial?.backup_configured || false);
 
-  const [trainingDone, setTrainingDone] = useState(initial?.training_done || false);
+  const [hostname, setHostname] = useState(initial?.hostname || "");
+  const [usuarioWindows, setUsuarioWindows] = useState(initial?.usuario_windows || "");
+  const [sistemaOperacional, setSistemaOperacional] = useState(initial?.sistema_operacional || "");
+  const [ipComputador, setIpComputador] = useState(initial?.ip_computador || "");
+  const [servidor, setServidor] = useState(initial?.servidor || "");
+  const [bancoDadosInfo, setBancoDadosInfo] = useState(initial?.banco_dados_info || "");
+  const [vpnId, setVpnId] = useState(initial?.vpn_id || "");
+  const [anydeskId, setAnydeskId] = useState(initial?.anydesk_id || "");
+  const [dataInstalacaoPc, setDataInstalacaoPc] = useState(initial?.data_instalacao_pc || "");
+
+  const [checklistInstalacao, setChecklistInstalacao] = useState(initial?.checklist_instalacao?.length ? initial.checklist_instalacao : DEFAULT_CHECKLIST_INSTALACAO);
+
+  const [checklistMigracao, setChecklistMigracao] = useState(initial?.checklist_migracao_dados?.length ? initial.checklist_migracao_dados : DEFAULT_CHECKLIST_MIGRACAO);
+  const [migracaoOutros, setMigracaoOutros] = useState(initial?.migracao_outros || "");
+  const [estoqueAnterior, setEstoqueAnterior] = useState(initial?.estoque_anterior || "");
+  const [estoqueMigrado, setEstoqueMigrado] = useState(initial?.estoque_migrado || "");
+  const [dataMigracao, setDataMigracao] = useState(initial?.data_migracao || "");
+  const [conferenciaRealizada, setConferenciaRealizada] = useState(initial?.conferencia_realizada === true ? "sim" : initial?.conferencia_realizada === false ? "nao" : "");
+  const [responsavelConferencia, setResponsavelConferencia] = useState(initial?.responsavel_conferencia || "");
+  const [obsMigracao, setObsMigracao] = useState(initial?.obs_migracao || "");
+
+  const [impressoraMarcaModelo, setImpressoraMarcaModelo] = useState(initial?.impressora_marca_modelo || "");
+  const [impressoraNumeroSerie, setImpressoraNumeroSerie] = useState(initial?.impressora_numero_serie || "");
+  const [impressoraComputador, setImpressoraComputador] = useState(initial?.impressora_computador || "");
+  const [leitorMarcaModelo, setLeitorMarcaModelo] = useState(initial?.leitor_marca_modelo || "");
+  const [checklistEquipamentos, setChecklistEquipamentos] = useState(initial?.checklist_equipamentos?.length ? initial.checklist_equipamentos : DEFAULT_CHECKLIST_EQUIPAMENTOS);
+
+  const [checklistEtiqueta, setChecklistEtiqueta] = useState(initial?.checklist_etiqueta?.length ? initial.checklist_etiqueta : DEFAULT_CHECKLIST_ETIQUETA);
+  const [etiquetaModelo, setEtiquetaModelo] = useState(initial?.etiqueta_modelo || "");
+  const [etiquetaTipoCodigo, setEtiquetaTipoCodigo] = useState(initial?.etiqueta_tipo_codigo || "");
+  const [ajustesEtiqueta, setAjustesEtiqueta] = useState(initial?.ajustes_etiqueta || "");
+
+  const [checklistConfiguracoes, setChecklistConfiguracoes] = useState(initial?.checklist_configuracoes?.length ? initial.checklist_configuracoes : DEFAULT_CHECKLIST_CONFIGURACOES);
+  const [descricaoAjustes, setDescricaoAjustes] = useState(initial?.descricao_ajustes || "");
+
+  const [checklistTestes, setChecklistTestes] = useState(initial?.checklist_testes?.length ? initial.checklist_testes : DEFAULT_CHECKLIST_TESTES);
+
+  const [usuariosTreinados, setUsuariosTreinados] = useState(initial?.usuarios_treinados || "");
+  const [checklistTreinamento, setChecklistTreinamento] = useState(initial?.checklist_treinamento_modulos?.length ? initial.checklist_treinamento_modulos : DEFAULT_CHECKLIST_TREINAMENTO);
+  const [cargaHoraria, setCargaHoraria] = useState(initial?.carga_horaria || "");
   const [trainingDate, setTrainingDate] = useState(initial?.training_date || "");
-  const [trainingGivenTo, setTrainingGivenTo] = useState(initial?.training_given_to || "");
 
-  const [nfeTestDone, setNfeTestDone] = useState(initial?.nfe_test_done || false);
-  const [boletoTestDone, setBoletoTestDone] = useState(initial?.boleto_test_done || false);
+  const [pendencias, setPendencias] = useState(initial?.pendencias?.length ? initial.pendencias : []);
+  const [obsTecnicas, setObsTecnicas] = useState(initial?.obs_tecnicas || "");
 
-  const [contractSigned, setContractSigned] = useState(initial?.contract_signed || false);
-  const [supportContactName, setSupportContactName] = useState(initial?.support_contact_name || "");
-  const [supportContactPhone, setSupportContactPhone] = useState(initial?.support_contact_phone || "");
-  const [followupDate, setFollowupDate] = useState(initial?.followup_date || "");
-  const [notes, setNotes] = useState(initial?.notes || "");
+  const [statusFinal, setStatusFinal] = useState(initial?.status_final || "");
+  const [obsFinal, setObsFinal] = useState(initial?.obs_final || "");
+
+  const [clienteRespNome, setClienteRespNome] = useState(initial?.cliente_resp_nome || "");
+  const [clienteRespCargo, setClienteRespCargo] = useState(initial?.cliente_resp_cargo || "");
+  const [aceiteData, setAceiteData] = useState(initial?.aceite_data || "");
+  const [aceiteAssinatura, setAceiteAssinatura] = useState(initial?.aceite_assinatura || "");
+  const [tecnicoAssinatura, setTecnicoAssinatura] = useState(initial?.tecnico_assinatura || "");
+
+  function addPendencia() { setPendencias((prev) => [...prev, { pendencia: "", responsavel: "", prazo: "", status: "aberta" }]); }
+  function updatePendencia(i, field, val) { setPendencias((prev) => prev.map((p, idx) => idx === i ? { ...p, [field]: val } : p)); }
+  function removePendencia(i) { setPendencias((prev) => prev.filter((_, idx) => idx !== i)); }
 
   const canSave = clientName.trim();
 
+  function buildPayload() {
+    return {
+      id: initial?.id || uid(), client_name: clientName.trim(), numero: numero.trim() || null, versao_sistema: versaoSistema.trim() || null,
+      technician_name: technicianName.trim() || null, technician_email: technicianEmail.trim() || null,
+      razao_social: razaoSocial.trim() || null, nome_fantasia: nomeFantasia.trim() || null, cnpj: cnpj.trim() || null,
+      responsavel_atendimento: responsavelAtendimento.trim() || null, telefone: telefone.trim() || null, whatsapp: whatsapp.trim() || null,
+      email: email.trim() || null, endereco: endereco.trim() || null,
+      tipo_atendimento: tipoAtendimento || null, data_inicio: dataInicio || null, data_conclusao: dataConclusao || null,
+      usuarios_envolvidos: usuariosEnvolvidos.trim() || null, computers_count: computersCount ? Number(computersCount) : null,
+      hostname: hostname.trim() || null, usuario_windows: usuarioWindows.trim() || null, sistema_operacional: sistemaOperacional.trim() || null,
+      ip_computador: ipComputador.trim() || null, servidor: servidor.trim() || null, banco_dados_info: bancoDadosInfo.trim() || null,
+      vpn_id: vpnId.trim() || null, anydesk_id: anydeskId.trim() || null, data_instalacao_pc: dataInstalacaoPc || null,
+      checklist_instalacao: checklistInstalacao,
+      checklist_migracao_dados: checklistMigracao, migracao_outros: migracaoOutros.trim() || null,
+      estoque_anterior: estoqueAnterior.trim() || null, estoque_migrado: estoqueMigrado.trim() || null, data_migracao: dataMigracao || null,
+      conferencia_realizada: conferenciaRealizada === "sim" ? true : conferenciaRealizada === "nao" ? false : null,
+      responsavel_conferencia: responsavelConferencia.trim() || null, obs_migracao: obsMigracao.trim() || null,
+      impressora_marca_modelo: impressoraMarcaModelo.trim() || null, impressora_numero_serie: impressoraNumeroSerie.trim() || null,
+      impressora_computador: impressoraComputador.trim() || null, leitor_marca_modelo: leitorMarcaModelo.trim() || null,
+      checklist_equipamentos: checklistEquipamentos,
+      checklist_etiqueta: checklistEtiqueta, etiqueta_modelo: etiquetaModelo.trim() || null, etiqueta_tipo_codigo: etiquetaTipoCodigo.trim() || null,
+      ajustes_etiqueta: ajustesEtiqueta.trim() || null,
+      checklist_configuracoes: checklistConfiguracoes, descricao_ajustes: descricaoAjustes.trim() || null,
+      checklist_testes: checklistTestes,
+      usuarios_treinados: usuariosTreinados.trim() || null, checklist_treinamento_modulos: checklistTreinamento,
+      carga_horaria: cargaHoraria.trim() || null, training_date: trainingDate || null,
+      pendencias: pendencias,
+      obs_tecnicas: obsTecnicas.trim() || null,
+      status_final: statusFinal || null, obs_final: obsFinal.trim() || null,
+      cliente_resp_nome: clienteRespNome.trim() || null, cliente_resp_cargo: clienteRespCargo.trim() || null,
+      aceite_data: aceiteData || null, aceite_assinatura: aceiteAssinatura || null, tecnico_assinatura: tecnicoAssinatura || null,
+    };
+  }
+
   return (
     <div className="rounded-xl p-4 border space-y-4" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
-      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Ficha técnica de instalação</div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <TextField label="Cliente" value={clientName} onChange={setClientName} placeholder="Nome do cliente" required />
-        <TextField label="E-mail do técnico (login de acesso)" value={technicianEmail} onChange={setTechnicianEmail} placeholder="tecnico@email.com" />
-        <TextField label="Nome do técnico responsável" value={technicianName} onChange={setTechnicianName} placeholder="Quem fez a instalação" />
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>📋 Ficha Técnica de Implantação do Sistema</div>
+        <button onClick={onCancel} className="text-xs font-semibold px-3 py-1.5 rounded-lg border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>← Voltar</button>
       </div>
 
-      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
-        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>📦 Migração de dados</div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <CheckField label="Migração do banco de dados" checked={dbMigrationDone} onChange={setDbMigrationDone} />
-          <CheckField label="Migração de produtos/estoque" checked={productsMigrationDone} onChange={setProductsMigrationDone} />
-          <CheckField label="Migração de clientes/fornecedores" checked={clientsMigrationDone} onChange={setClientsMigrationDone} />
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <TextField label="Nº da implantação" value={numero} onChange={setNumero} placeholder="Ex: 001/2026" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da ficha</span>
+          <input type="date" value={dataFicha} onChange={(e) => setDataFicha(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
+        <TextField label="Técnico/consultor responsável" value={technicianName} onChange={setTechnicianName} placeholder="Nome" />
+        <TextField label="Versão do sistema" value={versaoSistema} onChange={setVersaoSistema} placeholder="Ex: 2026.3" />
+      </div>
+      <TextField label="E-mail do técnico (login de acesso, se aplicável)" value={technicianEmail} onChange={setTechnicianEmail} placeholder="tecnico@email.com" />
+
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.ink }}>1. Dados do cliente</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TextField label="Cliente (nome de exibição)" value={clientName} onChange={setClientName} required placeholder="Nome do cliente" />
+          <TextField label="Razão social" value={razaoSocial} onChange={setRazaoSocial} placeholder="Razão social" />
+          <TextField label="Nome fantasia" value={nomeFantasia} onChange={setNomeFantasia} placeholder="Nome fantasia" />
+          <TextField label="CNPJ" value={cnpj} onChange={setCnpj} placeholder="00.000.000/0000-00" />
+          <TextField label="Responsável pelo atendimento" value={responsavelAtendimento} onChange={setResponsavelAtendimento} placeholder="Nome" />
+          <TextField label="Telefone" value={telefone} onChange={setTelefone} placeholder="(11) 1234-5678" />
+          <TextField label="WhatsApp" value={whatsapp} onChange={setWhatsapp} placeholder="(11) 91234-5678" />
+          <TextField label="E-mail" value={email} onChange={setEmail} placeholder="contato@cliente.com" />
         </div>
+        <TextField label="Endereço" value={endereco} onChange={setEndereco} placeholder="Endereço completo" />
       </div>
 
-      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
-        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>🖥️ Instalação</div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-2">
-          <CheckField label="Instalação concluída" checked={installationDone} onChange={setInstallationDone} />
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.ink }}>2. Dados da implantação</div>
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Tipo de atendimento</span>
+          <div className="flex gap-2 flex-wrap">
+            {["presencial", "remoto", "hibrido"].map((op) => (
+              <label key={op} className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer capitalize" style={{ borderColor: tipoAtendimento === op ? COLORS.brandLight : COLORS.cardBorder, color: tipoAtendimento === op ? COLORS.brandLight : COLORS.ink }}>
+                <input type="radio" name="tipoAt" checked={tipoAtendimento === op} onChange={() => setTipoAtendimento(op)} /> {op === "hibrido" ? "Híbrido" : op}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <label className="block">
-            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de término</span>
-            <input type="date" value={installationDate} onChange={(e) => setInstallationDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de início</span>
+            <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
           </label>
-          <TextField label="Quantos computadores instalados" value={computersCount} onChange={setComputersCount} type="number" placeholder="0" />
-        </div>
-        <div className="mb-2">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cloud</span>
-          <div className="flex gap-2">
-            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer" style={{ borderColor: cloud === "sim" ? COLORS.success : COLORS.cardBorder, color: cloud === "sim" ? COLORS.success : COLORS.ink }}>
-              <input type="radio" name="cloud" checked={cloud === "sim"} onChange={() => setCloud("sim")} /> Sim
-            </label>
-            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer" style={{ borderColor: cloud === "nao" ? COLORS.danger : COLORS.cardBorder, color: cloud === "nao" ? COLORS.danger : COLORS.ink }}>
-              <input type="radio" name="cloud" checked={cloud === "nao"} onChange={() => setCloud("nao")} /> Não
-            </label>
-          </div>
-        </div>
-        <div className="mb-2">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Módulos instalados</span>
-          <div className="flex flex-wrap gap-2">
-            <CheckField label="Loja" checked={modLoja} onChange={setModLoja} />
-            <CheckField label="Financeiro" checked={modFinanceiro} onChange={setModFinanceiro} />
-            <CheckField label="Produção" checked={modProducao} onChange={setModProducao} />
-            <CheckField label="NF-e" checked={modNfe} onChange={setModNfe} />
-            <CheckField label="RFID / Etiqueta" checked={modRfid} onChange={setModRfid} />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
-          <CheckField label="Certificado digital de NF-e instalado" checked={nfeCertInstalled} onChange={setNfeCertInstalled} />
-          <CheckField label="Impressora de etiqueta/código de barras configurada" checked={labelPrinterConfigured} onChange={setLabelPrinterConfigured} />
-          <CheckField label="Internet/rede testada e funcionando" checked={networkTested} onChange={setNetworkTested} />
-          <CheckField label="Backup inicial configurado" checked={backupConfigured} onChange={setBackupConfigured} />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <CheckField label="Acesso remoto configurado (suporte futuro)" checked={remoteAccessConfigured} onChange={setRemoteAccessConfigured} />
-          <TextField label="Ferramenta / ID de acesso remoto" value={remoteAccessInfo} onChange={setRemoteAccessInfo} placeholder="Ex: AnyDesk 123 456 789" />
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de conclusão</span>
+            <input type="date" value={dataConclusao} onChange={(e) => setDataConclusao(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          </label>
+          <TextField label="Usuários envolvidos" value={usuariosEnvolvidos} onChange={setUsuariosEnvolvidos} placeholder="Nomes" />
+          <TextField label="Qtd. de computadores" value={computersCount} onChange={setComputersCount} type="number" placeholder="0" />
         </div>
       </div>
 
-      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
-        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>🎓 Treinamento</div>
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.ink }}>3. Informações técnicas do computador / acesso remoto</div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <CheckField label="Treinamento realizado" checked={trainingDone} onChange={setTrainingDone} />
+          <TextField label="Nome do computador (hostname)" value={hostname} onChange={setHostname} placeholder="PC-LOJA01" />
+          <TextField label="Usuário do Windows" value={usuarioWindows} onChange={setUsuarioWindows} placeholder="Usuário" />
+          <TextField label="Sistema operacional" value={sistemaOperacional} onChange={setSistemaOperacional} placeholder="Windows 11" />
+          <TextField label="IP do computador" value={ipComputador} onChange={setIpComputador} placeholder="192.168.0.10" />
+          <TextField label="Servidor" value={servidor} onChange={setServidor} placeholder="Nome/IP do servidor" />
+          <TextField label="Banco de dados" value={bancoDadosInfo} onChange={setBancoDadosInfo} placeholder="Ex: PostgreSQL" />
+          <TextField label="Número/ID da VPN" value={vpnId} onChange={setVpnId} placeholder="ID da VPN" />
+          <TextField label="Número/ID AnyDesk / NDesk" value={anydeskId} onChange={setAnydeskId} placeholder="ID de acesso remoto" />
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da instalação</span>
+            <input type="date" value={dataInstalacaoPc} onChange={(e) => setDataInstalacaoPc(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          </label>
+        </div>
+      </div>
+
+      <div className="pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <ChecklistSection title="4. Instalação e configuração do sistema" items={checklistInstalacao} onChange={setChecklistInstalacao} withObs />
+      </div>
+
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <ChecklistSection title="5. Migração de dados" items={checklistMigracao} onChange={setChecklistMigracao} />
+        <TextField label="Outros dados migrados" value={migracaoOutros} onChange={setMigracaoOutros} placeholder="Opcional" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TextField label="Estoque anterior" value={estoqueAnterior} onChange={setEstoqueAnterior} placeholder="Ex: 1.200 peças" />
+          <TextField label="Estoque migrado" value={estoqueMigrado} onChange={setEstoqueMigrado} placeholder="Ex: 1.200 peças" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da migração</span>
+            <input type="date" value={dataMigracao} onChange={(e) => setDataMigracao(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          </label>
+          <div>
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Conferência realizada</span>
+            <div className="flex gap-2">
+              <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="confRealizada" checked={conferenciaRealizada === "sim"} onChange={() => setConferenciaRealizada("sim")} /> Sim</label>
+              <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="confRealizada" checked={conferenciaRealizada === "nao"} onChange={() => setConferenciaRealizada("nao")} /> Não</label>
+            </div>
+          </div>
+          <TextField label="Responsável pela conferência" value={responsavelConferencia} onChange={setResponsavelConferencia} placeholder="Nome" />
+        </div>
+        <TextField label="Observações da migração" value={obsMigracao} onChange={setObsMigracao} placeholder="Opcional" />
+      </div>
+
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.ink }}>6. Impressoras e equipamentos</div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <TextField label="Impressora — marca/modelo" value={impressoraMarcaModelo} onChange={setImpressoraMarcaModelo} placeholder="Marca/Modelo" />
+          <TextField label="Nº de série" value={impressoraNumeroSerie} onChange={setImpressoraNumeroSerie} placeholder="Nº/Série" />
+          <TextField label="Computador onde foi instalada" value={impressoraComputador} onChange={setImpressoraComputador} placeholder="PC" />
+        </div>
+        <TextField label="Leitor de código de barras — marca/modelo" value={leitorMarcaModelo} onChange={setLeitorMarcaModelo} placeholder="Marca/Modelo" />
+        <ChecklistSection items={checklistEquipamentos} onChange={setChecklistEquipamentos} />
+      </div>
+
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <ChecklistSection title="7. Etiqueta / código de barras" items={checklistEtiqueta} onChange={setChecklistEtiqueta} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TextField label="Modelo/tamanho da etiqueta" value={etiquetaModelo} onChange={setEtiquetaModelo} placeholder="Ex: 40x25mm" />
+          <TextField label="Tipo de código de barras" value={etiquetaTipoCodigo} onChange={setEtiquetaTipoCodigo} placeholder="Ex: EAN-13" />
+        </div>
+        <TextField label="Ajustes realizados" value={ajustesEtiqueta} onChange={setAjustesEtiqueta} placeholder="Opcional" />
+      </div>
+
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <ChecklistSection title="8. Configurações realizadas" items={checklistConfiguracoes} onChange={setChecklistConfiguracoes} />
+        <TextField label="Descrição dos ajustes realizados" value={descricaoAjustes} onChange={setDescricaoAjustes} placeholder="Opcional" />
+      </div>
+
+      <div className="pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <ChecklistSection title="9. Testes realizados" items={checklistTestes} onChange={setChecklistTestes} withObs />
+      </div>
+
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.ink }}>10. Treinamento</div>
+        <TextField label="Usuário(s) treinado(s)" value={usuariosTreinados} onChange={setUsuariosTreinados} placeholder="Nomes, separados por vírgula" />
+        <ChecklistSection title="Módulos apresentados" items={checklistTreinamento} onChange={setChecklistTreinamento} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TextField label="Carga horária" value={cargaHoraria} onChange={setCargaHoraria} placeholder="Ex: 4 horas" />
           <label className="block">
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do treinamento</span>
             <input type="date" value={trainingDate} onChange={(e) => setTrainingDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
           </label>
-          <TextField label="Para quem foi dado o treinamento" value={trainingGivenTo} onChange={setTrainingGivenTo} placeholder="Ex: Maria (gerente da loja)" />
         </div>
       </div>
 
-      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
-        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>✅ Testes</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <CheckField label="Teste de emissão de nota fiscal realizado" checked={nfeTestDone} onChange={setNfeTestDone} />
-          <CheckField label="Teste de emissão de boleto realizado" checked={boletoTestDone} onChange={setBoletoTestDone} />
+      <div className="pt-3 border-t space-y-2" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.ink }}>11. Pendências</div>
+          <button type="button" onClick={addPendencia} className="text-xs font-semibold px-2.5 py-1 rounded-lg border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar pendência</button>
         </div>
+        {pendencias.length === 0 && <div className="text-xs" style={{ color: COLORS.inkFaint }}>Nenhuma pendência registrada.</div>}
+        {pendencias.map((p, i) => (
+          <div key={i} className="flex gap-2 items-center flex-wrap">
+            <input value={p.pendencia} onChange={(e) => updatePendencia(i, "pendencia", e.target.value)} placeholder="Pendência" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input value={p.responsavel} onChange={(e) => updatePendencia(i, "responsavel", e.target.value)} placeholder="Responsável" className="w-32 rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input value={p.prazo} onChange={(e) => updatePendencia(i, "prazo", e.target.value)} placeholder="Prazo" className="w-24 rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <select value={p.status} onChange={(e) => updatePendencia(i, "status", e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+              <option value="aberta">Aberta</option>
+              <option value="concluida">Concluída</option>
+            </select>
+            <button type="button" onClick={() => removePendencia(i)} className="px-2 py-1.5 text-sm" style={{ color: COLORS.danger }}>🗑️</button>
+          </div>
+        ))}
       </div>
 
-      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
-        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>🤝 Encerramento</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-          <CheckField label="Contrato assinado" checked={contractSigned} onChange={setContractSigned} />
+      <TextField label="12. Observações técnicas" value={obsTecnicas} onChange={setObsTecnicas} placeholder="Opcional" />
+
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.ink }}>13. Conclusão da implantação</div>
+        <div className="flex gap-2 flex-wrap">
+          {[["concluida", "Implantação concluída"], ["concluida_pendencias", "Concluída com pendências"], ["nao_concluida", "Não concluída"]].map(([val, lb]) => (
+            <label key={val} className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer" style={{ borderColor: statusFinal === val ? COLORS.brandLight : COLORS.cardBorder, color: statusFinal === val ? COLORS.brandLight : COLORS.ink }}>
+              <input type="radio" name="statusFinal" checked={statusFinal === val} onChange={() => setStatusFinal(val)} /> {lb}
+            </label>
+          ))}
+        </div>
+        <TextField label="Observação final" value={obsFinal} onChange={setObsFinal} placeholder="Opcional" />
+      </div>
+
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.ink }}>14. Termo de aceite do serviço</div>
+        <p className="text-[11px]" style={{ color: COLORS.inkMuted }}>Declaro que os serviços de implantação, configuração, migração, instalação e/ou ajustes descritos nesta ficha técnica foram realizados e apresentados ao responsável pelo cliente.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <TextField label="Nome do responsável (cliente)" value={clienteRespNome} onChange={setClienteRespNome} placeholder="Nome" />
+          <TextField label="Cargo" value={clienteRespCargo} onChange={setClienteRespCargo} placeholder="Cargo" />
           <label className="block">
-            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de retorno / follow-up</span>
-            <input type="date" value={followupDate} onChange={(e) => setFollowupDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do aceite</span>
+            <input type="date" value={aceiteData} onChange={(e) => setAceiteData(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
           </label>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <TextField label="Contato principal de suporte (nome)" value={supportContactName} onChange={setSupportContactName} placeholder="Nome" />
-          <TextField label="Telefone do contato de suporte" value={supportContactPhone} onChange={setSupportContactPhone} placeholder="(11) 91234-5678" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Visto/Assinatura do cliente</span>
+            <SignatureCanvas value={aceiteAssinatura} onChange={setAceiteAssinatura} />
+          </div>
+          <div>
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Assinatura do técnico responsável</span>
+            <SignatureCanvas value={tecnicoAssinatura} onChange={setTecnicoAssinatura} />
+          </div>
         </div>
       </div>
 
-      <TextField label="Observações / pendências" value={notes} onChange={setNotes} placeholder="Opcional" />
-
-      <div className="flex gap-2">
-        <button
-          disabled={!canSave}
-          onClick={() => onSave({
-            id: initial?.id || uid(), client_name: clientName.trim(), technician_email: technicianEmail.trim() || null, technician_name: technicianName.trim() || null,
-            db_migration_done: dbMigrationDone, products_migration_done: productsMigrationDone, clients_migration_done: clientsMigrationDone,
-            installation_done: installationDone, installation_date: installationDate || null, computers_count: computersCount ? Number(computersCount) : null,
-            cloud: cloud === "sim" ? true : cloud === "nao" ? false : null,
-            modules_installed: { loja: modLoja, financeiro: modFinanceiro, producao: modProducao, nfe: modNfe, rfid: modRfid },
-            nfe_certificate_installed: nfeCertInstalled, label_printer_configured: labelPrinterConfigured, network_tested: networkTested,
-            remote_access_configured: remoteAccessConfigured, remote_access_info: remoteAccessInfo.trim() || null, backup_configured: backupConfigured,
-            training_done: trainingDone, training_date: trainingDate || null, training_given_to: trainingGivenTo.trim() || null,
-            nfe_test_done: nfeTestDone, boleto_test_done: boletoTestDone,
-            contract_signed: contractSigned, support_contact_name: supportContactName.trim() || null, support_contact_phone: supportContactPhone.trim() || null,
-            followup_date: followupDate || null, notes: notes.trim(),
-          })}
-          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
-          Salvar ficha técnica
-        </button>
+      <div className="flex gap-2 pt-2">
+        <button disabled={!canSave} onClick={() => onSave(buildPayload())} className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>Salvar ficha técnica</button>
         <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
       </div>
     </div>
@@ -2313,34 +2603,204 @@ function App() {
     await loadTechImplementations();
     showToast("Removida.");
   }
-  const TECH_FIELDS = [
-    { key: "db_migration_done", label: "Migração do banco de dados" },
-    { key: "products_migration_done", label: "Migração de produtos/estoque" },
-    { key: "clients_migration_done", label: "Migração de clientes/fornecedores" },
-    { key: "installation_done", label: "Instalação concluída" },
-    { key: "nfe_certificate_installed", label: "Certificado NF-e instalado" },
-    { key: "label_printer_configured", label: "Impressora de etiqueta configurada" },
-    { key: "network_tested", label: "Rede testada" },
-    { key: "remote_access_configured", label: "Acesso remoto configurado" },
-    { key: "backup_configured", label: "Backup inicial configurado" },
-    { key: "training_done", label: "Treinamento realizado" },
-    { key: "nfe_test_done", label: "Teste de NF-e realizado" },
-    { key: "boleto_test_done", label: "Teste de boleto realizado" },
-    { key: "contract_signed", label: "Contrato assinado" },
-  ];
 
-  async function handleToggleTechField(t, key) {
-    const newVal = !t[key];
-    const patch = { [key]: newVal };
-    if (key === "training_done" && newVal && !t.training_date) patch.training_date = new Date().toISOString().slice(0, 10);
-    if (key === "installation_done" && newVal && !t.installation_date) patch.installation_date = new Date().toISOString().slice(0, 10);
-    await supa.from("tech_implementations").update(patch).eq("id", t.id);
-    await loadTechImplementations();
+  function generateTechImplementationPDF(t) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 15;
+
+    function ensureSpace(needed) { if (y + needed > 280) { doc.addPage(); y = 15; } }
+    function sectionTitle(txt) {
+      ensureSpace(12);
+      doc.setFillColor(124, 92, 255);
+      doc.rect(14, y, pageWidth - 28, 7, "F");
+      doc.setFontSize(9.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(txt, 16, y + 5);
+      y += 11;
+      doc.setTextColor(30);
+    }
+    function fieldLine(label, value) {
+      ensureSpace(6);
+      doc.setFontSize(8.5);
+      doc.setTextColor(90);
+      doc.text(`${label}:`, 14, y);
+      doc.setTextColor(30);
+      doc.text(String(value || "-"), 14 + doc.getTextWidth(`${label}: `) + 1, y);
+      y += 5.5;
+    }
+    function checklistTable(items, withObs) {
+      const body = items.map((it) => withObs ? [it.done ? "X" : "", it.label, it.obs || ""] : [it.done ? "X" : "", it.label]);
+      doc.autoTable({
+        startY: y,
+        head: withObs ? [["OK", "Item", "Observação"]] : [["OK", "Item"]],
+        body,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [230, 230, 240], textColor: 20 },
+        columnStyles: { 0: { cellWidth: 10, halign: "center" } },
+        margin: { left: 14, right: 14 },
+      });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
+    try { doc.addImage(LOGO_DATA_URI, "PNG", (pageWidth - 44) / 2, 8, 44, 13); } catch (e) {}
+    y = 26;
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text("FICHA TÉCNICA DE IMPLANTAÇÃO DO SISTEMA", pageWidth / 2, y, { align: "center" });
+    y += 8;
+    doc.setFontSize(8.5);
+    doc.setTextColor(90);
+    doc.text(`Nº: ${t.numero || "-"}   ·   Data: ${fmtDate(t.created_at?.slice(0, 10))}   ·   Técnico: ${t.technician_name || "-"}   ·   Versão: ${t.versao_sistema || "-"}`, pageWidth / 2, y, { align: "center" });
+    y += 8;
+
+    sectionTitle("1. DADOS DO CLIENTE");
+    fieldLine("Razão Social", t.razao_social);
+    fieldLine("Nome Fantasia", t.nome_fantasia || t.client_name);
+    fieldLine("CNPJ", t.cnpj);
+    fieldLine("Responsável pelo atendimento", t.responsavel_atendimento);
+    fieldLine("Telefone / WhatsApp", `${t.telefone || "-"}  /  ${t.whatsapp || "-"}`);
+    fieldLine("E-mail", t.email);
+    fieldLine("Endereço", t.endereco);
+
+    sectionTitle("2. DADOS DA IMPLANTAÇÃO");
+    fieldLine("Tipo de atendimento", t.tipo_atendimento === "hibrido" ? "Híbrido" : t.tipo_atendimento);
+    fieldLine("Data de início / conclusão", `${fmtDate(t.data_inicio)}  a  ${fmtDate(t.data_conclusao)}`);
+    fieldLine("Usuários envolvidos", t.usuarios_envolvidos);
+    fieldLine("Quantidade de computadores", t.computers_count);
+
+    sectionTitle("3. INFORMAÇÕES TÉCNICAS DO COMPUTADOR");
+    fieldLine("Hostname", t.hostname);
+    fieldLine("Usuário do Windows", t.usuario_windows);
+    fieldLine("Sistema operacional", t.sistema_operacional);
+    fieldLine("IP do computador", t.ip_computador);
+    fieldLine("Servidor", t.servidor);
+    fieldLine("Banco de dados", t.banco_dados_info);
+    fieldLine("VPN (ID)", t.vpn_id);
+    fieldLine("AnyDesk / NDesk (ID)", t.anydesk_id);
+    fieldLine("Data da instalação", fmtDate(t.data_instalacao_pc));
+
+    sectionTitle("4. INSTALAÇÃO E CONFIGURAÇÃO DO SISTEMA");
+    checklistTable(t.checklist_instalacao || [], true);
+
+    sectionTitle("5. MIGRAÇÃO DE DADOS");
+    checklistTable(t.checklist_migracao_dados || []);
+    if (t.migracao_outros) fieldLine("Outros dados migrados", t.migracao_outros);
+    fieldLine("Estoque anterior / migrado", `${t.estoque_anterior || "-"}  →  ${t.estoque_migrado || "-"}`);
+    fieldLine("Data da migração", fmtDate(t.data_migracao));
+    fieldLine("Conferência realizada", t.conferencia_realizada === true ? "Sim" : t.conferencia_realizada === false ? "Não" : "-");
+    fieldLine("Responsável pela conferência", t.responsavel_conferencia);
+    if (t.obs_migracao) fieldLine("Observações", t.obs_migracao);
+
+    sectionTitle("6. IMPRESSORAS E EQUIPAMENTOS");
+    fieldLine("Impressora — marca/modelo", t.impressora_marca_modelo);
+    fieldLine("Nº de série", t.impressora_numero_serie);
+    fieldLine("Computador instalado", t.impressora_computador);
+    fieldLine("Leitor de código de barras", t.leitor_marca_modelo);
+    checklistTable(t.checklist_equipamentos || []);
+
+    sectionTitle("7. ETIQUETA / CÓDIGO DE BARRAS");
+    checklistTable(t.checklist_etiqueta || []);
+    fieldLine("Modelo/tamanho da etiqueta", t.etiqueta_modelo);
+    fieldLine("Tipo de código de barras", t.etiqueta_tipo_codigo);
+    if (t.ajustes_etiqueta) fieldLine("Ajustes realizados", t.ajustes_etiqueta);
+
+    sectionTitle("8. CONFIGURAÇÕES REALIZADAS");
+    checklistTable(t.checklist_configuracoes || []);
+    if (t.descricao_ajustes) fieldLine("Descrição dos ajustes", t.descricao_ajustes);
+
+    sectionTitle("9. TESTES REALIZADOS");
+    checklistTable(t.checklist_testes || [], true);
+
+    sectionTitle("10. TREINAMENTO");
+    fieldLine("Usuário(s) treinado(s)", t.usuarios_treinados);
+    checklistTable(t.checklist_treinamento_modulos || []);
+    fieldLine("Carga horária", t.carga_horaria);
+    fieldLine("Data do treinamento", fmtDate(t.training_date));
+
+    sectionTitle("11. PENDÊNCIAS");
+    if ((t.pendencias || []).length === 0) {
+      ensureSpace(6);
+      doc.setFontSize(8.5); doc.setTextColor(90);
+      doc.text("Nenhuma pendência registrada.", 14, y); y += 6;
+    } else {
+      doc.autoTable({
+        startY: y,
+        head: [["Pendência", "Responsável", "Prazo", "Status"]],
+        body: t.pendencias.map((p) => [p.pendencia || "-", p.responsavel || "-", p.prazo || "-", p.status === "concluida" ? "Concluída" : "Aberta"]),
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [230, 230, 240], textColor: 20 },
+        margin: { left: 14, right: 14 },
+      });
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
+    if (t.obs_tecnicas) {
+      sectionTitle("12. OBSERVAÇÕES TÉCNICAS");
+      ensureSpace(12);
+      doc.setFontSize(8.5); doc.setTextColor(30);
+      doc.text(doc.splitTextToSize(t.obs_tecnicas, pageWidth - 28), 14, y);
+      y += 10;
+    }
+
+    sectionTitle("13. CONCLUSÃO DA IMPLANTAÇÃO");
+    const statusLabel = { concluida: "✓ Implantação concluída", concluida_pendencias: "✓ Implantação concluída com pendências", nao_concluida: "✗ Implantação não concluída" };
+    fieldLine("Status", statusLabel[t.status_final] || "-");
+    fieldLine("Data de conclusão", fmtDate(t.data_conclusao));
+    if (t.obs_final) fieldLine("Observação final", t.obs_final);
+
+    sectionTitle("14. TERMO DE ACEITE DO SERVIÇO");
+    ensureSpace(14);
+    doc.setFontSize(8);
+    doc.setTextColor(70);
+    doc.text(doc.splitTextToSize("Declaro que os serviços de implantação, configuração, migração, instalação e/ou ajustes descritos nesta ficha técnica foram realizados e apresentados ao responsável pelo cliente.", pageWidth - 28), 14, y);
+    y += 12;
+
+    ensureSpace(60);
+    const colW = (pageWidth - 28 - 10) / 2;
+    const startY = y;
+    doc.setFontSize(8.5); doc.setTextColor(30);
+    doc.text("RESPONSÁVEL PELO CLIENTE", 14, y);
+    doc.text("TÉCNICO RESPONSÁVEL", 14 + colW + 10, y);
+    y += 5;
+    if (t.aceite_assinatura) { try { doc.addImage(t.aceite_assinatura, "PNG", 14, y, colW - 10, 22); } catch (e) {} }
+    if (t.tecnico_assinatura) { try { doc.addImage(t.tecnico_assinatura, "PNG", 14 + colW + 10, y, colW - 10, 22); } catch (e) {} }
+    y += 24;
+    doc.setDrawColor(150);
+    doc.line(14, y, 14 + colW - 10, y);
+    doc.line(14 + colW + 10, y, 14 + colW + 10 + colW - 10, y);
+    y += 4;
+    doc.setFontSize(8);
+    doc.text(`${t.cliente_resp_nome || "Nome"}${t.cliente_resp_cargo ? " - " + t.cliente_resp_cargo : ""}`, 14, y);
+    doc.text(t.technician_name || "Nome", 14 + colW + 10, y);
+    y += 4;
+    doc.text(`Data: ${fmtDate(t.aceite_data)}`, 14, y);
+    doc.text(`Data: ${fmtDate(t.aceite_data)}`, 14 + colW + 10, y);
+
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(150);
+      doc.text(`Ficha técnica — ${t.client_name}`, 14, 293);
+      doc.text(`Página ${i} de ${pageCount}`, pageWidth - 14, 293, { align: "right" });
+    }
+    return doc;
   }
-  async function handleUpdateTechNotes(t, notes) {
-    await supa.from("tech_implementations").update({ notes }).eq("id", t.id);
-    await loadTechImplementations();
+
+  function previewTechImplementationPDF(t) {
+    try {
+      const doc = generateTechImplementationPDF(t);
+      const blob = doc.output("blob");
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch (e) {
+      showToast("Erro ao gerar a visualização.");
+      console.error(e);
+    }
   }
+
   async function handleSaveImplantacao(imp) {
     const { error } = await supa.from("implantacoes").upsert(imp);
     if (error) { showToast(`Erro: ${error.message}`); return; }
@@ -4423,6 +4883,7 @@ function App() {
               {(() => {
                 const isTech = userRole === "tecnico";
                 const list = isTech ? techImplementations.filter((t) => t.technician_email === session?.user?.email) : techImplementations;
+                const statusLabel = { concluida: "Concluída", concluida_pendencias: "Concluída c/ pendências", nao_concluida: "Não concluída" };
                 return (
                   <>
                     {!isTech && (
@@ -4432,7 +4893,7 @@ function App() {
                     )}
                     {showTechForm && !isTech && <div className="mb-4"><TechImplementationForm initial={editingTech} onSave={handleSaveTechImplementation} onCancel={() => { setShowTechForm(false); setEditingTech(null); }} /></div>}
 
-                    {list.length === 0 ? (
+                    {!showTechForm && (list.length === 0 ? (
                       <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                         <div className="text-3xl mb-2">🛠️</div>
                         <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma ficha técnica {isTech ? "atribuída a você" : "registrada"} ainda.</div>
@@ -4440,12 +4901,15 @@ function App() {
                     ) : (
                       <div className="space-y-3">
                         {list.map((t) => {
-                          const doneCount = TECH_FIELDS.filter((f) => t[f.key]).length;
-                          const total = TECH_FIELDS.length;
+                          const allChecklists = [
+                            ...(t.checklist_instalacao || []), ...(t.checklist_migracao_dados || []), ...(t.checklist_equipamentos || []),
+                            ...(t.checklist_etiqueta || []), ...(t.checklist_configuracoes || []), ...(t.checklist_testes || []), ...(t.checklist_treinamento_modulos || []),
+                          ];
+                          const doneCount = allChecklists.filter((it) => it.done).length;
+                          const total = allChecklists.length || 1;
                           const pct = Math.round((doneCount / total) * 100);
-                          const statusColor = pct === 100 ? COLORS.success : pct > 0 ? COLORS.warn : COLORS.inkMuted;
-                          const mods = t.modules_installed || {};
-                          const modsList = [mods.loja && "Loja", mods.financeiro && "Financeiro", mods.producao && "Produção", mods.nfe && "NF-e", mods.rfid && "RFID"].filter(Boolean);
+                          const statusColor = t.status_final === "concluida" ? COLORS.success : t.status_final === "nao_concluida" ? COLORS.danger : pct > 0 ? COLORS.warn : COLORS.inkMuted;
+                          const pendAbertas = (t.pendencias || []).filter((p) => p.status !== "concluida").length;
                           return (
                             <div key={t.id} className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -4454,66 +4918,45 @@ function App() {
                                   <div>
                                     <div className="font-bold text-sm flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
                                       {t.client_name}
-                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: statusColor, background: `${statusColor}22` }}>{pct}% concluído</span>
+                                      {t.numero && <span className="text-[10px]" style={{ color: COLORS.inkFaint }}>Nº {t.numero}</span>}
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: statusColor, background: `${statusColor}22` }}>
+                                        {t.status_final ? statusLabel[t.status_final] : `${pct}% concluído`}
+                                      </span>
+                                      {pendAbertas > 0 && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }}>{pendAbertas} pendência(s)</span>}
                                     </div>
                                     <div className="text-xs" style={{ color: COLORS.inkMuted }}>
                                       {t.technician_name || t.technician_email || "sem técnico atribuído"}
-                                      {t.computers_count ? ` · ${t.computers_count} computador(es)` : ""}
-                                      {t.cloud !== null && t.cloud !== undefined ? ` · Cloud: ${t.cloud ? "Sim" : "Não"}` : ""}
-                                      {modsList.length > 0 ? ` · Módulos: ${modsList.join(", ")}` : ""}
+                                      {t.data_inicio ? ` · início: ${fmtDate(t.data_inicio)}` : ""}
+                                      {t.data_conclusao ? ` · conclusão: ${fmtDate(t.data_conclusao)}` : ""}
                                     </div>
-                                    {(t.training_done || t.training_given_to) && (
-                                      <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>🎓 Treinamento: {t.training_given_to || "-"}{t.training_date ? ` em ${fmtDate(t.training_date)}` : ""}</div>
-                                    )}
-                                    {(t.support_contact_name || t.support_contact_phone) && (
-                                      <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>📞 Suporte: {t.support_contact_name || "-"} {t.support_contact_phone ? `· ${t.support_contact_phone}` : ""}</div>
-                                    )}
-                                    {t.followup_date && <div className="text-[11px]" style={{ color: COLORS.brandLight }}>🔁 Retorno previsto: {fmtDate(t.followup_date)}</div>}
                                   </div>
                                 </div>
-                                {!isTech && (
-                                  <div className="flex gap-1.5">
-                                    <button onClick={() => { setEditingTech(t); setShowTechForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
-                                    <button onClick={() => handleDeleteTechImplementation(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
-                                  </div>
-                                )}
+                                <div className="flex gap-1.5">
+                                  <button onClick={() => previewTechImplementationPDF(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📄 Ver PDF</button>
+                                  {!isTech && (
+                                    <>
+                                      <button onClick={() => { setEditingTech(t); setShowTechForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
+                                      <button onClick={() => handleDeleteTechImplementation(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
 
-                              <div className="w-full h-1.5 rounded-full mb-3" style={{ background: "rgba(255,255,255,0.08)" }}>
+                              <div className="w-full h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
                                 <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: statusColor }} />
                               </div>
-
-                              <div className="flex flex-wrap gap-2 mb-3">
-                                {TECH_FIELDS.map((f) => (
-                                  <button key={f.key} onClick={() => handleToggleTechField(t, f.key)}
-                                    className="text-[11px] font-semibold px-2.5 py-1.5 rounded-full border"
-                                    style={{ borderColor: t[f.key] ? COLORS.success : COLORS.cardBorder, color: t[f.key] ? COLORS.success : COLORS.inkMuted, background: t[f.key] ? "rgba(34,197,94,0.1)" : "transparent" }}>
-                                    {t[f.key] ? "✓" : "○"} {f.label}
-                                  </button>
-                                ))}
-                              </div>
-
-                              {t.remote_access_info && <div className="text-[11px] mb-2" style={{ color: COLORS.inkMuted }}>🖥️ Acesso remoto: {t.remote_access_info}</div>}
-
-                              <textarea
-                                key={`notes-${t.id}`}
-                                defaultValue={t.notes || ""}
-                                placeholder="Anotações sobre o andamento..."
-                                onBlur={(e) => { if (e.target.value !== (t.notes || "")) handleUpdateTechNotes(t, e.target.value); }}
-                                rows={2}
-                                className="w-full rounded-lg border px-3 py-2 text-xs outline-none"
-                                style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}
-                              />
+                              <div className="text-[11px] mt-1" style={{ color: COLORS.inkFaint }}>{doneCount}/{total} itens marcados em todas as seções · clique em "✏️ Editar" pra abrir a ficha completa</div>
                             </div>
                           );
                         })}
                       </div>
-                    )}
+                    ))}
                   </>
                 );
               })()}
             </div>
           )}
+
 
           {tab === "vtvr" && (
             <div>

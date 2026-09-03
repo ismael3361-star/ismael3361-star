@@ -2482,8 +2482,12 @@ function App() {
 
   useEffect(() => {
     if (!session?.user?.email) { setUserRole(null); return; }
-    supa.from("user_roles").select("role").eq("email", session.user.email).maybeSingle()
-      .then(({ data }) => setUserRole(data?.role || "admin"));
+    const myEmail = session.user.email.trim();
+    supa.from("user_roles").select("role").ilike("email", myEmail).maybeSingle()
+      .then(({ data }) => {
+        if (session.user.email.trim() === myEmail) setUserRole(data?.role || "admin");
+      })
+      .catch(() => setUserRole("admin"));
   }, [session]);
 
   useEffect(() => {
@@ -3908,6 +3912,7 @@ function App() {
           <div className="hidden sm:block min-w-0 flex-1">
             <div className="text-xs font-bold truncate" style={{ color: COLORS.ink }}>Administrador</div>
             <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{session.user.email}</div>
+            <div className="text-[10px] truncate font-bold" style={{ color: COLORS.warn }}>[debug] cargo detectado: {String(userRole)}</div>
           </div>
           <button onClick={() => supa.auth.signOut()} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.danger }}>Sair</button>
         </div>

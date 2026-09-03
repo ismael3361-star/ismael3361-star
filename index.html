@@ -2368,9 +2368,11 @@ function Login() {
 
   async function handleLogin() {
     setErr(""); setBusy(true);
-    const { error } = await supa.auth.signInWithPassword({ email: email.trim(), password });
+    const raw = email.trim();
+    const loginEmail = raw.includes("@") ? raw : `${raw.toLowerCase().replace(/\s+/g, "")}@miredata.login`;
+    const { error } = await supa.auth.signInWithPassword({ email: loginEmail, password });
     setBusy(false);
-    if (error) setErr(`Erro: ${error.message || "e-mail ou senha incorretos"}`);
+    if (error) setErr(`Erro: ${error.message || "usuário ou senha incorretos"}`);
   }
 
   return (
@@ -2381,7 +2383,7 @@ function Login() {
           <div className="font-bold" style={{ color: COLORS.ink }}>ADM / MIRE</div>
         </div>
         <div className="space-y-2 mb-2">
-          <input type="email" value={email} placeholder="E-mail" onChange={(e) => setEmail(e.target.value)}
+          <input type="text" value={email} placeholder="Usuário ou e-mail" onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
           <div className="relative">
             <input type={showPassword ? "text" : "password"} value={password} placeholder="Senha" onChange={(e) => setPassword(e.target.value)}

@@ -2488,7 +2488,7 @@ function App() {
 
   useEffect(() => {
     if (userRole === "tecnico" && tab !== "implantacao_tecnica") setTab("implantacao_tecnica");
-  }, [userRole]);
+  }, [userRole, tab]);
 
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2500); };
 
@@ -3818,6 +3818,7 @@ function App() {
   if (userRole === null) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
   if (!settings) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
 
+  const effectiveTab = userRole === "tecnico" ? "implantacao_tecnica" : tab;
   const filterButtons = [
     { id: "todos", label: "Todos" }, { id: "pendente", label: "Em aberto" }, { id: "atrasado", label: "Atrasados" },
     { id: "em_breve", label: "Vence em breve" }, { id: "enviado", label: "Enviados" }, { id: "pago", label: "Pagos" },
@@ -3918,21 +3919,21 @@ function App() {
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
             <div>
               <h2 className="text-2xl font-extrabold tracking-tight" style={{ color: COLORS.ink }}>
-                {tab === "dashboard" && <>Olá, Administrador! <span>👋</span></>}
-                {tab === "clientes" && "Seus clientes"}
-                {tab === "boletos" && "Mensalidades do mês"}
-                {tab === "propostas" && "Propostas comerciais"}
-                {tab === "romaneio" && "Romaneio Etiqueta de Composição"}
-                {tab === "itag" && "RFID"}
-                {tab === "implantacoes" && "Controle de Implantações"}
-                {tab === "implantacao_tecnica" && "Implantação Técnica"}
-                {tab === "calendario" && "Calendário de Vencimentos"}
-                {tab === "vtvr" && "Vale Transporte / Vale Refeição"}
-                {tab === "relatorios" && "Relatórios"}
-                {tab === "config" && "Configurações de mensagens"}
+                {effectiveTab === "dashboard" && <>Olá, Administrador! <span>👋</span></>}
+                {effectiveTab === "clientes" && "Seus clientes"}
+                {effectiveTab === "boletos" && "Mensalidades do mês"}
+                {effectiveTab === "propostas" && "Propostas comerciais"}
+                {effectiveTab === "romaneio" && "Romaneio Etiqueta de Composição"}
+                {effectiveTab === "itag" && "RFID"}
+                {effectiveTab === "implantacoes" && "Controle de Implantações"}
+                {effectiveTab === "implantacao_tecnica" && "Implantação Técnica"}
+                {effectiveTab === "calendario" && "Calendário de Vencimentos"}
+                {effectiveTab === "vtvr" && "Vale Transporte / Vale Refeição"}
+                {effectiveTab === "relatorios" && "Relatórios"}
+                {effectiveTab === "config" && "Configurações de mensagens"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
-                {tab === "dashboard" ? "Visão geral do controle de mensalidade" : `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}`}
+                {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}`}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -3949,7 +3950,7 @@ function App() {
             </div>
           </div>
 
-          {tab === "dashboard" && (
+          {effectiveTab === "dashboard" && (
             <div className="space-y-4">
               {(() => {
                 const daysSinceBackup = settings.last_backup_at ? Math.floor((new Date() - new Date(settings.last_backup_at + "T00:00:00")) / 86400000) : null;
@@ -4143,7 +4144,7 @@ function App() {
             </div>
           )}
 
-          {tab === "calendario" && (
+          {effectiveTab === "calendario" && (
             <div>
               {(() => {
                 const year = monthDate.getFullYear(), month = monthDate.getMonth();
@@ -4188,7 +4189,7 @@ function App() {
             </div>
           )}
 
-          {tab === "clientes" && (
+          {effectiveTab === "clientes" && (
             <div>
               <div className="flex flex-col sm:flex-row gap-2 mb-2 sm:items-center">
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 Buscar por nome ou nº do banco..." className="rounded-lg border px-3 py-2 text-sm outline-none max-w-sm w-full" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
@@ -4299,7 +4300,7 @@ function App() {
             </div>
           )}
 
-          {tab === "boletos" && (
+          {effectiveTab === "boletos" && (
             <div>
               <div className="flex flex-col sm:flex-row gap-2 mb-3 sm:items-center">
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 Buscar por nome ou nº do banco..." className="rounded-lg border px-3 py-2 text-sm outline-none max-w-xs w-full" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
@@ -4492,7 +4493,7 @@ function App() {
             </div>
           )}
 
-          {tab === "propostas" && (
+          {effectiveTab === "propostas" && (
             <div>
               <div className="flex items-center justify-between mb-4">
                 <p className="text-xs" style={{ color: COLORS.inkMuted }}>Cadastro próprio (separado dos clientes de mensalidade), com implantação, treinamento e mensalidade detalhada por item. Gera PDF automaticamente.</p>
@@ -4571,7 +4572,7 @@ function App() {
             </div>
           )}
 
-          {tab === "romaneio" && (
+          {effectiveTab === "romaneio" && (
             <div>
               <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                 <p className="text-xs" style={{ color: COLORS.inkMuted }}>Gere romaneios de pedido em PDF com logo, itens, forma e prazo de pagamento. Fica salvo e pode ser visualizado, impresso ou exportado pra Excel a qualquer momento.</p>
@@ -4640,7 +4641,7 @@ function App() {
             </div>
           )}
 
-          {tab === "itag" && (
+          {effectiveTab === "itag" && (
             <div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -4792,7 +4793,7 @@ function App() {
             </div>
           )}
 
-          {tab === "implantacoes" && (
+          {effectiveTab === "implantacoes" && (
             <div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -4883,7 +4884,7 @@ function App() {
             </div>
           )}
 
-          {tab === "implantacao_tecnica" && (
+          {effectiveTab === "implantacao_tecnica" && (
             <div>
               {(() => {
                 const isTech = userRole === "tecnico";
@@ -4963,7 +4964,7 @@ function App() {
           )}
 
 
-          {tab === "vtvr" && (
+          {effectiveTab === "vtvr" && (
             <div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -5033,7 +5034,7 @@ function App() {
             </div>
           )}
 
-          {tab === "relatorios" && (
+          {effectiveTab === "relatorios" && (
             <div className="space-y-4">
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.danger, background: COLORS.card }}>
                 <div className="flex items-center justify-between px-4 py-3" style={{ background: "rgba(239,68,68,0.1)" }}>
@@ -5429,7 +5430,7 @@ function App() {
             </div>
           )}
 
-          {tab === "config" && (
+          {effectiveTab === "config" && (
             <div className="space-y-4">
               <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Chaves PIX por módulo</div>

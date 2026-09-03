@@ -2486,6 +2486,10 @@ function App() {
       .then(({ data }) => setUserRole(data?.role || "admin"));
   }, [session]);
 
+  useEffect(() => {
+    if (userRole === "tecnico" && tab !== "implantacao_tecnica") setTab("implantacao_tecnica");
+  }, [userRole]);
+
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2500); };
 
   const loadClients = useCallback(async () => {
@@ -3811,6 +3815,7 @@ function App() {
 
   if (session === undefined) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
   if (!session) return <Login />;
+  if (userRole === null) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
   if (!settings) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
 
   const filterButtons = [

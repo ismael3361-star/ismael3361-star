@@ -3912,13 +3912,15 @@ function App() {
           <div className="hidden sm:block min-w-0 flex-1">
             <div className="text-xs font-bold truncate" style={{ color: COLORS.ink }}>Administrador</div>
             <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{session.user.email}</div>
-            <div className="text-[10px] truncate font-bold" style={{ color: COLORS.warn }}>[debug] cargo detectado: {String(userRole)}</div>
           </div>
           <button onClick={() => supa.auth.signOut()} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.danger }}>Sair</button>
         </div>
       </aside>
 
       <main className="flex-1 min-w-0 overflow-y-auto">
+        <div style={{ background: "#F59E0B", color: "#1a1a1a", padding: "14px", fontSize: "16px", fontWeight: "bold", textAlign: "center" }}>
+          [DEBUG] e-mail logado: {session.user.email} — cargo detectado: {String(userRole)} — aba efetiva: {effectiveTab}
+        </div>
         <div className="max-w-6xl mx-auto px-5 sm:px-8 py-7">
 
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
@@ -3942,16 +3944,20 @@ function App() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 px-3 py-2 rounded-xl border text-sm font-semibold" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
-                <button onClick={() => changeMonth(-1)} style={{ color: COLORS.inkMuted }}>‹</button>
-                <span>{MONTHS_PT[monthDate.getMonth()].slice(0, 3)}/{monthDate.getFullYear()}</span>
-                <button onClick={() => changeMonth(1)} style={{ color: COLORS.inkMuted }}>›</button>
-              </div>
-              <button onClick={() => { setTab("clientes"); setEditing(null); setShowForm(true); }}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
-                style={{ background: COLORS.success }}>
-                <span>＋</span> Novo Cliente
-              </button>
+              {userRole !== "tecnico" && (
+                <>
+                  <div className="flex items-center gap-1 px-3 py-2 rounded-xl border text-sm font-semibold" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
+                    <button onClick={() => changeMonth(-1)} style={{ color: COLORS.inkMuted }}>‹</button>
+                    <span>{MONTHS_PT[monthDate.getMonth()].slice(0, 3)}/{monthDate.getFullYear()}</span>
+                    <button onClick={() => changeMonth(1)} style={{ color: COLORS.inkMuted }}>›</button>
+                  </div>
+                  <button onClick={() => { setTab("clientes"); setEditing(null); setShowForm(true); }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
+                    style={{ background: COLORS.success }}>
+                    <span>＋</span> Novo Cliente
+                  </button>
+                </>
+              )}
             </div>
           </div>
 

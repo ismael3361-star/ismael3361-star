@@ -97,8 +97,8 @@
 <script>
 /* PASSO 1: cole aqui a Project URL e a anon public key do seu projeto Supabase
    (Project Settings > API), depois de rodar o setup.sql */
-const SUPABASE_URL = "https://tvbemspbjhstjpcwujkl.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_9pb5__aNohZkRwZO4d7hHg_bHIb-LSZ";
+const SUPABASE_URL = "COLE_AQUI_SUA_PROJECT_URL";
+const SUPABASE_ANON_KEY = "COLE_AQUI_SUA_ANON_KEY";
 </script>
 
 <script type="text/babel" data-presets="react">
@@ -1793,6 +1793,129 @@ const DEFAULT_CHECKLIST_TREINAMENTO = [
   { label: "Impressão de etiquetas", done: false }, { label: "Relatórios", done: false },
 ];
 
+function ViewField({ label, value }) {
+  if (!value && value !== 0) return null;
+  return (
+    <div className="text-xs mb-1"><span style={{ color: COLORS.inkMuted }}>{label}: </span><span style={{ color: COLORS.ink }}>{value}</span></div>
+  );
+}
+function ViewChecklist({ items }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5 mb-2">
+      {items.map((it, i) => (
+        <span key={i} className="text-[11px] font-semibold px-2 py-1 rounded-full" style={{ color: it.done ? COLORS.success : COLORS.inkFaint, background: it.done ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.04)" }}>
+          {it.done ? "✓" : "○"} {it.label}{it.obs ? ` — ${it.obs}` : ""}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function TechImplementationViewer({ t, onClose }) {
+  const allChecklists = [
+    ...(t.checklist_instalacao || []), ...(t.checklist_migracao_dados || []), ...(t.checklist_equipamentos || []),
+    ...(t.checklist_etiqueta || []), ...(t.checklist_configuracoes || []), ...(t.checklist_testes || []), ...(t.checklist_treinamento_modulos || []),
+  ];
+  const doneCount = allChecklists.filter((it) => it.done).length;
+  const total = allChecklists.length || 1;
+  const pct = Math.round((doneCount / total) * 100);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }} onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b sticky top-0 flex items-center justify-between" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+          <div>
+            <div className="font-bold text-base" style={{ color: COLORS.ink }}>{t.client_name}</div>
+            <div className="text-xs" style={{ color: COLORS.inkMuted }}>
+              {t.updated_by ? `Última atualização: ${new Date(t.updated_at).toLocaleString("pt-BR")} por ${t.updated_by}` : "Ainda sem alterações registradas"}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-lg px-2" style={{ color: COLORS.inkMuted }}>✕</button>
+        </div>
+
+        <div className="p-4">
+          <div className="mb-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold" style={{ color: COLORS.ink }}>Progresso geral</span>
+              <span className="text-xs font-bold" style={{ color: pct === 100 ? COLORS.success : COLORS.warn }}>{doneCount}/{total} ({pct}%)</span>
+            </div>
+            <div className="w-full h-2 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+              <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: pct === 100 ? COLORS.success : COLORS.warn }} />
+            </div>
+          </div>
+
+          <ViewField label="Técnico responsável" value={t.technician_name || t.technician_email} />
+          <ViewField label="Tipo de atendimento" value={t.tipo_atendimento} />
+          <ViewField label="Data de início" value={fmtDate(t.data_inicio)} />
+          <ViewField label="Data de conclusão" value={fmtDate(t.data_conclusao)} />
+          <ViewField label="Quantidade de computadores" value={t.computers_count} />
+          <ViewField label="Cloud" value={t.cloud === true ? "Sim" : t.cloud === false ? "Não" : null} />
+
+          <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+            <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>📦 Migração de dados</div>
+            <ViewChecklist items={t.checklist_migracao_dados} />
+          </div>
+
+          <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+            <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>🖥️ Instalação</div>
+            <ViewChecklist items={t.checklist_instalacao} />
+          </div>
+
+          <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+            <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>🖨️ Equipamentos e etiqueta</div>
+            <ViewChecklist items={t.checklist_equipamentos} />
+            <ViewChecklist items={t.checklist_etiqueta} />
+          </div>
+
+          <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+            <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>⚙️ Configurações</div>
+            <ViewChecklist items={t.checklist_configuracoes} />
+          </div>
+
+          <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+            <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>✅ Testes</div>
+            <ViewChecklist items={t.checklist_testes} />
+          </div>
+
+          <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+            <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>🎓 Treinamento</div>
+            <ViewField label="Usuário(s) treinado(s)" value={t.usuarios_treinados} />
+            <ViewField label="Data do treinamento" value={fmtDate(t.training_date)} />
+            <ViewChecklist items={t.checklist_treinamento_modulos} />
+          </div>
+
+          {(t.pendencias || []).length > 0 && (
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+              <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>⚠️ Pendências</div>
+              {t.pendencias.map((p, i) => (
+                <div key={i} className="text-xs mb-1" style={{ color: p.status === "concluida" ? COLORS.success : COLORS.warn }}>
+                  {p.status === "concluida" ? "✓" : "○"} {p.pendencia} {p.responsavel ? `— ${p.responsavel}` : ""} {p.prazo ? `(prazo: ${p.prazo})` : ""}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {t.obs_tecnicas && (
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+              <div className="text-xs font-bold mb-1" style={{ color: COLORS.ink }}>Observações técnicas</div>
+              <div className="text-xs" style={{ color: COLORS.inkMuted }}>{t.obs_tecnicas}</div>
+            </div>
+          )}
+
+          {t.status_final && (
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ color: t.status_final === "concluida" ? COLORS.success : t.status_final === "nao_concluida" ? COLORS.danger : COLORS.warn, background: t.status_final === "concluida" ? "rgba(34,197,94,0.15)" : t.status_final === "nao_concluida" ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)" }}>
+                {t.status_final === "concluida" ? "✓ Implantação concluída" : t.status_final === "nao_concluida" ? "✗ Não concluída" : "✓ Concluída com pendências"}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TechImplementationForm({ initial, onSave, onCancel }) {
   const [numero, setNumero] = useState(initial?.numero || "");
   const [dataFicha, setDataFicha] = useState(initial?.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10));
@@ -2605,6 +2728,7 @@ function App() {
   const [globalSearch, setGlobalSearch] = useState("");
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showTechForm, setShowTechForm] = useState(false);
+  const [viewingTech, setViewingTech] = useState(null);
   const [editingTech, setEditingTech] = useState(null);
   const [showImplantacaoForm, setShowImplantacaoForm] = useState(false);
   const [editingImplantacao, setEditingImplantacao] = useState(null);
@@ -2793,7 +2917,8 @@ function App() {
     showToast(`${newOnes.length} despesa(s) gerada(s) pro próximo mês.`);
   }
   async function handleSaveTechImplementation(t) {
-    const { error } = await supa.from("tech_implementations").upsert(t);
+    const payload = { ...t, updated_at: new Date().toISOString(), updated_by: session?.user?.email || "desconhecido" };
+    const { error } = await supa.from("tech_implementations").upsert(payload);
     if (error) { showToast(`Erro: ${error.message}`); return; }
     await loadTechImplementations();
     setShowTechForm(false); setEditingTech(null);
@@ -5320,9 +5445,15 @@ function App() {
                                       {t.data_inicio ? ` · início: ${fmtDate(t.data_inicio)}` : ""}
                                       {t.data_conclusao ? ` · conclusão: ${fmtDate(t.data_conclusao)}` : ""}
                                     </div>
+                                    {t.updated_by && (
+                                      <div className="text-[11px]" style={{ color: COLORS.brandLight }}>
+                                        🔄 Última alteração: {new Date(t.updated_at).toLocaleString("pt-BR")} por {t.updated_by}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                                 <div className="flex gap-1.5">
+                                  <button onClick={() => setViewingTech(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>👁️ Visualizar</button>
                                   <button onClick={() => previewTechImplementationPDF(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📄 Ver PDF</button>
                                   <button onClick={() => { setEditingTech(t); setShowTechForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ {isTech ? "Preencher" : "Editar"}</button>
                                   {!isTech && (
@@ -6110,6 +6241,7 @@ function App() {
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-lg" style={{ background: COLORS.card, border: `1px solid ${COLORS.cardBorder}` }}>{toast}</div>}
       {pixModal && <PixQRModal {...pixModal} onClose={() => setPixModal(null)} />}
+      {viewingTech && <TechImplementationViewer t={viewingTech} onClose={() => setViewingTech(null)} />}
       {historyClient && <ClientHistoryModal client={historyClient} onClose={() => setHistoryClient(null)} />}
     </div>
   );

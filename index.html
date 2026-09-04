@@ -155,17 +155,29 @@ function emvField(id, value) {
   const len = String(value).length.toString().padStart(2, "0");
   return `${id}${len}${value}`;
 }
+function sanitizePixKey(key) {
+  const k = (key || "").trim();
+  if (!k) return k;
+  if (k.includes("@")) return k; // e-mail, mantém como está
+  if (k.startsWith("+")) return "+" + k.slice(1).replace(/\D/g, ""); // telefone, mantém o + e só dígitos depois
+  if (/[a-zA-Z]/.test(k) && k.includes("-")) return k; // parece chave aleatória (tem letras e traços), mantém como está
+  const digitsOnly = k.replace(/\D/g, "");
+  if (digitsOnly.length === 11 || digitsOnly.length === 14) return digitsOnly; // CPF (11) ou CNPJ (14): só números
+  return k;
+}
 function generatePixPayload({ key, name, city, value, txid }) {
   if (!key) return "";
+  const cleanKey = sanitizePixKey(key);
   const merchantName = (name || "MIREDATA").normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 25).toUpperCase();
   const merchantCity = (city || "SAO PAULO").normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 15).toUpperCase();
   const gui = emvField("00", "br.gov.bcb.pix");
-  const keyField = emvField("01", key.trim());
+  const keyField = emvField("01", cleanKey);
   const merchantAccountInfo = emvField("26", gui + keyField);
-  let payload = emvField("00", "01") + merchantAccountInfo + emvField("52", "0000") + emvField("53", "986");
+  let payload = emvField("00", "01") + emvField("01", "11") + merchantAccountInfo + emvField("52", "0000") + emvField("53", "986");
   if (value && Number(value) > 0) payload += emvField("54", Number(value).toFixed(2));
   payload += emvField("58", "BR") + emvField("59", merchantName || "MIREDATA") + emvField("60", merchantCity || "SAO PAULO");
-  payload += emvField("62", emvField("05", (txid || "***").replace(/[^a-zA-Z0-9]/g, "").substring(0, 25) || "***"));
+  const cleanTxid = (txid || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").substring(0, 25);
+  payload += emvField("62", emvField("05", cleanTxid || "***"));
   payload += "6304";
   return payload + crc16Pix(payload);
 }

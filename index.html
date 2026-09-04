@@ -114,6 +114,7 @@ const COLORS = {
   success: "#22C55E", warn: "#F59E0B", danger: "#EF4444", info: "#3B82F6",
   wa: "#22C55E", email: "#A78BFA",
 };
+const PROPOSAL_STAGE_COLORS = { enviada: "#3B82F6", negociacao: "#F59E0B", fechada: "#22C55E", perdida: "#EF4444" };
 
 // PWA: manifest e ícone dinâmicos a partir do logo (permite "instalar" o sistema como app)
 (function setupPWA() {
@@ -2462,6 +2463,9 @@ function App() {
   const [editingItagBilling, setEditingItagBilling] = useState(null);
   const [implantacoes, setImplantacoes] = useState([]);
   const [techImplementations, setTechImplementations] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showTechForm, setShowTechForm] = useState(false);
   const [editingTech, setEditingTech] = useState(null);
   const [showImplantacaoForm, setShowImplantacaoForm] = useState(false);
@@ -2603,11 +2607,22 @@ function App() {
     const { data } = await supa.from("tech_implementations").select("*").order("created_at", { ascending: false });
     setTechImplementations(data || []);
   }, []);
+  const loadActivityLog = useCallback(async () => {
+    const { data } = await supa.from("activity_log").select("*").order("created_at", { ascending: false }).limit(200);
+    setActivityLog(data || []);
+  }, []);
+  async function logActivity(action) {
+    try {
+      await supa.from("activity_log").insert({ id: uid(), user_email: session?.user?.email || "desconhecido", action });
+      loadActivityLog();
+    } catch (e) { /* log é best-effort, não trava a ação principal */ }
+  }
   async function handleSaveTechImplementation(t) {
     const { error } = await supa.from("tech_implementations").upsert(t);
     if (error) { showToast(`Erro: ${error.message}`); return; }
     await loadTechImplementations();
     setShowTechForm(false); setEditingTech(null);
+    logActivity(`Ficha técnica salva: ${t.client_name}`);
     showToast("Implantação técnica salva.");
   }
   async function handleDeleteTechImplementation(id) {
@@ -2970,7 +2985,7 @@ function App() {
     doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -3025,6 +3040,7 @@ function App() {
     await supa.from("clients").upsert(c);
     setShowForm(false); setEditing(null);
     await loadClients();
+    logActivity(`Cliente salvo: ${c.name}`);
     showToast("Cliente salvo.");
   }
   async function handleRenameClient(clientId, newName) {
@@ -3040,8 +3056,10 @@ function App() {
   }
   async function handleDeleteClient(id) {
     if (!confirm("Remover este cliente e os boletos/anotações dele?")) return;
+    const c = clients.find((x) => x.id === id);
     await supa.from("clients").delete().eq("id", id);
     await loadClients();
+    logActivity(`Cliente removido: ${c?.name || id}`);
     showToast("Cliente removido.");
   }
   async function handleToggleCancelled(c) {
@@ -3243,6 +3261,9 @@ function App() {
     const { error } = await supa.from("clients").upsert(newClient);
     if (error) { showToast(`Erro: ${error.message}`); return; }
     await loadClients();
+    await supa.from("proposals").update({ stage: "fechada" }).eq("id", p.id);
+    await loadProposals();
+    logActivity(`Proposta fechada: Nº ${p.number} — ${prospect.name}`);
 
     // Cria automaticamente o controle de implantação, com o valor total (implantação+treinamento+cloud+customização+setup de integração)
     const items = p.monthly_items || [];
@@ -3261,6 +3282,12 @@ function App() {
       await loadImplantacoes();
     }
     showToast(`${prospect.name} agora é cliente!`);
+  }
+
+  async function handleUpdateProposalStage(p, stage) {
+    await supa.from("proposals").update({ stage }).eq("id", p.id);
+    await loadProposals();
+    logActivity(`Proposta Nº ${p.number} movida para: ${stage}`);
   }
 
   function generateRomaneioPDF(r, prospect) {
@@ -3588,6 +3615,10 @@ function App() {
     const next = { ...current, ...patch, id, client_id: clientId, month_key: mKey, updated_at: new Date().toISOString() };
     await supa.from("boletos").upsert(next);
     setBoletos((prev) => ({ ...prev, [clientId]: next }));
+    if (patch.paid === true && !current.paid) {
+      const c = clients.find((x) => x.id === clientId);
+      logActivity(`Mensalidade marcada como paga: ${c?.name || clientId} (${mKey})`);
+    }
   }
 
   function handleImportCSV(file) {
@@ -3905,6 +3936,70 @@ function App() {
         </div>
         <div className="flex sm:hidden justify-center"><img src={LOGO_DATA_URI} alt="Miré" className="w-12 h-auto object-contain" style={{ filter: "drop-shadow(0 0 10px rgba(124,92,255,0.4))" }} /></div>
 
+        {userRole !== "tecnico" && (
+          <div className="relative">
+            <input
+              value={globalSearch}
+              onChange={(e) => { setGlobalSearch(e.target.value); setShowGlobalSearch(e.target.value.trim().length > 0); }}
+              onFocus={() => { if (globalSearch.trim()) setShowGlobalSearch(true); }}
+              onBlur={() => setTimeout(() => setShowGlobalSearch(false), 150)}
+              placeholder="🔍 Buscar em tudo..."
+              className="hidden sm:block w-full rounded-lg border px-3 py-2 text-xs outline-none"
+              style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}
+            />
+            {showGlobalSearch && (() => {
+              const q = globalSearch.trim().toLowerCase();
+              const clientMatches = clients.filter((c) => (c.name || "").toLowerCase().includes(q)).slice(0, 5);
+              const prospectMatches = prospects.filter((p) => (p.name || "").toLowerCase().includes(q)).slice(0, 5);
+              const romaneioClientMatches = romaneioClients.filter((c) => (c.name || "").toLowerCase().includes(q)).slice(0, 5);
+              const techMatches = techImplementations.filter((t) => (t.client_name || "").toLowerCase().includes(q)).slice(0, 5);
+              const totalResults = clientMatches.length + prospectMatches.length + romaneioClientMatches.length + techMatches.length;
+              return (
+                <div className="absolute z-30 mt-1 w-72 max-h-96 overflow-y-auto rounded-xl border shadow-lg" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                  {totalResults === 0 ? (
+                    <div className="p-3 text-xs" style={{ color: COLORS.inkMuted }}>Nada encontrado pra "{globalSearch}".</div>
+                  ) : (
+                    <>
+                      {clientMatches.length > 0 && (
+                        <div className="p-2">
+                          <div className="text-[10px] font-bold uppercase px-2 py-1" style={{ color: COLORS.inkFaint }}>Clientes (Mensalidade)</div>
+                          {clientMatches.map((c) => (
+                            <button key={c.id} onMouseDown={() => { setTab("clientes"); setSearch(c.name); setGlobalSearch(""); setShowGlobalSearch(false); }} className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-white/5" style={{ color: COLORS.ink }}>👥 {c.name}</button>
+                          ))}
+                        </div>
+                      )}
+                      {prospectMatches.length > 0 && (
+                        <div className="p-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+                          <div className="text-[10px] font-bold uppercase px-2 py-1" style={{ color: COLORS.inkFaint }}>Propostas</div>
+                          {prospectMatches.map((p) => (
+                            <button key={p.id} onMouseDown={() => { setTab("propostas"); setGlobalSearch(""); setShowGlobalSearch(false); }} className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-white/5" style={{ color: COLORS.ink }}>📝 {p.name}</button>
+                          ))}
+                        </div>
+                      )}
+                      {romaneioClientMatches.length > 0 && (
+                        <div className="p-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+                          <div className="text-[10px] font-bold uppercase px-2 py-1" style={{ color: COLORS.inkFaint }}>Romaneio</div>
+                          {romaneioClientMatches.map((c) => (
+                            <button key={c.id} onMouseDown={() => { setTab("romaneio"); setGlobalSearch(""); setShowGlobalSearch(false); }} className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-white/5" style={{ color: COLORS.ink }}>📦 {c.name}</button>
+                          ))}
+                        </div>
+                      )}
+                      {techMatches.length > 0 && (
+                        <div className="p-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+                          <div className="text-[10px] font-bold uppercase px-2 py-1" style={{ color: COLORS.inkFaint }}>Implantação Técnica</div>
+                          {techMatches.map((t) => (
+                            <button key={t.id} onMouseDown={() => { setTab("implantacao_tecnica"); setGlobalSearch(""); setShowGlobalSearch(false); }} className="w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-white/5" style={{ color: COLORS.ink }}>🛠️ {t.client_name}</button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         <nav className="flex flex-col gap-1 w-full flex-1 overflow-y-auto">
           {(userRole === "tecnico" ? [
             { group: "Técnico", items: [
@@ -3931,6 +4026,7 @@ function App() {
               { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
             ]},
             { group: "Sistema", items: [
+              { id: "atividades", label: "Atividades", icon: "🕓" },
               { id: "config", label: "Configurações", icon: "⚙️" },
             ]},
           ]).map((g, gi) => (
@@ -4000,6 +4096,7 @@ function App() {
                 {effectiveTab === "vtvr" && "Vale Transporte / Vale Refeição"}
                 {effectiveTab === "relatorios" && "Relatórios"}
                 {effectiveTab === "config" && "Configurações de mensagens"}
+                {effectiveTab === "atividades" && "Log de Atividades"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
                 {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}`}
@@ -4608,6 +4705,14 @@ function App() {
                         <div className="flex items-center gap-1.5">
                           {p.sent_whatsapp && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.wa, background: "rgba(34,197,94,0.15)" }}>WhatsApp ✓</span>}
                           {p.sent_email && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.email, background: "rgba(167,139,250,0.15)" }}>E-mail ✓</span>}
+                          {p.stage !== "fechada" && (
+                            <select value={p.stage || "enviada"} onChange={(e) => handleUpdateProposalStage(p, e.target.value)} className="text-[11px] font-bold px-2 py-1 rounded-full border outline-none" style={{ borderColor: PROPOSAL_STAGE_COLORS[p.stage || "enviada"], color: PROPOSAL_STAGE_COLORS[p.stage || "enviada"], background: "transparent" }}>
+                              <option value="enviada">📤 Enviada</option>
+                              <option value="negociacao">🤝 Em negociação</option>
+                              <option value="perdida">✗ Perdida</option>
+                            </select>
+                          )}
+                          {p.stage === "fechada" && <span className="text-[11px] font-bold px-2 py-1 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>✓ Fechada</span>}
                         </div>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -5540,6 +5645,29 @@ function App() {
               <div className="flex justify-end">
                 <button onClick={exportPDF} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: COLORS.brand }}>⬇️ Exportar relatório do mês em PDF</button>
               </div>
+            </div>
+          )}
+
+          {effectiveTab === "atividades" && (
+            <div>
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                {activityLog.length === 0 ? (
+                  <div className="p-10 text-center"><div className="text-3xl mb-2">🕓</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma atividade registrada ainda.</div></div>
+                ) : (
+                  <div>
+                    {activityLog.map((a, i) => (
+                      <div key={a.id} className="flex items-center justify-between px-4 py-3" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                        <div>
+                          <div className="text-sm" style={{ color: COLORS.ink }}>{a.action}</div>
+                          <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>{a.user_email}</div>
+                        </div>
+                        <div className="text-xs shrink-0 ml-3" style={{ color: COLORS.inkMuted }}>{new Date(a.created_at).toLocaleString("pt-BR")}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <p className="text-[11px] mt-2" style={{ color: COLORS.inkFaint }}>Mostrando as últimas 200 atividades registradas no sistema.</p>
             </div>
           )}
 

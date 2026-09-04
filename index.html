@@ -184,12 +184,21 @@ function generatePixPayload({ key, name, city, value, txid }) {
 // Gera a imagem do QR Code PIX (base64) sem precisar mostrar nada na tela — usado dentro dos PDFs.
 function generatePixQRDataURL(payload, size) {
   if (!payload || !window.QRCode) return null;
+  let tempDiv = null;
   try {
-    const tempDiv = document.createElement("div");
+    tempDiv = document.createElement("div");
+    tempDiv.style.position = "fixed";
+    tempDiv.style.left = "-9999px";
+    tempDiv.style.top = "-9999px";
+    document.body.appendChild(tempDiv);
     new window.QRCode(tempDiv, { text: payload, width: size || 200, height: size || 200, colorDark: "#000000", colorLight: "#ffffff", correctLevel: window.QRCode.CorrectLevel.M });
     const canvas = tempDiv.querySelector("canvas");
-    return canvas ? canvas.toDataURL("image/png") : null;
+    const result = canvas ? canvas.toDataURL("image/png") : null;
+    document.body.removeChild(tempDiv);
+    return result;
   } catch (e) {
+    console.error("Erro ao gerar QR Code do PIX:", e);
+    if (tempDiv && tempDiv.parentNode) document.body.removeChild(tempDiv);
     return null;
   }
 }
@@ -1229,6 +1238,72 @@ function DonutCanais({ waCount, emailCount }) {
     data: { labels: ["WhatsApp", "E-mail"], datasets: [{ data: [waCount, emailCount], backgroundColor: [COLORS.wa, COLORS.email], borderWidth: 0 }] },
     options: { plugins: { legend: { position: "right", labels: { color: COLORS.inkMuted, font: { size: 11 }, boxWidth: 10 } } }, cutout: "62%" },
   }, [waCount, emailCount]);
+  return <canvas ref={ref} height="220"></canvas>;
+}
+
+const EXPENSE_CATEGORIES = ["Imposto", "Água", "Luz", "Telefone", "Internet", "Aluguel", "Outros"];
+const EXPENSE_CATEGORY_COLORS = { "Imposto": "#EF4444", "Água": "#3B82F6", "Luz": "#F59E0B", "Telefone": "#A78BFA", "Internet": "#22C55E", "Aluguel": "#EC4899", "Outros": "#8A97AC" };
+
+function ExpenseForm({ initial, onSave, onCancel }) {
+  const [category, setCategory] = useState(initial?.category || EXPENSE_CATEGORIES[0]);
+  const [description, setDescription] = useState(initial?.description || "");
+  const [value, setValue] = useState(initial?.value ?? "");
+  const [dueDate, setDueDate] = useState(initial?.due_date || "");
+  const [recurring, setRecurring] = useState(initial?.recurring || false);
+
+  const canSave = category && Number(value) > 0;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar despesa" : "Nova despesa"}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Categoria</span>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+            {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <TextField label="Descrição" value={description} onChange={setDescription} placeholder="Ex: Conta de luz - loja" />
+        <TextField label="Valor" value={value} onChange={setValue} type="number" placeholder="0" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento</span>
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
+      </div>
+      <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: COLORS.ink }}>
+        <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+        Despesa recorrente (repete todo mês)
+      </label>
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({ id: initial?.id || uid(), category, description: description.trim() || null, value: Number(value) || 0, due_date: dueDate || null, recurring, paid: initial?.paid || false, paid_date: initial?.paid_date || null, paid_value: initial?.paid_value || null })}
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar despesa
+        </button>
+        <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
+}
+
+function DonutExpensesByCategory({ expenses }) {
+  const ref = useRef(null);
+  const byCategory = useMemo(() => {
+    const map = {};
+    EXPENSE_CATEGORIES.forEach((c) => { map[c] = 0; });
+    expenses.forEach((e) => { map[e.category] = (map[e.category] || 0) + (Number(e.value) || 0); });
+    return map;
+  }, [expenses]);
+  const labels = EXPENSE_CATEGORIES.filter((c) => byCategory[c] > 0);
+  useChart(ref, {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [{ data: labels.map((c) => byCategory[c]), backgroundColor: labels.map((c) => EXPENSE_CATEGORY_COLORS[c]), borderWidth: 0 }],
+    },
+    options: { plugins: { legend: { position: "right", labels: { color: COLORS.inkMuted, font: { size: 11 }, boxWidth: 10 } } }, cutout: "62%" },
+  }, [JSON.stringify(byCategory)]);
   return <canvas ref={ref} height="220"></canvas>;
 }
 
@@ -2497,6 +2572,10 @@ function App() {
   const [implantacoes, setImplantacoes] = useState([]);
   const [techImplementations, setTechImplementations] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [expenseFilter, setExpenseFilter] = useState("todos");
   const [globalSearch, setGlobalSearch] = useState("");
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showTechForm, setShowTechForm] = useState(false);
@@ -2649,6 +2728,43 @@ function App() {
       await supa.from("activity_log").insert({ id: uid(), user_email: session?.user?.email || "desconhecido", action });
       loadActivityLog();
     } catch (e) { /* log é best-effort, não trava a ação principal */ }
+  }
+  const loadExpenses = useCallback(async () => {
+    const { data } = await supa.from("company_expenses").select("*").order("due_date", { ascending: true });
+    setExpenses(data || []);
+  }, []);
+  async function handleSaveExpense(e) {
+    const { error } = await supa.from("company_expenses").upsert(e);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadExpenses();
+    setShowExpenseForm(false); setEditingExpense(null);
+    logActivity(`Despesa salva: ${e.category} — ${e.description || ""}`);
+    showToast("Despesa salva.");
+  }
+  async function handleDeleteExpense(id) {
+    if (!confirm("Remover esta despesa?")) return;
+    await supa.from("company_expenses").delete().eq("id", id);
+    await loadExpenses();
+    showToast("Despesa removida.");
+  }
+  async function handleToggleExpensePaid(exp) {
+    const willPay = !exp.paid;
+    await supa.from("company_expenses").update({ paid: willPay, paid_date: willPay ? new Date().toISOString().slice(0, 10) : null, paid_value: willPay ? exp.value : null }).eq("id", exp.id);
+    await loadExpenses();
+    if (willPay) logActivity(`Despesa paga: ${exp.category} — ${exp.description || ""}`);
+  }
+  async function handleGenerateNextMonthExpenses() {
+    const recurring = expenses.filter((e) => e.recurring);
+    if (recurring.length === 0) { showToast("Nenhuma despesa recorrente cadastrada."); return; }
+    if (!confirm(`Gerar ${recurring.length} despesa(s) recorrente(s) pro próximo mês?`)) return;
+    const newOnes = recurring.map((e) => {
+      const nextDue = e.due_date ? new Date(e.due_date + "T00:00:00") : new Date();
+      nextDue.setMonth(nextDue.getMonth() + 1);
+      return { id: uid(), category: e.category, description: e.description, value: e.value, due_date: nextDue.toISOString().slice(0, 10), paid: false, recurring: true };
+    });
+    await supa.from("company_expenses").insert(newOnes);
+    await loadExpenses();
+    showToast(`${newOnes.length} despesa(s) gerada(s) pro próximo mês.`);
   }
   async function handleSaveTechImplementation(t) {
     const { error } = await supa.from("tech_implementations").upsert(t);
@@ -3018,7 +3134,7 @@ function App() {
     doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -4079,6 +4195,7 @@ function App() {
               { id: "boletos", label: "Mensalidades", icon: "📄" },
               { id: "implantacoes", label: "Implantações", icon: "🏗️" },
               { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
+              { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
             ]},
             { group: "Operacional", items: [
               { id: "itag", label: "RFID", icon: "🏷️" },
@@ -4156,6 +4273,7 @@ function App() {
                 {effectiveTab === "relatorios" && "Relatórios"}
                 {effectiveTab === "config" && "Configurações de mensagens"}
                 {effectiveTab === "atividades" && "Log de Atividades"}
+                {effectiveTab === "despesas" && "Contas a Pagar"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
                 {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}`}
@@ -5266,6 +5384,124 @@ function App() {
                   </table>
                 )}
               </div>
+            </div>
+          )}
+
+          {effectiveTab === "despesas" && (
+            <div>
+              {(() => {
+                const today = new Date().toISOString().slice(0, 10);
+                const in7days = new Date(); in7days.setDate(in7days.getDate() + 7);
+                const in7 = in7days.toISOString().slice(0, 10);
+                const totalAberto = expenses.filter((e) => !e.paid).reduce((s, e) => s + (Number(e.value) || 0), 0);
+                const totalPago = expenses.filter((e) => e.paid).reduce((s, e) => s + (Number(e.paid_value ?? e.value) || 0), 0);
+                const atrasadas = expenses.filter((e) => !e.paid && e.due_date && e.due_date < today);
+                const venceEmBreve = expenses.filter((e) => !e.paid && e.due_date && e.due_date >= today && e.due_date <= in7);
+                const filtered = expenses.filter((e) => {
+                  if (expenseFilter === "todos") return true;
+                  if (expenseFilter === "aberto") return !e.paid;
+                  if (expenseFilter === "pago") return e.paid;
+                  if (expenseFilter === "atrasado") return !e.paid && e.due_date && e.due_date < today;
+                  return e.category === expenseFilter;
+                });
+                return (
+                  <>
+                    {venceEmBreve.length > 0 && (
+                      <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.warn, background: "rgba(245,158,11,0.1)" }}>
+                        <span className="text-2xl">🔔</span>
+                        <div>
+                          <div className="text-sm font-bold" style={{ color: COLORS.warn }}>{venceEmBreve.length} conta(s) vencendo nos próximos 7 dias</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{venceEmBreve.map((e) => `${e.category}${e.description ? " (" + e.description + ")" : ""}`).join(", ")}</div>
+                        </div>
+                      </div>
+                    )}
+                    {atrasadas.length > 0 && (
+                      <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.danger, background: "rgba(239,68,68,0.1)" }}>
+                        <span className="text-2xl">⚠️</span>
+                        <div>
+                          <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{atrasadas.length} conta(s) atrasada(s)</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{atrasadas.map((e) => `${e.category}${e.description ? " (" + e.description + ")" : ""}`).join(", ")}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Em aberto</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalAberto)}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Pago</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalPago)}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>Atrasadas</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{atrasadas.length}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Recorrentes</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{expenses.filter((e) => e.recurring).length}</div>
+                      </div>
+                    </div>
+
+                    {expenses.length > 0 && (
+                      <div className="rounded-2xl border p-4 mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>Despesas por categoria</div>
+                        <DonutExpensesByCategory expenses={expenses} />
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {["todos", "aberto", "pago", "atrasado", ...EXPENSE_CATEGORIES].map((f) => (
+                          <button key={f} onClick={() => setExpenseFilter(f)} className="text-xs font-semibold px-2.5 py-1.5 rounded-full border" style={{ borderColor: expenseFilter === f ? COLORS.brandLight : COLORS.cardBorder, color: expenseFilter === f ? COLORS.brandLight : COLORS.inkMuted, background: expenseFilter === f ? "rgba(124,92,255,0.1)" : "transparent" }}>
+                            {f === "todos" ? "Todos" : f === "aberto" ? "Em aberto" : f === "pago" ? "Pagos" : f === "atrasado" ? "Atrasados" : f}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={handleGenerateNextMonthExpenses} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>🔁 Gerar recorrentes (próx. mês)</button>
+                        <button onClick={() => { setEditingExpense(null); setShowExpenseForm(true); }} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova despesa</button>
+                      </div>
+                    </div>
+
+                    {showExpenseForm && <div className="mb-4"><ExpenseForm initial={editingExpense} onSave={handleSaveExpense} onCancel={() => { setShowExpenseForm(false); setEditingExpense(null); }} /></div>}
+
+                    {!showExpenseForm && (
+                      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        {filtered.length === 0 ? (
+                          <div className="p-10 text-center"><div className="text-3xl mb-2">🧾</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma despesa encontrada.</div></div>
+                        ) : filtered.map((e, i) => {
+                          const isLate = !e.paid && e.due_date && e.due_date < today;
+                          return (
+                            <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                              <div className="flex items-center gap-3">
+                                <span className="text-lg">{e.category === "Imposto" ? "🏛️" : e.category === "Água" ? "💧" : e.category === "Luz" ? "💡" : e.category === "Telefone" ? "📞" : e.category === "Internet" ? "🌐" : e.category === "Aluguel" ? "🏠" : "🧾"}</span>
+                                <div>
+                                  <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
+                                    {e.category}{e.description ? ` — ${e.description}` : ""}
+                                    {e.recurring && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.15)" }}>🔁 recorrente</span>}
+                                  </div>
+                                  <div className="text-xs" style={{ color: isLate ? COLORS.danger : COLORS.inkMuted }}>
+                                    {fmtMoney(e.value)} · vence {fmtDate(e.due_date)}{isLate ? " · ATRASADA" : ""}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button onClick={() => handleToggleExpensePaid(e)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: e.paid ? COLORS.success : COLORS.cardBorder, color: e.paid ? COLORS.success : COLORS.inkMuted, background: e.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
+                                  {e.paid ? "✓ Pago" : "○ Marcar como pago"}
+                                </button>
+                                <button onClick={() => { setEditingExpense(e); setShowExpenseForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
+                                <button onClick={() => handleDeleteExpense(e.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 

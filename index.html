@@ -533,7 +533,13 @@ function ClientForm({ initial, onSave, onCancel }) {
   const [annual, setAnnual] = useState(initial?.annual || false);
   const [cloud, setCloud] = useState(initial?.cloud || false);
   const [marketplace, setMarketplace] = useState(initial?.marketplace || "");
+  const [groupName, setGroupName] = useState(initial?.group_name || "");
+  const [additionalStores, setAdditionalStores] = useState(initial?.additional_stores?.length ? initial.additional_stores : []);
   const canSave = name.trim();
+
+  function addStore() { setAdditionalStores((prev) => [...prev, { name: "", address: "" }]); }
+  function updateStore(i, field, val) { setAdditionalStores((prev) => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s)); }
+  function removeStore(i) { setAdditionalStores((prev) => prev.filter((_, idx) => idx !== i)); }
 
   const [cnpjLoading, setCnpjLoading] = useState(false);
   const [cnpjError, setCnpjError] = useState("");
@@ -632,6 +638,25 @@ function ClientForm({ initial, onSave, onCancel }) {
         <TextField label="Estado" value={state} onChange={setState} placeholder="UF" />
       </div>
 
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Cliente com mais de uma loja?</div>
+        <TextField label="Grupo / cliente principal (se cobra cada loja separado)" value={groupName} onChange={setGroupName} placeholder="Ex: Confecções Fado — deixe igual nas lojas do mesmo grupo" />
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Lojas adicionais desse cadastro (se cobra tudo junto, num valor só)</span>
+          <div className="space-y-1.5">
+            {additionalStores.map((s, i) => (
+              <div key={i} className="flex gap-2 items-center flex-wrap">
+                <input value={s.name} onChange={(e) => updateStore(i, "name", e.target.value)} placeholder="Nome da loja" className="flex-1 min-w-[140px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                <input value={s.address} onChange={(e) => updateStore(i, "address", e.target.value)} placeholder="Endereço (opcional)" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                <button type="button" onClick={() => removeStore(i)} className="px-2 py-1.5 text-sm" style={{ color: COLORS.danger }}>🗑️</button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={addStore} className="mt-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar loja</button>
+        </div>
+      </div>
+
       <div className="flex items-center gap-2 mt-5 flex-wrap">
         <button
           disabled={!canSave}
@@ -641,6 +666,7 @@ function ClientForm({ initial, onSave, onCancel }) {
             plan: plan.trim(), notes: notes.trim(), cnpj: cnpj.trim(), cep: cep.trim(), street: street.trim(), number: number.trim(),
             complement: complement.trim(), neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
             bank_number: bankNumber.trim(), integration: integration.trim(), annual, cloud, marketplace: marketplace.trim(),
+            group_name: groupName.trim() || null, additional_stores: additionalStores.filter((s) => s.name.trim()),
           })}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 shadow-sm hover:opacity-90 transition"
           style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}
@@ -4276,23 +4302,23 @@ function App() {
                 {effectiveTab === "despesas" && "Contas a Pagar"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
-                {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}`}
+                {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : ["clientes", "boletos", "calendario"].includes(effectiveTab) ? `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}` : ""}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {userRole !== "tecnico" && (
-                <>
-                  <div className="flex items-center gap-1 px-3 py-2 rounded-xl border text-sm font-semibold" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
-                    <button onClick={() => changeMonth(-1)} style={{ color: COLORS.inkMuted }}>‹</button>
-                    <span>{MONTHS_PT[monthDate.getMonth()].slice(0, 3)}/{monthDate.getFullYear()}</span>
-                    <button onClick={() => changeMonth(1)} style={{ color: COLORS.inkMuted }}>›</button>
-                  </div>
-                  <button onClick={() => { setTab("clientes"); setEditing(null); setShowForm(true); }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
-                    style={{ background: COLORS.success }}>
-                    <span>＋</span> Novo Cliente
-                  </button>
-                </>
+              {userRole !== "tecnico" && ["boletos", "calendario"].includes(effectiveTab) && (
+                <div className="flex items-center gap-1 px-3 py-2 rounded-xl border text-sm font-semibold" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
+                  <button onClick={() => changeMonth(-1)} style={{ color: COLORS.inkMuted }}>‹</button>
+                  <span>{MONTHS_PT[monthDate.getMonth()].slice(0, 3)}/{monthDate.getFullYear()}</span>
+                  <button onClick={() => changeMonth(1)} style={{ color: COLORS.inkMuted }}>›</button>
+                </div>
+              )}
+              {userRole !== "tecnico" && effectiveTab === "clientes" && (
+                <button onClick={() => { setTab("clientes"); setEditing(null); setShowForm(true); }}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
+                  style={{ background: COLORS.success }}>
+                  <span>＋</span> Novo Cliente
+                </button>
               )}
             </div>
           </div>
@@ -4620,8 +4646,12 @@ function App() {
                                   {c.cancelled && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>CANCELADA</span>}
                                   {c.annual && <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full" style={{ color: "#1a1a1a", background: "#D4AF37" }}>⭐ ANUAL</span>}
                                   {c.cloud && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>CLOUD</span>}
+                                  {c.group_name && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.15)" }}>🏬 {c.group_name}</span>}
                                 </div>
                                 <div className="text-[11px] truncate" style={{ color: COLORS.inkMuted }}>{c.phone || "sem WhatsApp"} · {c.email || "sem e-mail"}{c.plan ? ` · ${c.plan}` : ""}</div>
+                                {c.additional_stores?.length > 0 && (
+                                  <div className="text-[10px] truncate" style={{ color: COLORS.inkFaint }}>🏪 {c.additional_stores.map((s) => s.name).join(", ")}</div>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -5579,6 +5609,41 @@ function App() {
                   </table>
                 )}
               </div>
+
+              {(() => {
+                const groups = {};
+                clients.filter((c) => !c.cancelled && c.group_name).forEach((c) => {
+                  if (!groups[c.group_name]) groups[c.group_name] = [];
+                  groups[c.group_name].push(c);
+                });
+                const groupNames = Object.keys(groups);
+                if (groupNames.length === 0) return null;
+                return (
+                  <div className="rounded-2xl border-2 overflow-hidden" style={{ borderColor: COLORS.brandLight, background: COLORS.card }}>
+                    <div className="px-4 py-3" style={{ background: "rgba(124,92,255,0.12)" }}>
+                      <div className="text-sm font-extrabold" style={{ color: COLORS.brandLight }}>🏬 Clientes agrupados (lojas cobradas separado)</div>
+                    </div>
+                    <table className="w-full text-sm" style={{ color: COLORS.ink }}>
+                      <thead>
+                        <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                          <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Grupo</th>
+                          <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Lojas</th>
+                          <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Total somado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {groupNames.map((g, i) => (
+                          <tr key={g} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <td className="p-3 font-semibold">{g}</td>
+                            <td className="p-3" style={{ color: COLORS.inkMuted }}>{groups[g].map((c) => c.name).join(", ")}</td>
+                            <td className="p-3 font-bold">{fmtMoney(groups[g].reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>

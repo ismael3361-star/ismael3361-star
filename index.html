@@ -16,7 +16,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   * { -webkit-tap-highlight-color: transparent; }
@@ -181,9 +181,22 @@ function generatePixPayload({ key, name, city, value, txid }) {
   payload += "6304";
   return payload + crc16Pix(payload);
 }
+// Gera a imagem do QR Code PIX (base64) sem precisar mostrar nada na tela — usado dentro dos PDFs.
+function generatePixQRDataURL(payload, size) {
+  if (!payload || !window.QRCode) return null;
+  try {
+    const tempDiv = document.createElement("div");
+    new window.QRCode(tempDiv, { text: payload, width: size || 200, height: size || 200, colorDark: "#000000", colorLight: "#ffffff", correctLevel: window.QRCode.CorrectLevel.M });
+    const canvas = tempDiv.querySelector("canvas");
+    return canvas ? canvas.toDataURL("image/png") : null;
+  } catch (e) {
+    return null;
+  }
+}
 
 function PixQRModal({ pixKey, favorecido, city, value, label, onClose }) {
-  const canvasRef = useRef(null);
+  const qrContainerRef = useRef(null);
+  const qrInstanceRef = useRef(null);
   const [payload, setPayload] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -193,8 +206,16 @@ function PixQRModal({ pixKey, favorecido, city, value, label, onClose }) {
   }, [pixKey, favorecido, city, value, label]);
 
   useEffect(() => {
-    if (payload && canvasRef.current && window.QRCode) {
-      window.QRCode.toCanvas(canvasRef.current, payload, { width: 220, margin: 1 }, () => {});
+    if (!payload || !qrContainerRef.current || !window.QRCode) return;
+    if (qrInstanceRef.current && typeof qrInstanceRef.current.makeCode === "function") {
+      qrInstanceRef.current.makeCode(payload);
+    } else {
+      qrContainerRef.current.innerHTML = "";
+      qrInstanceRef.current = new window.QRCode(qrContainerRef.current, {
+        text: payload, width: 220, height: 220,
+        colorDark: "#000000", colorLight: "#ffffff",
+        correctLevel: window.QRCode.CorrectLevel.M,
+      });
     }
   }, [payload]);
 
@@ -217,7 +238,7 @@ function PixQRModal({ pixKey, favorecido, city, value, label, onClose }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
       <div className="rounded-2xl p-5 max-w-sm w-full" style={{ background: COLORS.card }} onClick={(e) => e.stopPropagation()}>
         <div className="text-sm font-bold mb-3 text-center" style={{ color: COLORS.ink }}>Pagamento via PIX{value ? ` — ${fmtMoney(value)}` : ""}</div>
-        <div className="flex justify-center mb-3 p-3 rounded-xl" style={{ background: "#fff" }}><canvas ref={canvasRef} /></div>
+        <div className="flex justify-center mb-3 p-3 rounded-xl" style={{ background: "#fff" }}><div ref={qrContainerRef} /></div>
         <div className="text-[11px] mb-3 break-all p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", color: COLORS.inkMuted }}>{payload}</div>
         <div className="flex gap-2">
           <button onClick={copyPayload} className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: copied ? COLORS.success : COLORS.brand }}>{copied ? "✓ Copiado!" : "📋 Copiar código PIX"}</button>
@@ -3205,7 +3226,20 @@ function App() {
     doc.text(`Forma de pagamento: ${p.payment_method || "-"}`, 18, sy); sy += 6;
     if (p.pix_key) { doc.text(`Chave PIX: ${p.pix_key}${p.pix_favorecido ? "  —  Favorecido: " + p.pix_favorecido : ""}`, 18, sy); sy += 6; }
     doc.text(`Validade da proposta: ${p.valid_until ? new Date(p.valid_until + "T00:00:00").toLocaleDateString("pt-BR") : "-"}`, 18, sy);
-    y += summaryH + 4;
+    y += summaryH + 6;
+
+    if (p.pix_key) {
+      const qrPayload = generatePixPayload({ key: p.pix_key, name: p.pix_favorecido, city: "SAO PAULO", value: null, txid: p.number });
+      const qrData = generatePixQRDataURL(qrPayload, 200);
+      if (qrData) {
+        if (y > 230) { doc.addPage(); y = 20; }
+        try { doc.addImage(qrData, "PNG", 14, y, 30, 30); } catch (e) {}
+        doc.setFontSize(8);
+        doc.setTextColor(90);
+        doc.text("Aponte a câmera do seu banco pra pagar via PIX", 48, y + 16);
+        y += 34;
+      }
+    }
 
     const pageCountP = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCountP; i++) {
@@ -3384,7 +3418,20 @@ function App() {
     doc.setTextColor(60);
     if (r.payment_term) { doc.text(`Prazo de pagamento: ${r.payment_term}`, 14, y); y += 6; }
     if (r.payment_method) { doc.text(`Forma de pagamento: ${r.payment_method}`, 14, y); y += 6; }
-    if (r.pix_key) { doc.text(`Chave PIX: ${r.pix_key}${r.pix_favorecido ? "  —  Favorecido: " + r.pix_favorecido : ""}`, 14, y); y += 6; }
+    if (r.pix_key) {
+      doc.text(`Chave PIX: ${r.pix_key}${r.pix_favorecido ? "  —  Favorecido: " + r.pix_favorecido : ""}`, 14, y); y += 6;
+      const pixTotal = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+      const qrPayload = generatePixPayload({ key: r.pix_key, name: r.pix_favorecido, city: "SAO PAULO", value: pixTotal, txid: r.number });
+      const qrData = generatePixQRDataURL(qrPayload, 200);
+      if (qrData) {
+        if (y > 210) { doc.addPage(); y = 20; }
+        try { doc.addImage(qrData, "PNG", 14, y, 32, 32); } catch (e) {}
+        doc.setFontSize(7.5);
+        doc.setTextColor(100);
+        doc.text("Aponte a câmera do seu banco pra pagar", 48, y + 18);
+        y += 36;
+      }
+    }
     if (r.freight) { doc.text(`Frete: ${r.freight}`, 14, y); y += 6; }
 
     y += 12;

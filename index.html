@@ -1267,8 +1267,8 @@ function DonutCanais({ waCount, emailCount }) {
   return <canvas ref={ref} height="220"></canvas>;
 }
 
-const EXPENSE_CATEGORIES = ["Imposto", "Água", "Luz", "Telefone", "Internet", "Aluguel", "Outros"];
-const EXPENSE_CATEGORY_COLORS = { "Imposto": "#EF4444", "Água": "#3B82F6", "Luz": "#F59E0B", "Telefone": "#A78BFA", "Internet": "#22C55E", "Aluguel": "#EC4899", "Outros": "#8A97AC" };
+const EXPENSE_CATEGORIES = ["Imposto", "Água", "Luz", "Telefone", "Internet", "Aluguel", "Fornecedor", "Estacionamento", "Outros"];
+const EXPENSE_CATEGORY_COLORS = { "Imposto": "#EF4444", "Água": "#3B82F6", "Luz": "#F59E0B", "Telefone": "#A78BFA", "Internet": "#22C55E", "Aluguel": "#EC4899", "Fornecedor": "#14B8A6", "Estacionamento": "#F97316", "Outros": "#8A97AC" };
 
 function ExpenseForm({ initial, onSave, onCancel }) {
   const [category, setCategory] = useState(initial?.category || EXPENSE_CATEGORIES[0]);
@@ -5637,7 +5637,7 @@ function App() {
                           return (
                             <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                               <div className="flex items-center gap-3">
-                                <span className="text-lg">{e.category === "Imposto" ? "🏛️" : e.category === "Água" ? "💧" : e.category === "Luz" ? "💡" : e.category === "Telefone" ? "📞" : e.category === "Internet" ? "🌐" : e.category === "Aluguel" ? "🏠" : "🧾"}</span>
+                                <span className="text-lg">{e.category === "Imposto" ? "🏛️" : e.category === "Água" ? "💧" : e.category === "Luz" ? "💡" : e.category === "Telefone" ? "📞" : e.category === "Internet" ? "🌐" : e.category === "Aluguel" ? "🏠" : e.category === "Fornecedor" ? "📦" : e.category === "Estacionamento" ? "🅿️" : "🧾"}</span>
                                 <div>
                                   <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
                                     {e.category}{e.description ? ` — ${e.description}` : ""}

@@ -97,7 +97,7 @@
 <script>
 /* PASSO 1: cole aqui a Project URL e a anon public key do seu projeto Supabase
    (Project Settings > API), depois de rodar o setup.sql */
-const SUPABASE_URL = "https://tvbemspbjhstjpcwujkl.supabase.co/rest/v1/";
+const SUPABASE_URL = "https://tvbemspbjhstjpcwujkl.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_9pb5__aNohZkRwZO4d7hHg_bHIb-LSZ";
 </script>
 
@@ -416,6 +416,7 @@ const DEFAULT_SETTINGS = {
   mensalidade_pix_key: "", mensalidade_pix_favorecido: "",
   implantacao_pix_key: "", implantacao_pix_favorecido: "",
   romaneio_pix_key: "", romaneio_pix_favorecido: "",
+  romaneio_next_number: 1441, romaneio_next_year: 2026,
 };
 
 const DEFAULT_PROPOSAL_BODY = `Esta proposta tem por objetivo apresentar as vantagens e condições da contratação do Sistema de Gestão Miré, permitindo à empresa cliente obter todos os benefícios da solução desenvolvida pela MireData.
@@ -1273,6 +1274,7 @@ const EXPENSE_CATEGORY_COLORS = { "Imposto": "#EF4444", "Água": "#3B82F6", "Luz
 function ExpenseForm({ initial, onSave, onCancel }) {
   const [category, setCategory] = useState(initial?.category || EXPENSE_CATEGORIES[0]);
   const [description, setDescription] = useState(initial?.description || "");
+  const [clientInvoiceNumber, setClientInvoiceNumber] = useState(initial?.client_invoice_number || "");
   const [value, setValue] = useState(initial?.value ?? "");
   const [dueDate, setDueDate] = useState(initial?.due_date || "");
   const [recurring, setRecurring] = useState(initial?.recurring || false);
@@ -1290,6 +1292,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
           </select>
         </label>
         <TextField label="Descrição" value={description} onChange={setDescription} placeholder="Ex: Conta de luz - loja" />
+        <TextField label="Nº da nota" value={clientInvoiceNumber} onChange={setClientInvoiceNumber} placeholder="Nº da nota fiscal" />
         <TextField label="Valor" value={value} onChange={setValue} type="number" placeholder="0" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento</span>
@@ -1303,7 +1306,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
       <div className="flex gap-2">
         <button
           disabled={!canSave}
-          onClick={() => onSave({ id: initial?.id || uid(), category, description: description.trim() || null, value: Number(value) || 0, due_date: dueDate || null, recurring, paid: initial?.paid || false, paid_date: initial?.paid_date || null, paid_value: initial?.paid_value || null })}
+          onClick={() => onSave({ id: initial?.id || uid(), category, description: description.trim() || null, client_invoice_number: clientInvoiceNumber.trim() || null, value: Number(value) || 0, due_date: dueDate || null, recurring, paid: initial?.paid || false, paid_date: initial?.paid_date || null, paid_value: initial?.paid_value || null })}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
           Salvar despesa
         </button>
@@ -1378,6 +1381,8 @@ function DueDayChart({ groups }) {
 function ItagEntryForm({ initial, onSave, onCancel }) {
   const [purchaseDate, setPurchaseDate] = useState(initial?.purchase_date || new Date().toISOString().slice(0, 10));
   const [invoiceNumber, setInvoiceNumber] = useState(initial?.invoice_number || "");
+  const [model, setModel] = useState(initial?.model || "");
+  const [arrivalDate, setArrivalDate] = useState(initial?.arrival_date || "");
   const [quantity, setQuantity] = useState(initial?.quantity ?? "");
   const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "");
   const [due1Date, setDue1Date] = useState(initial?.due1_date || "");
@@ -1400,10 +1405,15 @@ function ItagEntryForm({ initial, onSave, onCancel }) {
       <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Nova entrada de compra (ITAG)</div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da compra</span>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pedido</span>
           <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
         </label>
-        <TextField label="Nota fiscal" value={invoiceNumber} onChange={setInvoiceNumber} placeholder="21884" />
+        <TextField label="Nota fiscal (Nº NF)" value={invoiceNumber} onChange={setInvoiceNumber} placeholder="21884" />
+        <TextField label="Modelo" value={model} onChange={setModel} placeholder="Ex: Etiqueta RFID 40x25" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de entrada</span>
+          <input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
         <TextField label="Quantidade" value={quantity} onChange={setQuantity} type="number" placeholder="3500" />
         <TextField label="Valor unitário" value={unitValue} onChange={setUnitValue} type="number" placeholder="0.2999" />
         <label className="block">
@@ -1426,6 +1436,7 @@ function ItagEntryForm({ initial, onSave, onCancel }) {
           disabled={!canSave}
           onClick={() => onSave({
             id: initial?.id || uid(), purchase_date: purchaseDate, invoice_number: invoiceNumber.trim(),
+            model: model.trim() || null, arrival_date: arrivalDate || null,
             quantity: Number(quantity) || 0, unit_value: Number(unitValue) || 0,
             due1_date: due1Date || null, due1_value: Number(due1Value) || 0,
             due2_date: due2Date || null, due2_value: Number(due2Value) || 0,
@@ -1548,6 +1559,50 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
           Salvar lançamento
         </button>
         <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
+}
+
+function nextSaturday() {
+  const d = new Date();
+  const day = d.getDay();
+  const diff = (6 - day + 7) % 7 || 7;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
+
+function ScheduleForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
+  const [scheduleDate, setScheduleDate] = useState(initial?.schedule_date || nextSaturday());
+  const [tech1Id, setTech1Id] = useState("");
+  const [tech2Id, setTech2Id] = useState("");
+  const [tech1NameManual, setTech1NameManual] = useState(initial?.technician1_name || "");
+  const [tech2NameManual, setTech2NameManual] = useState(initial?.technician2_name || "");
+
+  const dateObj = scheduleDate ? new Date(scheduleDate + "T00:00:00") : null;
+  const isSaturday = dateObj && dateObj.getDay() === 6;
+  const canSave = scheduleDate && isSaturday && (tech1Id || tech1NameManual.trim());
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Nova escala de sábado (08:00 às 12:00)</div>
+      <label className="block max-w-xs">
+        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data (precisa ser um sábado)</span>
+        <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: isSaturday ? COLORS.cardBorder : COLORS.danger, background: "#0E1729", color: COLORS.ink }} />
+        {!isSaturday && <span className="text-[11px]" style={{ color: COLORS.danger }}>Essa data não é um sábado.</span>}
+      </label>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <EmployeePicker employees={employees} value={tech1Id} onSelect={(id) => { setTech1Id(id); setTech1NameManual(employees.find((e) => e.id === id)?.name || ""); }} onCreateNew={onCreateEmployee} />
+        <EmployeePicker employees={employees} value={tech2Id} onSelect={(id) => { setTech2Id(id); setTech2NameManual(employees.find((e) => e.id === id)?.name || ""); }} onCreateNew={onCreateEmployee} />
+      </div>
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({ id: initial?.id || uid(), schedule_date: scheduleDate, technician1_name: tech1NameManual.trim() || null, technician2_name: tech2NameManual.trim() || null })}
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar escala
+        </button>
+        <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
       </div>
     </div>
   );
@@ -2250,6 +2305,7 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
   const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "");
   const [quantity, setQuantity] = useState(initial?.quantity ?? "");
   const [installments, setInstallments] = useState(initial?.installments?.length ? initial.installments : [{ due_date: "", value: "" }]);
+  const [showExtraInstallments, setShowExtraInstallments] = useState((initial?.installments?.length || 1) > 1);
   const [paidValue, setPaidValue] = useState(initial?.paid_value ?? "");
   const [paymentDate, setPaymentDate] = useState(initial?.payment_date || "");
   const [status, setStatus] = useState(initial?.status || "ABERTO");
@@ -2301,24 +2357,42 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
 
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Parcelas do boleto (clique em "Pago" quando o cliente pagar)</span>
+          <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>{showExtraInstallments ? "Parcelas do boleto (clique em \"Pago\" quando o cliente pagar)" : "Pagamento"}</span>
           <span className="text-sm font-bold" style={{ color: COLORS.success }}>Valor do boleto: {fmtMoney(boletoValue)}</span>
         </div>
-        <div className="space-y-2">
-          {installments.map((it, i) => (
-            <div key={i} className="flex gap-2 items-center flex-wrap">
-              <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor da parcela" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              <button type="button" onClick={() => toggleInstPaid(i)} className="text-xs font-bold px-3 py-2 rounded-lg border shrink-0" style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.12)" : "transparent" }}>
-                {it.paid ? "✓ Pago" : "○ Marcar como pago"}
-              </button>
-              {installments.length > 1 && <button type="button" onClick={() => removeInst(i)} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.danger }}>🗑️</button>}
-            </div>
-          ))}
-        </div>
+
+        {!showExtraInstallments ? (
+          <div className="flex gap-2 items-center flex-wrap">
+            <input type="date" value={installments[0]?.due_date || ""} onChange={(e) => updateInst(0, "due_date", e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input value={installments[0]?.value || ""} onChange={(e) => updateInst(0, "value", e.target.value)} type="number" placeholder="Valor" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <button type="button" onClick={() => toggleInstPaid(0)} className="text-xs font-bold px-3 py-2 rounded-lg border shrink-0" style={{ borderColor: installments[0]?.paid ? COLORS.success : COLORS.cardBorder, color: installments[0]?.paid ? COLORS.success : COLORS.inkMuted, background: installments[0]?.paid ? "rgba(34,197,94,0.12)" : "transparent" }}>
+              {installments[0]?.paid ? "✓ Pago" : "○ Marcar como pago"}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {installments.map((it, i) => (
+              <div key={i} className="flex gap-2 items-center flex-wrap">
+                <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor da parcela" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                <button type="button" onClick={() => toggleInstPaid(i)} className="text-xs font-bold px-3 py-2 rounded-lg border shrink-0" style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.12)" : "transparent" }}>
+                  {it.paid ? "✓ Pago" : "○ Marcar como pago"}
+                </button>
+                {installments.length > 1 && <button type="button" onClick={() => removeInst(i)} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.danger }}>🗑️</button>}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-2 mt-2">
-          <button type="button" onClick={addInst} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar parcela</button>
-          <button type="button" onClick={fillFromQty} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Calcular (qtd × unitário) e dividir nas parcelas</button>
+          {!showExtraInstallments ? (
+            <button type="button" onClick={() => { setShowExtraInstallments(true); addInst(); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📑 Tem mais de uma parcela? Clique aqui</button>
+          ) : (
+            <>
+              <button type="button" onClick={addInst} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar parcela</button>
+              <button type="button" onClick={fillFromQty} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Calcular (qtd × unitário) e dividir nas parcelas</button>
+            </>
+          )}
         </div>
       </div>
 
@@ -2345,9 +2419,12 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
 function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient, onSave, onPreview, onCancel }) {
   const [clientId, setClientId] = useState(initial?.romaneio_client_id || "");
   const [showNewProspect, setShowNewProspect] = useState(false);
-  const [number, setNumber] = useState(initial?.number || `${String(new Date().getFullYear())}/${String(Date.now()).slice(-4)}`);
+  const currentYear = new Date().getFullYear();
+  const nextNumberPreview = (settings?.romaneio_next_year === currentYear) ? (settings?.romaneio_next_number || 1) : 1;
+  const [number, setNumber] = useState(initial?.number || `${nextNumberPreview}/${currentYear}`);
   const [orderDate, setOrderDate] = useState(initial?.order_date || new Date().toISOString().slice(0, 10));
   const [seller, setSeller] = useState(initial?.seller || "");
+  const [commissionPercent, setCommissionPercent] = useState(initial?.commission_percent ?? 5);
   const [items, setItems] = useState(initial?.items?.length ? initial.items : [{ codigo: "", descricao: "", quantidade: "", valorUnit: "" }]);
   const [paymentMethod, setPaymentMethod] = useState(initial?.payment_method || "À vista no PIX");
   const [paymentTerm, setPaymentTerm] = useState(initial?.payment_term || "A pronta entrega");
@@ -2385,11 +2462,13 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
   const canSave = clientId && number.trim();
 
   function buildPayload() {
+    const total = items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
     return {
       id: initial?.id || uid(), romaneio_client_id: clientId, number: number.trim(), order_date: orderDate, seller: seller.trim(),
       items: items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0).map((it) => ({ codigo: it.codigo.trim(), descricao: it.descricao.trim(), quantidade: Number(it.quantidade) || 0, valorUnit: Number(it.valorUnit) || 0 })),
       payment_method: paymentMethod.trim(), payment_term: paymentTerm.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(), freight: freight.trim(),
       delivery_address: deliveryAddress.trim() || null, payment_proof_url: paymentProofUrl || null,
+      commission_percent: Number(commissionPercent) || 0, commission_value: total * ((Number(commissionPercent) || 0) / 100), commission_paid: initial?.commission_paid || false,
     };
   }
 
@@ -2424,6 +2503,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
           <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
         </label>
         <TextField label="Vendedor" value={seller} onChange={setSeller} placeholder="Nome do vendedor" />
+        <TextField label="Comissão (%)" value={commissionPercent} onChange={setCommissionPercent} type="number" placeholder="5" />
         <TextField label="Frete" value={freight} onChange={setFreight} placeholder="CIF / FOB" />
         <TextField label="Forma de pagamento" value={paymentMethod} onChange={setPaymentMethod} placeholder="Ex: À vista no PIX" />
         <TextField label="Prazo de pagamento" value={paymentTerm} onChange={setPaymentTerm} placeholder="Ex: A pronta entrega / 30 dias" />
@@ -2722,6 +2802,9 @@ function App() {
   const [techImplementations, setTechImplementations] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
   const [expenses, setExpenses] = useState([]);
+  const [saturdaySchedule, setSaturdaySchedule] = useState([]);
+  const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(null);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [expenseFilter, setExpenseFilter] = useState("todos");
@@ -2915,6 +2998,49 @@ function App() {
     await supa.from("company_expenses").insert(newOnes);
     await loadExpenses();
     showToast(`${newOnes.length} despesa(s) gerada(s) pro próximo mês.`);
+  }
+  const loadSaturdaySchedule = useCallback(async () => {
+    const { data } = await supa.from("saturday_schedule").select("*").order("schedule_date", { ascending: true });
+    setSaturdaySchedule(data || []);
+  }, []);
+  async function handleSaveSchedule(s) {
+    const { error } = await supa.from("saturday_schedule").upsert(s);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadSaturdaySchedule();
+    setShowScheduleForm(false); setEditingSchedule(null);
+    showToast("Escala salva.");
+  }
+  async function handleDeleteSchedule(id) {
+    if (!confirm("Remover esta escala?")) return;
+    await supa.from("saturday_schedule").delete().eq("id", id);
+    await loadSaturdaySchedule();
+    showToast("Escala removida.");
+  }
+  function exportExpensesExcel(list) {
+    const rows = list.map((e) => ({
+      "Categoria": e.category, "Descrição": e.description || "-", "Nº da Nota": e.client_invoice_number || "-",
+      "Valor": e.value, "Vencimento": e.due_date ? new Date(e.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+      "Situação": e.paid ? "Pago" : "Em aberto", "Recorrente": e.recurring ? "Sim" : "Não",
+    }));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Despesas");
+    XLSX.writeFile(wb, `despesas-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+  function exportExpensesPDF(list) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text("Contas a Pagar", 14, 15);
+    doc.autoTable({
+      startY: 22,
+      head: [["Categoria", "Descrição", "Nº Nota", "Valor", "Vencimento", "Situação"]],
+      body: list.map((e) => [e.category, e.description || "-", e.client_invoice_number || "-", fmtMoney(e.value), e.due_date ? new Date(e.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", e.paid ? "Pago" : "Em aberto"]),
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [124, 92, 255] },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`despesas-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
   async function handleSaveTechImplementation(t) {
     const payload = { ...t, updated_at: new Date().toISOString(), updated_by: session?.user?.email || "desconhecido" };
@@ -3253,7 +3379,10 @@ function App() {
     await supa.from("vt_vr_records").update({ paid, paid_date: paid ? new Date().toISOString().slice(0, 10) : null }).eq("id", rec.id);
     await loadVtVrRecords();
   }
-  const visibleVtVrRecords = useMemo(() => showPaidVtVr ? vtVrRecords : vtVrRecords.filter((r) => !r.paid), [vtVrRecords, showPaidVtVr]);
+  const visibleVtVrRecords = useMemo(() => {
+    const list = showPaidVtVr ? vtVrRecords : vtVrRecords.filter((r) => !r.paid);
+    return [...list].sort((a, b) => (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
+  }, [vtVrRecords, showPaidVtVr]);
 
   function exportVtVrPDF() {
     const { jsPDF } = window.jspdf;
@@ -3285,7 +3414,7 @@ function App() {
     doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -3731,6 +3860,7 @@ function App() {
 
   async function handleSaveRomaneio(r) {
     const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
+    const isNew = !editingRomaneio;
     try {
       const doc = generateRomaneioPDF(r, prospect);
       const blob = doc.output("blob");
@@ -3741,6 +3871,12 @@ function App() {
       const { error: dbError } = await supa.from("romaneios").upsert({ ...r, pdf_url: data.publicUrl });
       if (dbError) throw dbError;
       await loadRomaneios();
+      if (isNew) {
+        const currentYear = new Date().getFullYear();
+        const usedYear = settings.romaneio_next_year === currentYear ? settings.romaneio_next_year : currentYear;
+        const usedNumber = settings.romaneio_next_year === currentYear ? (settings.romaneio_next_number || 1) : 1;
+        await saveSettings({ ...settings, romaneio_next_number: usedNumber + 1, romaneio_next_year: usedYear });
+      }
       setShowRomaneioForm(false);
       setEditingRomaneio(null);
       showToast("Romaneio gerado e salvo.");
@@ -3755,6 +3891,10 @@ function App() {
     await supa.from("romaneios").delete().eq("id", id);
     await loadRomaneios();
     showToast("Romaneio removido.");
+  }
+  async function handleToggleCommissionPaid(r) {
+    await supa.from("romaneios").update({ commission_paid: !r.commission_paid }).eq("id", r.id);
+    await loadRomaneios();
   }
 
   async function quickUploadProof(r, file) {
@@ -3933,6 +4073,7 @@ function App() {
       mensalidade_pix_key: next.mensalidade_pix_key || null, mensalidade_pix_favorecido: next.mensalidade_pix_favorecido || null,
       implantacao_pix_key: next.implantacao_pix_key || null, implantacao_pix_favorecido: next.implantacao_pix_favorecido || null,
       romaneio_pix_key: next.romaneio_pix_key || null, romaneio_pix_favorecido: next.romaneio_pix_favorecido || null,
+      romaneio_next_number: next.romaneio_next_number || 1, romaneio_next_year: next.romaneio_next_year || new Date().getFullYear(),
     });
   }
   async function upsertBoleto(clientId, patch) {
@@ -4347,10 +4488,12 @@ function App() {
               { id: "implantacoes", label: "Implantações", icon: "🏗️" },
               { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
               { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
+              { id: "comissao", label: "Comissão Vendedor", icon: "💰" },
             ]},
             { group: "Operacional", items: [
               { id: "itag", label: "RFID", icon: "🏷️" },
               { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
+              { id: "escala", label: "Escala de Sábado", icon: "🗓️" },
             ]},
             { group: "Sistema", items: [
               { id: "atividades", label: "Atividades", icon: "🕓" },
@@ -4425,6 +4568,8 @@ function App() {
                 {effectiveTab === "config" && "Configurações de mensagens"}
                 {effectiveTab === "atividades" && "Log de Atividades"}
                 {effectiveTab === "despesas" && "Contas a Pagar"}
+                {effectiveTab === "comissao" && "Comissão do Vendedor"}
+                {effectiveTab === "escala" && "Escala de Sábado"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
                 {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : ["clientes", "boletos", "calendario"].includes(effectiveTab) ? `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}` : ""}
@@ -5153,7 +5298,7 @@ function App() {
 
           {effectiveTab === "itag" && (
             <div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total comprado</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0)} un.</div>
@@ -5163,6 +5308,11 @@ function App() {
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Total faturado</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un.</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{fmtMoney(itagBillings.reduce((s, b) => s + (Number(b.boleto_value) || 0), 0))} em boletos</div>
+                </div>
+                <div className="rounded-2xl p-4 border-2" style={{ background: COLORS.card, borderColor: "#D4AF37" }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: "#D4AF37" }}>📦 Saldo em estoque</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0) - itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un.</div>
+                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>comprado − faturado</div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Total recebido</div>
@@ -5198,7 +5348,7 @@ function App() {
                       <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                         <thead>
                           <tr style={{ color: COLORS.inkMuted }}>
-                            <th className="text-left p-3">Data</th><th className="text-left p-3">NF</th><th className="text-left p-3">Qtd</th><th className="text-left p-3">Vr. Unit.</th>
+                            <th className="text-left p-3">Data</th><th className="text-left p-3">NF</th><th className="text-left p-3">Modelo</th><th className="text-left p-3">Entrada</th><th className="text-left p-3">Qtd</th><th className="text-left p-3">Vr. Unit.</th>
                             <th className="text-left p-3">Venc. 1</th><th className="text-left p-3">Valor 1</th><th className="text-left p-3">Situação 1</th>
                             <th className="text-left p-3">Venc. 2</th><th className="text-left p-3">Valor 2</th><th className="text-left p-3">Situação 2</th>
                             <th className="text-left p-3">Total</th><th className="text-left p-3"></th>
@@ -5209,6 +5359,8 @@ function App() {
                             <tr key={e.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                               <td className="p-3">{e.purchase_date ? new Date(e.purchase_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                               <td className="p-3">{e.invoice_number || "-"}</td>
+                              <td className="p-3">{e.model || "-"}</td>
+                              <td className="p-3">{e.arrival_date ? new Date(e.arrival_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                               <td className="p-3">{e.quantity}</td>
                               <td className="p-3">{fmtMoney(e.unit_value)}</td>
                               <td className="p-3">{e.due1_date ? new Date(e.due1_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
@@ -5478,6 +5630,38 @@ function App() {
           )}
 
 
+          {effectiveTab === "escala" && (
+            <div>
+              <div className="flex justify-end mb-3">
+                <button onClick={() => { setEditingSchedule(null); setShowScheduleForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova escala</button>
+              </div>
+              {showScheduleForm && <div className="mb-4"><ScheduleForm initial={editingSchedule} employees={employees} onCreateEmployee={handleCreateEmployee} onSave={handleSaveSchedule} onCancel={() => { setShowScheduleForm(false); setEditingSchedule(null); }} /></div>}
+              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                {saturdaySchedule.length === 0 ? (
+                  <div className="p-10 text-center"><div className="text-3xl mb-2">🗓️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma escala cadastrada ainda.</div></div>
+                ) : saturdaySchedule.map((s, i) => {
+                  const dObj = new Date(s.schedule_date + "T00:00:00");
+                  const isPast = dObj < new Date(new Date().toDateString());
+                  return (
+                    <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", opacity: isPast ? 0.5 : 1 }}>
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">🗓️</span>
+                        <div>
+                          <div className="text-sm font-bold" style={{ color: COLORS.ink }}>{dObj.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" })}</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>08:00 às 12:00 · {[s.technician1_name, s.technician2_name].filter(Boolean).join(" e ") || "sem técnico definido"}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => { setEditingSchedule(s); setShowScheduleForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
+                        <button onClick={() => handleDeleteSchedule(s.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {effectiveTab === "vtvr" && (
             <div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
@@ -5606,9 +5790,9 @@ function App() {
                     </div>
 
                     {expenses.length > 0 && (
-                      <div className="rounded-2xl border p-4 mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>Despesas por categoria</div>
-                        <DonutExpensesByCategory expenses={expenses} />
+                      <div className="flex items-center justify-end gap-2 mb-3">
+                        <button onClick={() => exportExpensesExcel(filtered)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
+                        <button onClick={() => exportExpensesPDF(filtered)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Exportar PDF</button>
                       </div>
                     )}
 
@@ -5629,7 +5813,7 @@ function App() {
                     {showExpenseForm && <div className="mb-4"><ExpenseForm initial={editingExpense} onSave={handleSaveExpense} onCancel={() => { setShowExpenseForm(false); setEditingExpense(null); }} /></div>}
 
                     {!showExpenseForm && (
-                      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      <div className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                         {filtered.length === 0 ? (
                           <div className="p-10 text-center"><div className="text-3xl mb-2">🧾</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma despesa encontrada.</div></div>
                         ) : filtered.map((e, i) => {
@@ -5644,7 +5828,7 @@ function App() {
                                     {e.recurring && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.15)" }}>🔁 recorrente</span>}
                                   </div>
                                   <div className="text-xs" style={{ color: isLate ? COLORS.danger : COLORS.inkMuted }}>
-                                    {fmtMoney(e.value)} · vence {fmtDate(e.due_date)}{isLate ? " · ATRASADA" : ""}
+                                    {fmtMoney(e.value)} · vence {fmtDate(e.due_date)}{isLate ? " · ATRASADA" : ""}{e.client_invoice_number ? ` · Nota: ${e.client_invoice_number}` : ""}
                                   </div>
                                 </div>
                               </div>
@@ -5660,6 +5844,92 @@ function App() {
                         })}
                       </div>
                     )}
+
+                    {expenses.length > 0 && (
+                      <div className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>Despesas por categoria</div>
+                        <DonutExpensesByCategory expenses={expenses} />
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {effectiveTab === "comissao" && (
+            <div>
+              {(() => {
+                const bySeller = {};
+                romaneios.forEach((r) => {
+                  const s = r.seller || "Sem vendedor";
+                  if (!bySeller[s]) bySeller[s] = [];
+                  bySeller[s].push(r);
+                });
+                const sellers = Object.keys(bySeller).sort((a, b) => a.localeCompare(b, "pt-BR"));
+                const totalComissao = romaneios.reduce((s, r) => s + (Number(r.commission_value) || 0), 0);
+                const totalPago = romaneios.filter((r) => r.commission_paid).reduce((s, r) => s + (Number(r.commission_value) || 0), 0);
+                const totalAberto = totalComissao - totalPago;
+                return (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total em comissões</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalComissao)}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Já pago</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalPago)}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Em aberto</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalAberto)}</div>
+                      </div>
+                    </div>
+
+                    {sellers.length === 0 ? (
+                      <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        <div className="text-3xl mb-2">💰</div>
+                        <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio com vendedor cadastrado ainda.</div>
+                      </div>
+                    ) : sellers.map((s) => {
+                      const rows = bySeller[s];
+                      const sellerTotal = rows.reduce((sum, r) => sum + (Number(r.commission_value) || 0), 0);
+                      return (
+                        <div key={s} className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}`, background: "rgba(124,92,255,0.08)" }}>
+                            <div className="text-sm font-bold" style={{ color: COLORS.brandLight }}>👤 {s}</div>
+                            <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Total: {fmtMoney(sellerTotal)}</div>
+                          </div>
+                          <table className="w-full text-sm" style={{ color: COLORS.ink }}>
+                            <thead>
+                              <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                                <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Romaneio</th>
+                                <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Data</th>
+                                <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">%</th>
+                                <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Comissão</th>
+                                <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Situação</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((r, i) => (
+                                <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                  <td className="p-3 font-semibold">{r.number}</td>
+                                  <td className="p-3">{r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                                  <td className="p-3">{r.commission_percent || 0}%</td>
+                                  <td className="p-3 font-bold">{fmtMoney(r.commission_value)}</td>
+                                  <td className="p-3">
+                                    <button onClick={() => handleToggleCommissionPaid(r)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: r.commission_paid ? COLORS.success : COLORS.cardBorder, color: r.commission_paid ? COLORS.success : COLORS.inkMuted, background: r.commission_paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
+                                      {r.commission_paid ? "✓ Pago" : "○ Marcar como pago"}
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })}
                   </>
                 );
               })()}

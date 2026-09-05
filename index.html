@@ -4079,7 +4079,7 @@ function App() {
         "Cliente": prospect?.name || "-",
         "CNPJ": prospect?.cnpj || "-",
         "Vendedor": r.seller || "-",
-        "Itens": (r.items || []).length,
+        "Qtde. Peças": (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0),
         "Valor Total": total,
         "Forma de Pagamento": r.payment_method || "-",
         "Prazo de Pagamento": r.payment_term || "-",
@@ -4101,7 +4101,7 @@ function App() {
         "Cliente": prospect?.name || "-",
         "CNPJ": prospect?.cnpj || "-",
         "Vendedor": r.seller || "-",
-        "Itens": (r.items || []).length,
+        "Qtde. Peças": (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0),
         "Valor Total": total,
         "Forma de Pagamento": r.payment_method || "-",
         "Prazo de Pagamento": r.payment_term || "-",
@@ -4116,19 +4116,19 @@ function App() {
 
   function exportConsultasExcel() {
     const rows = clients
-      .filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(c.consultations_value) > 0))
-      .sort((a, b) => (Number(b.consultations_value) || 0) - (Number(a.consultations_value) || 0))
+      .filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
+      .sort((a, b) => (Number(boletos[b.id]?.consultations_value) || 0) - (Number(boletos[a.id]?.consultations_value) || 0))
       .map((c) => ({
         "Cliente": c.name,
         "Banco": c.bank_number || "-",
         "Mensalidade": Number(c.value) || 0,
-        "Consultas": Number(c.consultations_value) || 0,
+        "Consultas": Number(boletos[c.id]?.consultations_value) || 0,
         "Total": effectiveValue(c, boletos[c.id]),
       }));
     rows.push({
       "Cliente": "TOTAL", "Banco": "",
       "Mensalidade": clients.reduce((s, c) => s + (Number(c.value) || 0), 0),
-      "Consultas": clients.reduce((s, c) => s + (Number(c.consultations_value) || 0), 0),
+      "Consultas": clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0),
       "Total": clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
     });
     const wb = XLSX.utils.book_new();
@@ -4489,13 +4489,13 @@ function App() {
     doc.text(`Relatório de Mensalidades - ${MONTHS_PT[monthDate.getMonth()]}/${monthDate.getFullYear()}`, 14, 18);
     doc.setFontSize(10); doc.setTextColor(100);
     const cloudCount = clients.filter((c) => c.cloud).length;
-    const consultasTotal = clients.reduce((s, c) => s + (Number(c.consultations_value) || 0), 0);
+    const consultasTotal = clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0);
     doc.text(`Clientes: ${stats.count}   Mensal: ${fmtMoney(stats.totalMonthly)}   Anual: ${fmtMoney(stats.totalAnnual)}   Recebido: ${fmtMoney(paidValue)}`, 14, 26);
     doc.text(`Clientes cloud: ${cloudCount}   Total em consultas: ${fmtMoney(consultasTotal)}`, 14, 32);
     const rows = filteredClients.map((c) => {
       const b = boletos[c.id];
       const st = STATUS_META[computeStatus(c, b, monthDate)].label;
-      return [c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(c.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", fmtDate(c.next_due_date), st];
+      return [c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(b?.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", fmtDate(c.next_due_date), st];
     });
     doc.autoTable({ startY: 38, head: [["Cliente", "Mensalidade", "Consultas", "Cloud", "Ciclo", "Vencimento", "Status"]], body: rows, styles: { fontSize: 8 }, headStyles: { fillColor: [124, 92, 255] } });
     doc.save(`mensalidades-${mKey}.pdf`);
@@ -5386,7 +5386,7 @@ function App() {
                           <div>
                             <div className="font-bold text-sm" style={{ color: COLORS.ink }}>{prospect?.name || "Cliente removido"} <span className="font-normal" style={{ color: COLORS.inkMuted }}>· pedido nº {r.number}</span></div>
                             <div className="text-xs" style={{ color: COLORS.inkMuted }}>
-                              {r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {(r.items || []).length} item(ns) · Total {fmtMoney(total)} · {r.payment_method || "-"}
+                              {r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {(r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0)} peça(s) · Total {fmtMoney(total)} · {r.payment_method || "-"}
                             </div>
                           </div>
                         </div>
@@ -6241,7 +6241,7 @@ function App() {
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Total em consultas</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(clients.reduce((s, c) => s + (Number(c.consultations_value) || 0), 0))}</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>somado à mensalidade</div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -6415,7 +6415,7 @@ function App() {
                         <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Nº</th>
                         <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
                         <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Data</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Itens</th>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Peças</th>
                         <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Forma de pagamento</th>
                         <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Total</th>
                       </tr>
@@ -6429,7 +6429,7 @@ function App() {
                             <td className="p-3 font-semibold">{r.number}</td>
                             <td className="p-3">{rc?.name || "-"}</td>
                             <td className="p-3">{r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                            <td className="p-3">{(r.items || []).length}</td>
+                            <td className="p-3">{(r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0)}</td>
                             <td className="p-3">{r.payment_method || "-"}</td>
                             <td className="p-3 font-bold">{fmtMoney(total)}</td>
                           </tr>

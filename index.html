@@ -3896,6 +3896,12 @@ function App() {
     await supa.from("romaneios").update({ commission_paid: !r.commission_paid }).eq("id", r.id);
     await loadRomaneios();
   }
+  async function handleUpdateCommissionPercent(r, newPercent) {
+    const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+    const newValue = total * ((Number(newPercent) || 0) / 100);
+    await supa.from("romaneios").update({ commission_percent: Number(newPercent) || 0, commission_value: newValue }).eq("id", r.id);
+    await loadRomaneios();
+  }
 
   async function quickUploadProof(r, file) {
     if (!file) return;
@@ -5632,33 +5638,67 @@ function App() {
 
           {effectiveTab === "escala" && (
             <div>
-              <div className="flex justify-end mb-3">
-                <button onClick={() => { setEditingSchedule(null); setShowScheduleForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova escala</button>
+              <div className="flex justify-end mb-4">
+                <button onClick={() => { setEditingSchedule(null); setShowScheduleForm(true); }} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm hover:opacity-90 transition" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova escala</button>
               </div>
               {showScheduleForm && <div className="mb-4"><ScheduleForm initial={editingSchedule} employees={employees} onCreateEmployee={handleCreateEmployee} onSave={handleSaveSchedule} onCancel={() => { setShowScheduleForm(false); setEditingSchedule(null); }} /></div>}
-              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                {saturdaySchedule.length === 0 ? (
-                  <div className="p-10 text-center"><div className="text-3xl mb-2">🗓️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma escala cadastrada ainda.</div></div>
-                ) : saturdaySchedule.map((s, i) => {
-                  const dObj = new Date(s.schedule_date + "T00:00:00");
-                  const isPast = dObj < new Date(new Date().toDateString());
-                  return (
-                    <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", opacity: isPast ? 0.5 : 1 }}>
-                      <div className="flex items-center gap-3">
-                        <span className="text-lg">🗓️</span>
-                        <div>
-                          <div className="text-sm font-bold" style={{ color: COLORS.ink }}>{dObj.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" })}</div>
-                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>08:00 às 12:00 · {[s.technician1_name, s.technician2_name].filter(Boolean).join(" e ") || "sem técnico definido"}</div>
+
+              {saturdaySchedule.length === 0 ? (
+                <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                  <div className="text-3xl mb-2">🗓️</div>
+                  <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma escala cadastrada ainda.</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {saturdaySchedule.map((s) => {
+                    const dObj = new Date(s.schedule_date + "T00:00:00");
+                    const todayStart = new Date(new Date().toDateString());
+                    const isPast = dObj < todayStart;
+                    const isNext = !isPast && saturdaySchedule.filter((x) => new Date(x.schedule_date + "T00:00:00") >= todayStart).sort((a, b) => new Date(a.schedule_date) - new Date(b.schedule_date))[0]?.id === s.id;
+                    const monthAbbr = MONTHS_PT[dObj.getMonth()].slice(0, 3).toUpperCase();
+                    const weekdayFull = dObj.toLocaleDateString("pt-BR", { weekday: "long" });
+                    return (
+                      <div key={s.id} className="rounded-2xl border-2 overflow-hidden relative" style={{ borderColor: isNext ? COLORS.brandLight : COLORS.cardBorder, background: COLORS.card, opacity: isPast ? 0.45 : 1 }}>
+                        {isNext && (
+                          <div className="absolute top-2 right-2 text-[10px] font-extrabold px-2 py-0.5 rounded-full" style={{ color: "#fff", background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>PRÓXIMO</div>
+                        )}
+                        <div className="flex items-center gap-3 p-4" style={{ background: isNext ? "rgba(124,92,255,0.1)" : "rgba(255,255,255,0.02)", borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                          <div className="shrink-0 rounded-xl flex flex-col items-center justify-center w-14 h-14" style={{ background: isNext ? `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` : "rgba(255,255,255,0.06)" }}>
+                            <span className="text-lg font-extrabold leading-none" style={{ color: isNext ? "#fff" : COLORS.ink }}>{String(dObj.getDate()).padStart(2, "0")}</span>
+                            <span className="text-[9px] font-bold leading-none mt-0.5" style={{ color: isNext ? "rgba(255,255,255,0.85)" : COLORS.inkFaint }}>{monthAbbr}</span>
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm font-bold capitalize truncate" style={{ color: COLORS.ink }}>{weekdayFull}</div>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full mt-1" style={{ color: COLORS.info, background: "rgba(59,130,246,0.15)" }}>🕗 08:00 – 12:00</span>
+                          </div>
+                        </div>
+                        <div className="p-4 space-y-2">
+                          {s.technician1_name ? (
+                            <div className="flex items-center gap-2">
+                              <Avatar name={s.technician1_name} size={28} />
+                              <span className="text-sm font-semibold truncate" style={{ color: COLORS.ink }}>{s.technician1_name}</span>
+                            </div>
+                          ) : (
+                            <div className="text-xs" style={{ color: COLORS.inkFaint }}>1º técnico não definido</div>
+                          )}
+                          {s.technician2_name ? (
+                            <div className="flex items-center gap-2">
+                              <Avatar name={s.technician2_name} size={28} />
+                              <span className="text-sm font-semibold truncate" style={{ color: COLORS.ink }}>{s.technician2_name}</span>
+                            </div>
+                          ) : (
+                            <div className="text-xs" style={{ color: COLORS.inkFaint }}>2º técnico não definido</div>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-end gap-1.5 px-4 pb-3">
+                          <button onClick={() => { setEditingSchedule(s); setShowScheduleForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
+                          <button onClick={() => handleDeleteSchedule(s.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <button onClick={() => { setEditingSchedule(s); setShowScheduleForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
-                        <button onClick={() => handleDeleteSchedule(s.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -5916,7 +5956,14 @@ function App() {
                                 <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                                   <td className="p-3 font-semibold">{r.number}</td>
                                   <td className="p-3">{r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                                  <td className="p-3">{r.commission_percent || 0}%</td>
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-1">
+                                      <input type="number" key={`comm-${r.id}`} defaultValue={r.commission_percent || 0}
+                                        onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(r.commission_percent) || 0)) handleUpdateCommissionPercent(r, v); }}
+                                        className="w-14 rounded-lg border px-1.5 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                                      <span style={{ color: COLORS.inkMuted }}>%</span>
+                                    </div>
+                                  </td>
                                   <td className="p-3 font-bold">{fmtMoney(r.commission_value)}</td>
                                   <td className="p-3">
                                     <button onClick={() => handleToggleCommissionPaid(r)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: r.commission_paid ? COLORS.success : COLORS.cardBorder, color: r.commission_paid ? COLORS.success : COLORS.inkMuted, background: r.commission_paid ? "rgba(34,197,94,0.1)" : "transparent" }}>

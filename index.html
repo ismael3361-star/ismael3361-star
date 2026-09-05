@@ -2986,6 +2986,20 @@ function App() {
     await loadExpenses();
     if (willPay) logActivity(`Despesa paga: ${exp.category} — ${exp.description || ""}`);
   }
+  async function handleUploadExpenseFile(exp, file) {
+    if (!file) return;
+    try {
+      const path = `despesas/${exp.id}-${Date.now()}-${file.name}`;
+      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supa.storage.from("boletos").getPublicUrl(path);
+      await supa.from("company_expenses").update({ file_url: data.publicUrl, file_name: file.name }).eq("id", exp.id);
+      await loadExpenses();
+      showToast("Boleto anexado.");
+    } catch (e) {
+      showToast(`Erro: ${e.message || "não foi possível anexar o arquivo"}`);
+    }
+  }
   async function handleGenerateNextMonthExpenses() {
     const recurring = expenses.filter((e) => e.recurring);
     if (recurring.length === 0) { showToast("Nenhuma despesa recorrente cadastrada."); return; }
@@ -5873,6 +5887,14 @@ function App() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5">
+                                {e.file_url ? (
+                                  <a href={e.file_url} target="_blank" className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📎 Ver boleto</a>
+                                ) : (
+                                  <label className="text-xs font-bold px-2.5 py-1.5 rounded-full border cursor-pointer" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
+                                    📎 Anexar boleto
+                                    <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e2) => handleUploadExpenseFile(e, e2.target.files?.[0])} />
+                                  </label>
+                                )}
                                 <button onClick={() => handleToggleExpensePaid(e)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: e.paid ? COLORS.success : COLORS.cardBorder, color: e.paid ? COLORS.success : COLORS.inkMuted, background: e.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
                                   {e.paid ? "✓ Pago" : "○ Marcar como pago"}
                                 </button>

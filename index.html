@@ -17,6 +17,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   * { -webkit-tap-highlight-color: transparent; }
@@ -778,6 +779,10 @@ function ProspectForm({ initial, onSave, onCancel }) {
 }
 
 const ECOMMERCE_PLATFORMS = ["NuvemShop", "Converte+", "Vesti", "Taylor", "Mooda", "Brasplace", "Tray", "Dafiti", "Olist", "UPZERO", "Magento", "WooCommerce"];
+const ROMANEIO_PRODUTOS_FREQUENTES = [
+  { codigo: "01", descricao: "Etiqueta de composição mod.03 35m X 55m" },
+  { codigo: "02", descricao: "Etiqueta de composição mod.04 35 X 69m" },
+];
 
 function ClientPicker({ prospects, clients, value, onSelect, onCreateNew }) {
   const [search, setSearch] = useState("");
@@ -2538,6 +2543,21 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
           <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Itens</span>
           <span className="text-sm font-bold" style={{ color: COLORS.success }}>Total: {fmtMoney(total)}</span>
         </div>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          <span className="text-[10px] font-bold uppercase px-1 py-1.5" style={{ color: COLORS.inkFaint }}>Produtos frequentes:</span>
+          {ROMANEIO_PRODUTOS_FREQUENTES.map((p) => (
+            <button key={p.codigo} type="button" onClick={() => {
+                setItems((prev) => {
+                  const lastEmpty = prev.length && !prev[prev.length - 1].descricao.trim() ? prev.length - 1 : -1;
+                  if (lastEmpty >= 0) return prev.map((it, idx) => idx === lastEmpty ? { ...it, codigo: p.codigo, descricao: p.descricao } : it);
+                  return [...prev, { codigo: p.codigo, descricao: p.descricao, quantidade: "", valorUnit: "" }];
+                });
+              }}
+              className="text-[11px] font-semibold px-2.5 py-1 rounded-full border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
+              ＋ {p.codigo} {p.descricao}
+            </button>
+          ))}
+        </div>
         <div className="space-y-2">
           {items.map((it, i) => (
             <div key={i} className="grid grid-cols-12 gap-2 items-center">
@@ -2993,6 +3013,21 @@ function App() {
     await supa.from("company_expenses").update({ paid: willPay, paid_date: willPay ? new Date().toISOString().slice(0, 10) : null, paid_value: willPay ? exp.value : null }).eq("id", exp.id);
     await loadExpenses();
     if (willPay) logActivity(`Despesa paga: ${exp.category} — ${exp.description || ""}`);
+    if (willPay && exp.file_url && !exp.file_url_watermarked) {
+      try {
+        const blob = await generatePaidWatermarkBlob(exp.file_url, exp.file_name);
+        const ext = /\.pdf($|\?)/i.test(exp.file_name || exp.file_url) ? "pdf" : "png";
+        const path = `despesas/${exp.id}-pago-${Date.now()}.${ext}`;
+        const { error } = await supa.storage.from("boletos").upload(path, blob, { upsert: true });
+        if (error) throw error;
+        const { data } = supa.storage.from("boletos").getPublicUrl(path);
+        await supa.from("company_expenses").update({ file_url_watermarked: data.publicUrl }).eq("id", exp.id);
+        await loadExpenses();
+      } catch (e) {
+        console.error("Erro ao gerar marca d'água:", e);
+        showToast("Pago marcado, mas não deu pra gerar a marca d'água no boleto.");
+      }
+    }
   }
   async function handleUploadExpenseFile(exp, file) {
     if (!file) return;
@@ -3001,12 +3036,51 @@ function App() {
       const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
-      await supa.from("company_expenses").update({ file_url: data.publicUrl, file_name: file.name }).eq("id", exp.id);
+      await supa.from("company_expenses").update({ file_url: data.publicUrl, file_name: file.name, file_url_watermarked: null }).eq("id", exp.id);
       await loadExpenses();
       showToast("Boleto anexado.");
     } catch (e) {
       showToast(`Erro: ${e.message || "não foi possível anexar o arquivo"}`);
     }
+  }
+  async function generatePaidWatermarkBlob(fileUrl, fileName) {
+    const isPdf = /\.pdf($|\?)/i.test(fileName || fileUrl);
+    if (isPdf) {
+      const existingBytes = await fetch(fileUrl).then((res) => res.arrayBuffer());
+      const pdfDoc = await PDFLib.PDFDocument.load(existingBytes);
+      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
+      pdfDoc.getPages().forEach((page) => {
+        const { width, height } = page.getSize();
+        page.drawText("PAGO", {
+          x: width / 2 - 130, y: height / 2 - 40, size: Math.min(90, width / 5),
+          font, color: PDFLib.rgb(0.82, 0.1, 0.1), opacity: 0.35, rotate: PDFLib.degrees(35),
+        });
+      });
+      const bytes = await pdfDoc.save();
+      return new Blob([bytes], { type: "application/pdf" });
+    }
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.crossOrigin = "anonymous";
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = fileUrl;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(-Math.PI / 4.5);
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#D11414";
+    ctx.font = `bold ${Math.floor(canvas.width / 5)}px Arial, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("PAGO", 0, 0);
+    ctx.restore();
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
   async function handleGenerateNextMonthExpenses() {
     const recurring = expenses.filter((e) => e.recurring);
@@ -3797,49 +3871,62 @@ function App() {
     doc.line(14, y, 196, y);
     y += 7;
 
+    // Bloco no estilo "romaneio clássico" (fonte monoespaçada, linhas tracejadas)
+    function dashedLine(yPos) {
+      doc.setLineDashPattern([1, 1], 0);
+      doc.setDrawColor(60);
+      doc.line(14, yPos, 196, yPos);
+      doc.setLineDashPattern([], 0);
+    }
+    function fmtNum(v) { return (Number(v) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+    doc.setFont("courier", "normal");
+    dashedLine(y); y += 6;
     doc.setFontSize(9);
-    doc.setTextColor(90);
-    doc.text("Código", 14, y);
-    doc.text("Descrição", 40, y);
-    doc.text("Qtd.", 130, y);
-    doc.text("Vr. Unit.", 150, y);
-    doc.text("Vr. Total", 175, y);
-    y += 2;
-    doc.setDrawColor(200);
-    doc.line(14, y, 196, y);
+    doc.setTextColor(30);
+    doc.text("It", 14, y);
+    doc.text("Código", 22, y);
+    doc.text("Descrição", 42, y);
+    doc.text("Quantidade", 143, y, { align: "right" });
+    doc.text("Vr.Unitário", 168, y, { align: "right" });
+    doc.text("Vr.Total", 192, y, { align: "right" });
     y += 6;
 
-    doc.setTextColor(30);
-    (r.items || []).forEach((it) => {
-      if (y > 270) { doc.addPage(); y = 20; }
-      const vTotal = (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0);
-      doc.text(String(it.codigo || "-"), 14, y);
-      doc.text(doc.splitTextToSize(it.descricao || "", 85)[0] || "", 40, y);
-      doc.text(String(it.quantidade || 0), 130, y);
-      doc.text(fmtMoney(it.valorUnit), 150, y);
-      doc.text(fmtMoney(vTotal), 175, y);
+    let totalQtd = 0;
+    (r.items || []).forEach((it, idx) => {
+      if (y > 265) { doc.addPage(); y = 20; doc.setFont("courier", "normal"); }
+      const qtd = Number(it.quantidade) || 0;
+      totalQtd += qtd;
+      const vTotal = qtd * (Number(it.valorUnit) || 0);
+      doc.text(String(idx + 1).padStart(2, "0"), 14, y);
+      doc.text(String(it.codigo || "-"), 22, y);
+      doc.text(doc.splitTextToSize((it.descricao || "").toUpperCase(), 95)[0] || "", 42, y);
+      doc.text(`${qtd} PÇ`, 143, y, { align: "right" });
+      doc.text(fmtNum(it.valorUnit), 168, y, { align: "right" });
+      doc.text(fmtNum(vTotal), 192, y, { align: "right" });
       y += 6;
     });
 
     y += 2;
-    doc.setDrawColor(200);
-    doc.line(14, y, 196, y);
-    y += 7;
     const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
-    doc.setFontSize(11);
-    doc.setTextColor(30);
-    doc.text("Total:", 150, y);
-    doc.text(fmtMoney(total), 175, y);
-    y += 12;
+    doc.text("Total", 90, y);
+    doc.text(":", 100, y);
+    doc.text(`${totalQtd} PÇ`, 143, y, { align: "right" });
+    doc.text(fmtNum(total), 192, y, { align: "right" });
+    y += 6;
+    dashedLine(y); y += 8;
 
     doc.setFontSize(9);
-    doc.setTextColor(60);
-    if (r.payment_term) { doc.text(`Prazo de pagamento: ${r.payment_term}`, 14, y); y += 6; }
-    if (r.payment_method) { doc.text(`Forma de pagamento: ${r.payment_method}`, 14, y); y += 6; }
+    if (r.payment_term) { doc.text(`PRAZO DE ENTREGA: ${r.payment_term.toUpperCase()}`, 14, y); y += 6; }
+    if (r.payment_method) { doc.text(`FORMA DE PAGAMENTO: ${r.payment_method.toUpperCase()}    R$ ${fmtNum(total)}`, 14, y); y += 6; }
+    if (r.pix_key) { doc.text(`CHAVE PIX: ${r.pix_key}${r.pix_favorecido ? " - " + r.pix_favorecido.toUpperCase() : ""}`, 14, y); y += 6; }
+    if (r.freight) { doc.text(`FRETE: ${r.freight.toUpperCase()}`, 14, y); y += 6; }
+    y += 2;
+    dashedLine(y); y += 8;
+    doc.setFont(undefined, "normal");
+
     if (r.pix_key) {
-      doc.text(`Chave PIX: ${r.pix_key}${r.pix_favorecido ? "  —  Favorecido: " + r.pix_favorecido : ""}`, 14, y); y += 6;
-      const pixTotal = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
-      const qrPayload = generatePixPayload({ key: r.pix_key, name: r.pix_favorecido, city: "SAO PAULO", value: pixTotal, txid: r.number });
+      const qrPayload = generatePixPayload({ key: r.pix_key, name: r.pix_favorecido, city: "SAO PAULO", value: total, txid: r.number });
       const qrData = generatePixQRDataURL(qrPayload, 200);
       if (qrData) {
         if (y > 210) { doc.addPage(); y = 20; }
@@ -3850,7 +3937,6 @@ function App() {
         y += 36;
       }
     }
-    if (r.freight) { doc.text(`Frete: ${r.freight}`, 14, y); y += 6; }
 
     y += 12;
     if (y > 230) { doc.addPage(); y = 20; }
@@ -5904,7 +5990,9 @@ function App() {
                               </div>
                               <div className="flex items-center gap-1.5">
                                 {e.file_url ? (
-                                  <a href={e.file_url} target="_blank" className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📎 Ver boleto</a>
+                                  <a href={e.paid && e.file_url_watermarked ? e.file_url_watermarked : e.file_url} target="_blank" className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: e.paid ? COLORS.success : COLORS.brandLight, color: e.paid ? COLORS.success : COLORS.brandLight }}>
+                                    {e.paid ? "✓📎 Ver boleto (pago)" : "📎 Ver boleto"}
+                                  </a>
                                 ) : (
                                   <label className="text-xs font-bold px-2.5 py-1.5 rounded-full border cursor-pointer" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
                                     📎 Anexar boleto

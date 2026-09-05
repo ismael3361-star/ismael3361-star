@@ -116,6 +116,12 @@ const COLORS = {
   wa: "#22C55E", email: "#A78BFA",
 };
 const PROPOSAL_STAGE_COLORS = { enviada: "#3B82F6", negociacao: "#F59E0B", fechada: "#22C55E", perdida: "#EF4444" };
+const ROLE_ALLOWED_TABS = {
+  tecnico: ["implantacao_tecnica"],
+  comercial: ["clientes", "propostas", "romaneio"],
+  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao"],
+  operacional: ["itag", "implantacao_tecnica", "escala"],
+};
 
 // PWA: manifest e ícone dinâmicos a partir do logo (permite "instalar" o sistema como app)
 (function setupPWA() {
@@ -1273,8 +1279,22 @@ function DonutCanais({ waCount, emailCount }) {
   return <canvas ref={ref} height="220"></canvas>;
 }
 
-const EXPENSE_CATEGORIES = ["Imposto", "Água", "Luz", "Telefone", "Internet", "Aluguel", "Fornecedor", "Estacionamento", "Outros"];
-const EXPENSE_CATEGORY_COLORS = { "Imposto": "#EF4444", "Água": "#3B82F6", "Luz": "#F59E0B", "Telefone": "#A78BFA", "Internet": "#22C55E", "Aluguel": "#EC4899", "Fornecedor": "#14B8A6", "Estacionamento": "#F97316", "Outros": "#8A97AC" };
+const EXPENSE_CATEGORIES = ["Imposto", "Água", "Luz", "Telefone", "Internet", "Aluguel", "Condomínio", "Folha de Pagamento", "Vale", "Fornecedor", "Estacionamento", "Outros"];
+const EXPENSE_CATEGORY_COLORS = { "Imposto": "#EF4444", "Água": "#3B82F6", "Luz": "#F59E0B", "Telefone": "#A78BFA", "Internet": "#22C55E", "Aluguel": "#EC4899", "Condomínio": "#8B5CF6", "Folha de Pagamento": "#0EA5E9", "Vale": "#F43F5E", "Fornecedor": "#14B8A6", "Estacionamento": "#F97316", "Outros": "#8A97AC" };
+
+// Retorna a data do quinto dia útil do mês.
+// Sábado conta como dia útil (padrão CLT), mas se o 5º cair no sábado,
+// o pagamento é antecipado pra sexta-feira. Domingo nunca conta.
+function quintoDiaUtil(year, month) {
+  let count = 0;
+  const d = new Date(year, month, 1);
+  while (count < 5) {
+    if (d.getDay() !== 0) count++;
+    if (count < 5) d.setDate(d.getDate() + 1);
+  }
+  if (d.getDay() === 6) d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
 
 function ExpenseForm({ initial, onSave, onCancel }) {
   const [category, setCategory] = useState(initial?.category || EXPENSE_CATEGORIES[0]);
@@ -1301,7 +1321,13 @@ function ExpenseForm({ initial, onSave, onCancel }) {
         <TextField label="Valor" value={value} onChange={setValue} type="number" placeholder="0" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento</span>
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <div className="flex gap-2">
+            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <button type="button" onClick={() => { const n = new Date(); setDueDate(quintoDiaUtil(n.getFullYear(), n.getMonth())); }}
+              className="px-2.5 py-2 rounded-lg text-[11px] font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }} title="Preenche com o 5º dia útil deste mês">
+              5º dia útil
+            </button>
+          </div>
         </label>
       </div>
       <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: COLORS.ink }}>
@@ -2725,6 +2751,57 @@ function ClientHistoryModal({ client, onClose }) {
   );
 }
 
+function ChangePasswordModal({ onClose, showToast }) {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function handleSave() {
+    setErr("");
+    if (newPassword.length < 6) { setErr("A senha precisa ter pelo menos 6 caracteres."); return; }
+    if (newPassword !== confirmPassword) { setErr("As senhas não são iguais."); return; }
+    setBusy(true);
+    const { error } = await supa.auth.updateUser({ password: newPassword });
+    setBusy(false);
+    if (error) { setErr(`Erro: ${error.message}`); return; }
+    showToast("Senha alterada com sucesso!");
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="rounded-2xl p-5 max-w-sm w-full" style={{ background: COLORS.card }} onClick={(e) => e.stopPropagation()}>
+        <div className="text-sm font-bold mb-4" style={{ color: COLORS.ink }}>🔑 Trocar senha</div>
+        <div className="space-y-2 mb-2">
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Nova senha</span>
+            <div className="relative">
+              <input type={showPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 pr-10 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs px-1" style={{ color: COLORS.inkMuted }} tabIndex={-1}>{showPassword ? "🙈" : "👁️"}</button>
+            </div>
+          </label>
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Confirmar nova senha</span>
+            <input type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSave()}
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          </label>
+        </div>
+        {err && <div className="text-xs mb-2" style={{ color: COLORS.danger }}>{err}</div>}
+        <div className="flex gap-2">
+          <button disabled={busy} onClick={handleSave} className="flex-1 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>
+            {busy ? "Salvando..." : "Salvar nova senha"}
+          </button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -2836,6 +2913,7 @@ function App() {
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [expenseFilter, setExpenseFilter] = useState("todos");
+  const [hideExpenseValues, setHideExpenseValues] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showTechForm, setShowTechForm] = useState(false);
@@ -2854,6 +2932,7 @@ function App() {
   const [editingVtVr, setEditingVtVr] = useState(null);
   const [showPaidVtVr, setShowPaidVtVr] = useState(false);
   const [userRole, setUserRole] = useState(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const mKey = monthKey(monthDate);
 
   useEffect(() => {
@@ -2873,7 +2952,8 @@ function App() {
   }, [session]);
 
   useEffect(() => {
-    if (userRole === "tecnico" && tab !== "implantacao_tecnica") setTab("implantacao_tecnica");
+    const allowed = ROLE_ALLOWED_TABS[userRole];
+    if (allowed && !allowed.includes(tab)) setTab(allowed[0]);
   }, [userRole, tab]);
 
   const showToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2500); };
@@ -4507,7 +4587,7 @@ function App() {
   if (userRole === null) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
   if (!settings) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
 
-  const effectiveTab = userRole === "tecnico" ? "implantacao_tecnica" : tab;
+  const effectiveTab = (ROLE_ALLOWED_TABS[userRole] && !ROLE_ALLOWED_TABS[userRole].includes(tab)) ? ROLE_ALLOWED_TABS[userRole][0] : tab;
   const filterButtons = [
     { id: "todos", label: "Todos" }, { id: "pendente", label: "Em aberto" }, { id: "atrasado", label: "Atrasados" },
     { id: "em_breve", label: "Vence em breve" }, { id: "enviado", label: "Enviados" }, { id: "pago", label: "Pagos" },
@@ -4525,7 +4605,7 @@ function App() {
         </div>
         <div className="flex sm:hidden justify-center"><img src={LOGO_DATA_URI} alt="Miré" className="w-12 h-auto object-contain" style={{ filter: "drop-shadow(0 0 10px rgba(124,92,255,0.4))" }} /></div>
 
-        {userRole !== "tecnico" && (
+        {userRole === "admin" && (
           <div className="relative">
             <input
               value={globalSearch}
@@ -4590,38 +4670,40 @@ function App() {
         )}
 
         <nav className="flex flex-col gap-1 w-full flex-1 overflow-y-auto">
-          {(userRole === "tecnico" ? [
-            { group: "Técnico", items: [
-              { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
-            ]},
-          ] : [
-            { group: "Principal", items: [
-              { id: "dashboard", label: "Dashboard", icon: "🏠" },
-              { id: "calendario", label: "Calendário", icon: "📅" },
-              { id: "relatorios", label: "Relatórios", icon: "📊" },
-            ]},
-            { group: "Comercial", items: [
-              { id: "clientes", label: "Clientes", icon: "👥" },
-              { id: "propostas", label: "Propostas", icon: "📝" },
-              { id: "romaneio", label: "Romaneio Etiqueta", icon: "📦" },
-            ]},
-            { group: "Financeiro", items: [
-              { id: "boletos", label: "Mensalidades", icon: "📄" },
-              { id: "implantacoes", label: "Implantações", icon: "🏗️" },
-              { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
-              { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
-              { id: "comissao", label: "Comissão Vendedor", icon: "💰" },
-            ]},
-            { group: "Operacional", items: [
-              { id: "itag", label: "RFID", icon: "🏷️" },
-              { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
-              { id: "escala", label: "Escala de Sábado", icon: "🗓️" },
-            ]},
-            { group: "Sistema", items: [
-              { id: "atividades", label: "Atividades", icon: "🕓" },
-              { id: "config", label: "Configurações", icon: "⚙️" },
-            ]},
-          ]).map((g, gi) => (
+          {(() => {
+            const ALL_GROUPS = [
+              { group: "Principal", items: [
+                { id: "dashboard", label: "Dashboard", icon: "🏠" },
+                { id: "calendario", label: "Calendário", icon: "📅" },
+                { id: "relatorios", label: "Relatórios", icon: "📊" },
+              ]},
+              { group: "Comercial", items: [
+                { id: "clientes", label: "Clientes", icon: "👥" },
+                { id: "propostas", label: "Propostas", icon: "📝" },
+                { id: "romaneio", label: "Romaneio Etiqueta", icon: "📦" },
+              ]},
+              { group: "Financeiro", items: [
+                { id: "boletos", label: "Mensalidades", icon: "📄" },
+                { id: "implantacoes", label: "Implantações", icon: "🏗️" },
+                { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
+                { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
+                { id: "comissao", label: "Comissão Vendedor", icon: "💰" },
+              ]},
+              { group: "Operacional", items: [
+                { id: "itag", label: "RFID", icon: "🏷️" },
+                { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
+                { id: "escala", label: "Escala de Sábado", icon: "🗓️" },
+              ]},
+              { group: "Sistema", items: [
+                { id: "atividades", label: "Atividades", icon: "🕓" },
+                { id: "config", label: "Configurações", icon: "⚙️" },
+              ]},
+            ];
+            const allowed = ROLE_ALLOWED_TABS[userRole];
+            if (!allowed) return ALL_GROUPS;
+            const flatItems = ALL_GROUPS.flatMap((g) => g.items).filter((it) => allowed.includes(it.id));
+            return [{ group: userRole.charAt(0).toUpperCase() + userRole.slice(1), items: flatItems }];
+          })().map((g, gi) => (
             <div key={g.group} className="mb-1" style={{ borderTop: gi > 0 ? `1px solid ${COLORS.cardBorder}` : "none", paddingTop: gi > 0 ? "8px" : "0" }}>
               <div className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-3 mb-1" style={{ color: COLORS.inkFaint }}>{g.group}</div>
               {g.items.map((t) => {
@@ -4641,7 +4723,7 @@ function App() {
             </div>
           ))}
 
-          {userRole !== "tecnico" && (
+          {(userRole === "admin" || userRole === "financeiro") && (
           <>
           <div className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-3 mb-1 mt-3" style={{ color: COLORS.inkFaint }}>Envio rápido</div>
           <button onClick={() => { setTab("boletos"); sendBulkWhatsApp(quickWaTargets); }} disabled={bulkSending}
@@ -4665,6 +4747,7 @@ function App() {
           <div className="hidden sm:block min-w-0 flex-1">
             <div className="text-xs font-bold truncate" style={{ color: COLORS.ink }}>Administrador</div>
             <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{session.user.email}</div>
+            <button onClick={() => setShowChangePassword(true)} className="text-[10px] font-semibold underline" style={{ color: COLORS.brandLight }}>🔑 Trocar senha</button>
           </div>
           <button onClick={() => supa.auth.signOut()} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.danger }}>Sair</button>
         </div>
@@ -4698,14 +4781,14 @@ function App() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {userRole !== "tecnico" && ["boletos", "calendario"].includes(effectiveTab) && (
+              {["boletos", "calendario"].includes(effectiveTab) && (
                 <div className="flex items-center gap-1 px-3 py-2 rounded-xl border text-sm font-semibold" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
                   <button onClick={() => changeMonth(-1)} style={{ color: COLORS.inkMuted }}>‹</button>
                   <span>{MONTHS_PT[monthDate.getMonth()].slice(0, 3)}/{monthDate.getFullYear()}</span>
                   <button onClick={() => changeMonth(1)} style={{ color: COLORS.inkMuted }}>›</button>
                 </div>
               )}
-              {userRole !== "tecnico" && effectiveTab === "clientes" && (
+              {effectiveTab === "clientes" && (
                 <button onClick={() => { setTab("clientes"); setEditing(null); setShowForm(true); }}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-bold text-white shadow-sm hover:opacity-90 transition"
                   style={{ background: COLORS.success }}>
@@ -5929,11 +6012,11 @@ function App() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                       <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Em aberto</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalAberto)}</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{hideExpenseValues ? "R$ ••••••" : fmtMoney(totalAberto)}</div>
                       </div>
                       <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Pago</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalPago)}</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{hideExpenseValues ? "R$ ••••••" : fmtMoney(totalPago)}</div>
                       </div>
                       <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>Atrasadas</div>
@@ -5947,6 +6030,9 @@ function App() {
 
                     {expenses.length > 0 && (
                       <div className="flex items-center justify-end gap-2 mb-3">
+                        <button onClick={() => setHideExpenseValues((v) => !v)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: hideExpenseValues ? COLORS.brandLight : COLORS.cardBorder, color: hideExpenseValues ? COLORS.brandLight : COLORS.ink }}>
+                          {hideExpenseValues ? "👁️ Mostrar valores" : "🙈 Ocultar valores"}
+                        </button>
                         <button onClick={() => exportExpensesExcel(filtered)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
                         <button onClick={() => exportExpensesPDF(filtered)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Exportar PDF</button>
                       </div>
@@ -5977,14 +6063,14 @@ function App() {
                           return (
                             <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                               <div className="flex items-center gap-3">
-                                <span className="text-lg">{e.category === "Imposto" ? "🏛️" : e.category === "Água" ? "💧" : e.category === "Luz" ? "💡" : e.category === "Telefone" ? "📞" : e.category === "Internet" ? "🌐" : e.category === "Aluguel" ? "🏠" : e.category === "Fornecedor" ? "📦" : e.category === "Estacionamento" ? "🅿️" : "🧾"}</span>
+                                <span className="text-lg">{e.category === "Imposto" ? "🏛️" : e.category === "Água" ? "💧" : e.category === "Luz" ? "💡" : e.category === "Telefone" ? "📞" : e.category === "Internet" ? "🌐" : e.category === "Aluguel" ? "🏠" : e.category === "Condomínio" ? "🏢" : e.category === "Folha de Pagamento" ? "👥" : e.category === "Vale" ? "💵" : e.category === "Fornecedor" ? "📦" : e.category === "Estacionamento" ? "🅿️" : "🧾"}</span>
                                 <div>
                                   <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
                                     {e.category}{e.description ? ` — ${e.description}` : ""}
                                     {e.recurring && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.15)" }}>🔁 recorrente</span>}
                                   </div>
                                   <div className="text-xs" style={{ color: isLate ? COLORS.danger : COLORS.inkMuted }}>
-                                    {fmtMoney(e.value)} · vence {fmtDate(e.due_date)}{isLate ? " · ATRASADA" : ""}{e.client_invoice_number ? ` · Nota: ${e.client_invoice_number}` : ""}
+                                    {hideExpenseValues ? "R$ ••••" : fmtMoney(e.value)} · vence {fmtDate(e.due_date)}{isLate ? " · ATRASADA" : ""}{e.client_invoice_number ? ` · Nota: ${e.client_invoice_number}` : ""}
                                   </div>
                                 </div>
                               </div>
@@ -6011,7 +6097,7 @@ function App() {
                       </div>
                     )}
 
-                    {expenses.length > 0 && (
+                    {expenses.length > 0 && !hideExpenseValues && (
                       <div className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                         <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>Despesas por categoria</div>
                         <DonutExpensesByCategory expenses={expenses} />
@@ -6699,6 +6785,7 @@ function App() {
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-lg" style={{ background: COLORS.card, border: `1px solid ${COLORS.cardBorder}` }}>{toast}</div>}
       {pixModal && <PixQRModal {...pixModal} onClose={() => setPixModal(null)} />}
       {viewingTech && <TechImplementationViewer t={viewingTech} onClose={() => setViewingTech(null)} />}
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} showToast={showToast} />}
       {historyClient && <ClientHistoryModal client={historyClient} onClose={() => setHistoryClient(null)} />}
     </div>
   );

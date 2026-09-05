@@ -4549,6 +4549,20 @@ function App() {
     return map;
   }, [clients]);
 
+  // Contas a pagar que vencem no mês exibido no calendário, agrupadas por dia
+  const expensesByDueDay = useMemo(() => {
+    const map = {};
+    const y = monthDate.getFullYear(), m = monthDate.getMonth();
+    expenses.filter((e) => e.due_date).forEach((e) => {
+      const d = new Date(e.due_date + "T00:00:00");
+      if (d.getFullYear() !== y || d.getMonth() !== m) return;
+      const day = d.getDate();
+      if (!map[day]) map[day] = [];
+      map[day].push(e);
+    });
+    return map;
+  }, [expenses, monthDate]);
+
   const dueDayGroups = useMemo(() => {
     const map = {};
     clients.forEach((c) => {
@@ -5006,7 +5020,11 @@ function App() {
 
                 return (
                   <div>
-                    <div className="text-sm mb-3" style={{ color: COLORS.inkMuted }}>{MONTHS_PT[month]} de {year} — clique num cliente pra ver os detalhes na aba Mensalidades</div>
+                    <div className="text-sm mb-3 flex items-center gap-3 flex-wrap" style={{ color: COLORS.inkMuted }}>
+                      <span>{MONTHS_PT[month]} de {year}</span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>↓ a receber (mensalidades)</span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>↑ a pagar (contas)</span>
+                    </div>
                     <div className="grid grid-cols-7 gap-1.5 mb-1.5">
                       {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => (
                         <div key={d} className="text-center text-[10px] font-bold uppercase" style={{ color: COLORS.inkFaint }}>{d}</div>
@@ -5016,15 +5034,23 @@ function App() {
                       {cells.map((day, i) => {
                         if (!day) return <div key={i} />;
                         const dayClients = clientsByDueDay[day] || [];
+                        const dayExpenses = expensesByDueDay[day] || [];
                         const total = dayClients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0);
+                        const totalExpenses = dayExpenses.reduce((s, e) => s + (Number(e.value) || 0), 0);
                         const isToday = isCurrentMonth && today.getDate() === day;
                         return (
                           <div key={i} className="rounded-xl border p-2 min-h-[74px] sm:min-h-[92px]" style={{ borderColor: isToday ? COLORS.brandLight : COLORS.cardBorder, background: isToday ? "rgba(124,92,255,0.08)" : COLORS.card }}>
                             <div className="text-xs font-bold mb-1" style={{ color: isToday ? COLORS.brandLight : COLORS.ink }}>{day}</div>
                             {dayClients.length > 0 && (
-                              <div>
-                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block mb-1" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }}>{dayClients.length} cliente{dayClients.length > 1 ? "s" : ""}</div>
+                              <div className="mb-1">
+                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>↓ {dayClients.length} receber</div>
                                 <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{fmtMoney(total)}</div>
+                              </div>
+                            )}
+                            {dayExpenses.length > 0 && (
+                              <div>
+                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }} title={dayExpenses.map((e) => `${e.category}${e.description ? " - " + e.description : ""}`).join("\n")}>↑ {dayExpenses.length} pagar</div>
+                                <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{fmtMoney(totalExpenses)}</div>
                               </div>
                             )}
                           </div>

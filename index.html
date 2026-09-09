@@ -3421,22 +3421,52 @@ function App() {
       showToast(`Erro: ${e.message || "não foi possível anexar o arquivo"}`);
     }
   }
-  async function generatePaidWatermarkBlob(fileUrl, fileName) {
+  // Gera a versão com marca d'água "PAGO".
+  // Se paidFlags for informado (ex: [true, false, true]), marca só a faixa da
+  // página correspondente a cada parcela paga — útil quando vários boletos
+  // vêm empilhados na mesma folha, em ordem de vencimento.
+  async function generatePaidWatermarkBlob(fileUrl, fileName, paidFlags) {
     const isPdf = /\.pdf($|\?)/i.test(fileName || fileUrl);
+    const n = Array.isArray(paidFlags) && paidFlags.length > 1 ? paidFlags.length : 1;
+
     if (isPdf) {
       const existingBytes = await fetch(fileUrl).then((res) => res.arrayBuffer());
       const pdfDoc = await PDFLib.PDFDocument.load(existingBytes);
       const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
-      pdfDoc.getPages().forEach((page) => {
-        const { width, height } = page.getSize();
-        page.drawText("PAGO", {
-          x: width / 2 - 130, y: height / 2 - 40, size: Math.min(90, width / 5),
-          font, color: PDFLib.rgb(0.82, 0.1, 0.1), opacity: 0.35, rotate: PDFLib.degrees(35),
+      const pages = pdfDoc.getPages();
+
+      // Cada boleto numa página: marca a página inteira da parcela paga
+      if (n > 1 && pages.length >= n) {
+        pages.forEach((page, i) => {
+          if (i < n && !paidFlags[i]) return;
+          if (i >= n) return;
+          const { width, height } = page.getSize();
+          page.drawText("PAGO", {
+            x: width / 2 - 130, y: height / 2 - 40, size: Math.min(90, width / 5),
+            font, color: PDFLib.rgb(0.82, 0.1, 0.1), opacity: 0.35, rotate: PDFLib.degrees(35),
+          });
         });
-      });
+      } else {
+        // Boletos empilhados na mesma página: divide a altura em n faixas
+        pages.forEach((page) => {
+          const { width, height } = page.getSize();
+          const faixa = height / n;
+          for (let i = 0; i < n; i++) {
+            if (n > 1 && !paidFlags[i]) continue;
+            // faixa 0 = topo da página (1º vencimento)
+            const centroY = height - (faixa * i) - (faixa / 2);
+            const tamanho = Math.min(n > 1 ? 54 : 90, width / (n > 1 ? 7 : 5));
+            page.drawText("PAGO", {
+              x: width / 2 - (tamanho * 1.5), y: centroY - (tamanho / 3), size: tamanho,
+              font, color: PDFLib.rgb(0.82, 0.1, 0.1), opacity: 0.35, rotate: PDFLib.degrees(20),
+            });
+          }
+        });
+      }
       const bytes = await pdfDoc.save();
       return new Blob([bytes], { type: "application/pdf" });
     }
+
     const img = await new Promise((resolve, reject) => {
       const el = new Image();
       el.crossOrigin = "anonymous";
@@ -3448,16 +3478,20 @@ function App() {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(img, 0, 0);
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate(-Math.PI / 4.5);
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = "#D11414";
-    ctx.font = `bold ${Math.floor(canvas.width / 5)}px Arial, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("PAGO", 0, 0);
-    ctx.restore();
+    const faixaH = canvas.height / n;
+    for (let i = 0; i < n; i++) {
+      if (n > 1 && !paidFlags[i]) continue;
+      ctx.save();
+      ctx.translate(canvas.width / 2, (faixaH * i) + (faixaH / 2));
+      ctx.rotate(-Math.PI / (n > 1 ? 9 : 4.5));
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = "#D11414";
+      ctx.font = `bold ${Math.floor(canvas.width / (n > 1 ? 7 : 5))}px Arial, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("PAGO", 0, 0);
+      ctx.restore();
+    }
     return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
   async function handleGenerateNextMonthExpenses() {
@@ -3856,17 +3890,22 @@ function App() {
     const novas = (o.installments || []).map((it, i) => i === idx ? { ...it, paid: !it.paid } : it);
     await supa.from("supplier_orders").update({ installments: novas }).eq("id", o.id);
     await loadSupplierOrders();
-    // Se todas as parcelas ficaram pagas e existe boleto anexado, gera a versão com marca d'água
-    const tudoPago = novas.length > 0 && novas.every((it) => it.paid);
-    if (tudoPago && o.file_url && !o.file_url_watermarked) {
+    // Regenera o boleto com marca d'água nas faixas das parcelas já pagas
+    if (o.file_url) {
+      const flags = novas.map((it) => !!it.paid);
       try {
-        const blob = await generatePaidWatermarkBlob(o.file_url, o.file_name);
-        const ext = /\.pdf($|\?)/i.test(o.file_name || o.file_url) ? "pdf" : "png";
-        const path = `pedidos-etiquetas/${o.id}-pago-${Date.now()}.${ext}`;
-        const { error } = await supa.storage.from("boletos").upload(path, blob, { upsert: true });
-        if (error) throw error;
-        const { data } = supa.storage.from("boletos").getPublicUrl(path);
-        await supa.from("supplier_orders").update({ file_url_watermarked: data.publicUrl }).eq("id", o.id);
+        if (!flags.some(Boolean)) {
+          // Nenhuma parcela paga: volta a mostrar o boleto original
+          await supa.from("supplier_orders").update({ file_url_watermarked: null }).eq("id", o.id);
+        } else {
+          const blob = await generatePaidWatermarkBlob(o.file_url, o.file_name, flags);
+          const ext = /\.pdf($|\?)/i.test(o.file_name || o.file_url) ? "pdf" : "png";
+          const path = `pedidos-etiquetas/${o.id}-pago-${Date.now()}.${ext}`;
+          const { error } = await supa.storage.from("boletos").upload(path, blob, { upsert: true });
+          if (error) throw error;
+          const { data } = supa.storage.from("boletos").getPublicUrl(path);
+          await supa.from("supplier_orders").update({ file_url_watermarked: data.publicUrl }).eq("id", o.id);
+        }
         await loadSupplierOrders();
       } catch (e) {
         console.error("Erro ao gerar marca d'água:", e);
@@ -6589,8 +6628,8 @@ function App() {
                                     <td className="p-3">
                                       {o.file_url ? (
                                         <div className="flex items-center gap-1">
-                                          <a href={tudoPago && o.file_url_watermarked ? o.file_url_watermarked : o.file_url} target="_blank" className="text-[11px] font-bold px-2 py-1 rounded-full border whitespace-nowrap" style={{ borderColor: tudoPago ? COLORS.success : COLORS.brandLight, color: tudoPago ? COLORS.success : COLORS.brandLight }}>
-                                            {tudoPago ? "✓📎 Pago" : "📎 Ver"}
+                                          <a href={o.file_url_watermarked || o.file_url} target="_blank" className="text-[11px] font-bold px-2 py-1 rounded-full border whitespace-nowrap" style={{ borderColor: tudoPago ? COLORS.success : o.file_url_watermarked ? COLORS.warn : COLORS.brandLight, color: tudoPago ? COLORS.success : o.file_url_watermarked ? COLORS.warn : COLORS.brandLight }}>
+                                            {tudoPago ? "✓📎 Pago" : o.file_url_watermarked ? "📎 Parcial" : "📎 Ver"}
                                           </a>
                                           <button onClick={() => handleRemoveSupplierFile(o)} className="text-[11px] px-1" style={{ color: COLORS.danger }} title="Remover anexo">✕</button>
                                         </div>

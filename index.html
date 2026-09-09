@@ -5247,8 +5247,8 @@ function App() {
               onFocus={() => { if (globalSearch.trim()) setShowGlobalSearch(true); }}
               onBlur={() => setTimeout(() => setShowGlobalSearch(false), 150)}
               placeholder="🔍 Buscar em tudo..."
-              className="hidden sm:block w-full rounded-lg border px-3 py-2 text-xs outline-none"
-              style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}
+              className="hidden sm:block w-full rounded-xl border px-3 py-2 text-xs outline-none transition-all"
+              style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.04)", color: COLORS.ink }}
             />
             {showGlobalSearch && (() => {
               const q = globalSearch.trim().toLowerCase();
@@ -5340,60 +5340,73 @@ function App() {
             const flatItems = ALL_GROUPS.flatMap((g) => g.items).filter((it) => allowed.includes(it.id));
             return [{ group: userRole.charAt(0).toUpperCase() + userRole.slice(1), items: flatItems }];
           })().map((g, gi) => (
-            <div key={g.group} className="mb-1" style={{ borderTop: gi > 0 ? `1px solid ${COLORS.cardBorder}` : "none", paddingTop: gi > 0 ? "8px" : "0" }}>
-              <div className="hidden sm:block text-[9px] font-bold uppercase tracking-wider px-2 mb-0.5" style={{ color: COLORS.inkFaint }}>{g.group}</div>
-              {g.items.map((t) => {
-                const active = tab === t.id;
-                return (
-                  <button key={t.id} onClick={() => setTab(t.id)}
-                    className="flex flex-col sm:flex-row items-center sm:gap-2 justify-center sm:justify-start w-full px-1.5 sm:px-2.5 py-1.5 rounded-lg font-semibold transition-all relative overflow-hidden"
-                    style={{ background: active ? `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` : "transparent", color: active ? "#fff" : COLORS.inkMuted, boxShadow: active ? "0 4px 18px rgba(124,92,255,0.45), inset 0 1px 0 rgba(255,255,255,0.2)" : "none" }}
-                    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(124,92,255,0.08)"; }}
-                    onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
-                    {active && <span className="hidden sm:block absolute left-0 top-0 bottom-0 w-1" style={{ background: "#fff", opacity: 0.6 }} />}
-                    <span className="text-base leading-none">{t.icon}</span>
-                    <span className="text-[9px] sm:text-[13px] leading-tight text-center sm:text-left mt-0.5 sm:mt-0">{t.label}</span>
-                  </button>
-                );
-              })}
+            <div key={g.group} className="mb-2">
+              <div className="hidden sm:block text-[9px] font-extrabold uppercase tracking-[0.12em] px-3 mb-1.5" style={{ color: COLORS.inkFaint }}>{g.group}</div>
+              <div className="flex flex-col gap-0.5">
+                {g.items.map((t) => {
+                  const active = tab === t.id;
+                  return (
+                    <button key={t.id} onClick={() => setTab(t.id)}
+                      className="group flex flex-col sm:flex-row items-center sm:gap-2.5 justify-center sm:justify-start w-full px-1.5 sm:px-2 py-1.5 rounded-xl font-semibold transition-all relative"
+                      style={{ background: active ? "rgba(124,92,255,0.14)" : "transparent", color: active ? "#fff" : COLORS.inkMuted }}
+                      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+                      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
+                      {active && <span className="hidden sm:block absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-full" style={{ background: `linear-gradient(180deg, ${COLORS.brand}, ${COLORS.brandLight})` }} />}
+                      <span className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: active ? `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` : "rgba(255,255,255,0.05)", fontSize: 15, boxShadow: active ? "0 3px 10px rgba(124,92,255,0.4)" : "none" }}>{t.icon}</span>
+                      <span className="text-[9px] sm:text-[13px] leading-tight text-center sm:text-left mt-0.5 sm:mt-0" style={{ color: active ? COLORS.ink : COLORS.inkMuted }}>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ))}
 
           {(userRole === "admin" || userRole === "financeiro") && (
-          <>
-          <div className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-3 mb-1 mt-3" style={{ color: COLORS.inkFaint }}>Envio rápido</div>
+          <div className="mt-1">
+          <div className="hidden sm:block text-[9px] font-extrabold uppercase tracking-[0.12em] px-3 mb-1.5" style={{ color: COLORS.inkFaint }}>Envio rápido</div>
+          <div className="flex flex-col gap-0.5">
           <button onClick={() => { setTab("boletos"); sendBulkWhatsApp(quickWaTargets); }} disabled={bulkSending}
-            className="flex items-center justify-center sm:justify-start gap-2 px-3 py-2.5 rounded-xl font-semibold text-sm border disabled:opacity-50"
-            style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }} title="Enviar WhatsApp para pendentes/atrasados do mês">
-            <span className="text-base leading-none">💬</span>
+            className="flex items-center justify-center sm:justify-start gap-2.5 px-1.5 sm:px-2 py-1.5 rounded-xl font-semibold text-[13px] disabled:opacity-50 transition-all"
+            style={{ color: COLORS.inkMuted }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            title="Enviar WhatsApp para pendentes/atrasados do mês">
+            <span className="flex items-center justify-center rounded-lg shrink-0" style={{ width: 30, height: 30, background: "rgba(34,197,94,0.15)", fontSize: 15 }}>💬</span>
             <span className="hidden sm:inline">{bulkSending ? "Enviando..." : `WhatsApp (${quickWaTargets.length})`}</span>
           </button>
           <button onClick={() => { setTab("boletos"); sendBulkEmail(quickEmailTargets); }} disabled={bulkSendingEmail}
-            className="flex items-center justify-center sm:justify-start gap-2 px-3 py-2.5 rounded-xl font-semibold text-sm border disabled:opacity-50"
-            style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }} title="Enviar e-mail para pendentes/atrasados do mês">
-            <span className="text-base leading-none">📧</span>
+            className="flex items-center justify-center sm:justify-start gap-2.5 px-1.5 sm:px-2 py-1.5 rounded-xl font-semibold text-[13px] disabled:opacity-50 transition-all"
+            style={{ color: COLORS.inkMuted }}
+            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.04)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+            title="Enviar e-mail para pendentes/atrasados do mês">
+            <span className="flex items-center justify-center rounded-lg shrink-0" style={{ width: 30, height: 30, background: "rgba(167,139,250,0.15)", fontSize: 15 }}>📧</span>
             <span className="hidden sm:inline">{bulkSendingEmail ? "Enviando..." : `E-mail (${quickEmailTargets.length})`}</span>
           </button>
-          </>
+          </div>
+          </div>
           )}
         </nav>
 
         <button onClick={() => setHideValues((v) => !v)}
-          className="flex items-center justify-center sm:justify-start gap-2 px-3 py-2.5 rounded-xl font-semibold text-sm border w-full"
-          style={{ borderColor: hideValues ? COLORS.brandLight : COLORS.cardBorder, color: hideValues ? COLORS.brandLight : COLORS.inkMuted, background: hideValues ? "rgba(124,92,255,0.1)" : "transparent" }}
+          className="flex items-center justify-center sm:justify-start gap-2.5 px-1.5 sm:px-2 py-1.5 rounded-xl font-semibold text-[13px] w-full transition-all"
+          style={{ color: hideValues ? COLORS.brandLight : COLORS.inkMuted, background: hideValues ? "rgba(124,92,255,0.1)" : "transparent" }}
+          onMouseEnter={(e) => { if (!hideValues) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+          onMouseLeave={(e) => { if (!hideValues) e.currentTarget.style.background = "transparent"; }}
           title={hideValues ? "Mostrar todos os valores do sistema" : "Ocultar todos os valores do sistema"}>
-          <span className="text-base leading-none">{hideValues ? "👁️" : "🙈"}</span>
+          <span className="flex items-center justify-center rounded-lg shrink-0" style={{ width: 30, height: 30, background: "rgba(255,255,255,0.05)", fontSize: 15 }}>{hideValues ? "👁️" : "🙈"}</span>
           <span className="hidden sm:inline">{hideValues ? "Mostrar valores" : "Ocultar valores"}</span>
         </button>
 
-        <div className="rounded-xl p-3 border flex items-center gap-2" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.02)" }}>
-          <Avatar name="Administrador" size={34} />
+        <div className="rounded-2xl p-2.5 flex items-center gap-2.5" style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.12), rgba(155,130,255,0.06))", border: `1px solid ${COLORS.cardBorder}` }}>
+          <Avatar name="Administrador" size={36} />
           <div className="hidden sm:block min-w-0 flex-1">
             <div className="text-xs font-bold truncate" style={{ color: COLORS.ink }}>Administrador</div>
-            <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{session.user.email}</div>
-            <button onClick={() => setShowChangePassword(true)} className="text-[10px] font-semibold underline" style={{ color: COLORS.brandLight }}>🔑 Trocar senha</button>
+            <button onClick={() => setShowChangePassword(true)} className="text-[10px] font-semibold flex items-center gap-1 hover:underline" style={{ color: COLORS.brandLight }}>🔑 Trocar senha</button>
           </div>
-          <button onClick={() => supa.auth.signOut()} className="text-[11px] font-semibold px-2 py-1 rounded-lg" style={{ color: COLORS.danger }}>Sair</button>
+          <button onClick={() => supa.auth.signOut()} className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: "rgba(239,68,68,0.12)", color: COLORS.danger, fontSize: 14 }} title="Sair do sistema"
+            onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239,68,68,0.25)"}
+            onMouseLeave={(e) => e.currentTarget.style.background = "rgba(239,68,68,0.12)"}>⏻</button>
         </div>
       </aside>
 
@@ -7203,6 +7216,32 @@ function App() {
 
           {effectiveTab === "relatorios" && (
             <div className="space-y-4">
+              {/* Faixa de indicadores principais */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {(() => {
+                  const recebidoMes = paidValue;
+                  const previstoMes = stats.totalMonthly;
+                  const pct = previstoMes > 0 ? Math.round((recebidoMes / previstoMes) * 100) : 0;
+                  const kpis = [
+                    { label: "Recebido no mês", value: money(recebidoMes), sub: `${pct}% do previsto`, icon: "💰", color: COLORS.success },
+                    { label: "Em aberto", value: money(previstoMes - recebidoMes), sub: `${inadimplentes.length} em atraso`, icon: "⏳", color: COLORS.warn },
+                    { label: "Clientes ativos", value: String(stats.count), sub: `${stats.countAnnual} anuais`, icon: "👥", color: COLORS.info },
+                    { label: "Ticket médio", value: money(stats.count > 0 ? previstoMes / stats.count : 0), sub: "por cliente/mês", icon: "📊", color: COLORS.brandLight },
+                  ];
+                  return kpis.map((k) => (
+                    <div key={k.label} className="rounded-2xl p-4 border relative overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      <div className="absolute -right-3 -top-3 w-16 h-16 rounded-full opacity-10" style={{ background: k.color }} />
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="flex items-center justify-center rounded-lg" style={{ width: 30, height: 30, background: `${k.color}22`, fontSize: 15 }}>{k.icon}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: k.color }}>{k.label}</span>
+                      </div>
+                      <div className="text-xl font-extrabold truncate" style={{ color: COLORS.ink }}>{k.value}</div>
+                      <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{k.sub}</div>
+                    </div>
+                  ));
+                })()}
+              </div>
+
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.danger, background: COLORS.card }}>
                 <div className="flex items-center justify-between px-4 py-3" style={{ background: "rgba(239,68,68,0.1)" }}>
                   <div className="text-sm font-bold" style={{ color: COLORS.danger }}>⚠️ Relatório de inadimplência — {inadimplentes.length} cliente(s) em atraso</div>
@@ -7259,17 +7298,17 @@ function App() {
                             <td className="p-3 font-semibold">{c.name}</td>
                             <td className="p-3">{money(effectiveValue(c, b))}</td>
                             <td className="p-3">{clientDueDisplay(c, monthDate)}</td>
-                            <td className="p-3"><StatusBadge status={b?.paid ? "pago" : "pendente"} /></td>
+                            <td className="px-3 py-2"><StatusBadge status={b?.paid ? "pago" : "pendente"} /></td>
                           </tr>
                         );
                       })}
                     </tbody>
                     <tfoot>
                       <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
-                        <td className="p-3 font-bold">TOTAL</td>
-                        <td className="p-3 font-bold">{money(stats.totalAnnual)}</td>
-                        <td className="p-3"></td>
-                        <td className="p-3"></td>
+                        <td className="px-3 py-2 font-bold">TOTAL</td>
+                        <td className="px-3 py-2 font-bold">{money(stats.totalAnnual)}</td>
+                        <td className="px-3 py-2"></td>
+                        <td className="px-3 py-2"></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -7292,17 +7331,17 @@ function App() {
                     <table className="w-full text-sm" style={{ color: COLORS.ink }}>
                       <thead>
                         <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                          <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Grupo</th>
-                          <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Lojas</th>
-                          <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Total somado</th>
+                          <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Grupo</th>
+                          <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Lojas</th>
+                          <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Total somado</th>
                         </tr>
                       </thead>
                       <tbody>
                         {groupNames.map((g, i) => (
                           <tr key={g} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                            <td className="p-3 font-semibold">{g}</td>
-                            <td className="p-3" style={{ color: COLORS.inkMuted }}>{groups[g].map((c) => c.name).join(", ")}</td>
-                            <td className="p-3 font-bold">{money(groups[g].reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
+                            <td className="px-3 py-2 font-semibold">{g}</td>
+                            <td className="px-3 py-2" style={{ color: COLORS.inkMuted }}>{groups[g].map((c) => c.name).join(", ")}</td>
+                            <td className="px-3 py-2 font-bold">{money(groups[g].reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -7312,24 +7351,24 @@ function App() {
               })()}
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Clientes cloud</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => c.cloud).length}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Clientes cloud</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => c.cloud).length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>de {stats.count} clientes</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Total em consultas</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total em consultas</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>somado à mensalidade</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.info }}>Só mensalidade</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Só mensalidade</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>sem consultas</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Clientes não cloud</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => !c.cloud).length}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Clientes não cloud</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => !c.cloud).length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>de {stats.count} clientes</div>
                 </div>
               </div>
@@ -7342,7 +7381,7 @@ function App() {
 
               {showDetailedReports && (
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                <div className="flex items-center justify-between px-4 py-2.5 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
                   <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Mensalidade x Consultas — por cliente ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</div>
                   <button onClick={exportConsultasExcel} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
                 </div>
@@ -7352,10 +7391,10 @@ function App() {
                   <table className="w-full text-sm" style={{ color: COLORS.ink }}>
                     <thead>
                       <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Mensalidade</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Consultas</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Total</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Mensalidade</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Consultas</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -7363,19 +7402,19 @@ function App() {
                         .sort((a, b) => (Number(boletos[b.id]?.consultations_value) || 0) - (Number(boletos[a.id]?.consultations_value) || 0))
                         .map((c, i) => (
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                            <td className="p-3 font-semibold">{c.name}</td>
-                            <td className="p-3">{money(c.value)}</td>
-                            <td className="p-3" style={{ color: Number(boletos[c.id]?.consultations_value) > 0 ? COLORS.brandLight : COLORS.inkFaint }}>{money(boletos[c.id]?.consultations_value)}</td>
-                            <td className="p-3 font-bold">{money(effectiveValue(c, boletos[c.id]))}</td>
+                            <td className="px-3 py-2 font-semibold">{c.name}</td>
+                            <td className="px-3 py-2">{money(c.value)}</td>
+                            <td className="px-3 py-2" style={{ color: Number(boletos[c.id]?.consultations_value) > 0 ? COLORS.brandLight : COLORS.inkFaint }}>{money(boletos[c.id]?.consultations_value)}</td>
+                            <td className="px-3 py-2 font-bold">{money(effectiveValue(c, boletos[c.id]))}</td>
                           </tr>
                         ))}
                     </tbody>
                     <tfoot>
                       <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
-                        <td className="p-3 font-bold">TOTAL</td>
-                        <td className="p-3 font-bold">{money(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</td>
-                        <td className="p-3 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
-                        <td className="p-3 font-bold">{money(clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
+                        <td className="px-3 py-2 font-bold">TOTAL</td>
+                        <td className="px-3 py-2 font-bold">{money(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</td>
+                        <td className="px-3 py-2 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
+                        <td className="px-3 py-2 font-bold">{money(clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -7384,24 +7423,24 @@ function App() {
               )}
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Propostas geradas</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{proposals.length}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Propostas geradas</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{proposals.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>total no sistema</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.wa }}>Propostas enviadas</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{proposals.filter((p) => p.sent_whatsapp || p.sent_email).length}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.wa }}>Propostas enviadas</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{proposals.filter((p) => p.sent_whatsapp || p.sent_email).length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>WhatsApp: {proposals.filter((p) => p.sent_whatsapp).length} · E-mail: {proposals.filter((p) => p.sent_email).length}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Valor total em propostas</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(proposals.reduce((s, p) => s + (Number(p.monthly_value) || 0), 0))}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Valor total em propostas</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(proposals.reduce((s, p) => s + (Number(p.monthly_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>soma das mensalidades propostas</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.info }}>Romaneios gerados</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{romaneios.length}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Romaneios gerados</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{romaneios.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>etiqueta de composição</div>
                 </div>
               </div>
@@ -7416,8 +7455,8 @@ function App() {
                   <table className="w-full text-sm" style={{ color: COLORS.ink }}>
                     <thead>
                       <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Valor de consultas</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Valor de consultas</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -7425,15 +7464,15 @@ function App() {
                         .sort((a, b) => (Number(boletos[b.id]?.consultations_value) || 0) - (Number(boletos[a.id]?.consultations_value) || 0))
                         .map((c, i) => (
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                            <td className="p-3 font-semibold">{c.name}</td>
-                            <td className="p-3" style={{ color: COLORS.brandLight }}>{money(boletos[c.id]?.consultations_value)}</td>
+                            <td className="px-3 py-2 font-semibold">{c.name}</td>
+                            <td className="px-3 py-2" style={{ color: COLORS.brandLight }}>{money(boletos[c.id]?.consultations_value)}</td>
                           </tr>
                         ))}
                     </tbody>
                     <tfoot>
                       <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
-                        <td className="p-3 font-bold">TOTAL</td>
-                        <td className="p-3 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
+                        <td className="px-3 py-2 font-bold">TOTAL</td>
+                        <td className="px-3 py-2 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -7441,7 +7480,7 @@ function App() {
               </div>
 
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                <div className="flex items-center justify-between px-4 py-2.5 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
                   <div className="text-sm font-bold" style={{ color: COLORS.ink }}>📦 Relatório de Romaneios</div>
                 </div>
                 <div className="flex flex-wrap items-end gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
@@ -7490,12 +7529,12 @@ function App() {
                   <table className="w-full text-sm" style={{ color: COLORS.ink }}>
                     <thead>
                       <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Nº</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Data</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Peças</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Forma de pagamento</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Total</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Nº</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Data</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Peças</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Forma de pagamento</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Total</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -7504,12 +7543,12 @@ function App() {
                         const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
                         return (
                           <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                            <td className="p-3 font-semibold">{r.number}</td>
-                            <td className="p-3">{rc?.name || "-"}</td>
-                            <td className="p-3">{r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                            <td className="p-3">{(r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0)}</td>
-                            <td className="p-3">{r.payment_method || "-"}</td>
-                            <td className="p-3 font-bold">{money(total)}</td>
+                            <td className="px-3 py-2 font-semibold">{r.number}</td>
+                            <td className="px-3 py-2">{rc?.name || "-"}</td>
+                            <td className="px-3 py-2">{r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                            <td className="px-3 py-2">{(r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0)}</td>
+                            <td className="px-3 py-2">{r.payment_method || "-"}</td>
+                            <td className="px-3 py-2 font-bold">{money(total)}</td>
                           </tr>
                         );
                       })}
@@ -7520,43 +7559,43 @@ function App() {
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>RFID — Entradas</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.length}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>RFID — Entradas</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0)} un. compradas</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>RFID — Gasto em compras</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(itagEntries.reduce((s, e) => s + (Number(e.total_value) || 0), 0))}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>RFID — Gasto em compras</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(itagEntries.reduce((s, e) => s + (Number(e.total_value) || 0), 0))}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.info }}>RFID — Faturamentos</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{itagBillings.length}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>RFID — Faturamentos</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagBillings.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un. faturadas</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>RFID — Recebido / Em aberto</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>RFID — Recebido / Em aberto</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(itagBillings.reduce((s, b) => s + (Number(b.paid_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.warn }}>Em aberto: {money(itagBillings.reduce((s, b) => s + (Number(b.open_value) || 0), 0))}</div>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Implantações — total</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (Number(i.total_value) || 0), 0))}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Implantações — total</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (Number(i.total_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{implantacoes.length} implantação(ões)</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Implantações — recebido</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Implantações — recebido</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Implantações — em aberto</div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Implantações — em aberto</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Vale Transp. / Refeição</div>
+                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Vale Transp. / Refeição</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(vtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.warn }}>Em aberto: {money(vtVrRecords.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                 </div>
@@ -7572,11 +7611,11 @@ function App() {
                   <table className="w-full text-sm" style={{ color: COLORS.ink }}>
                     <thead>
                       <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Total</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Recebido</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Em aberto</th>
-                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Situação</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Total</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Recebido</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Em aberto</th>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Situação</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -7585,11 +7624,11 @@ function App() {
                         const open = (imp.total_value || 0) - paid;
                         return (
                           <tr key={imp.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                            <td className="p-3 font-semibold">{imp.client_name}</td>
-                            <td className="p-3">{money(imp.total_value)}</td>
-                            <td className="p-3" style={{ color: COLORS.success }}>{money(paid)}</td>
-                            <td className="p-3" style={{ color: COLORS.warn }}>{money(open)}</td>
-                            <td className="p-3"><StatusBadge status={open <= 0 ? "pago" : "pendente"} /></td>
+                            <td className="px-3 py-2 font-semibold">{imp.client_name}</td>
+                            <td className="px-3 py-2">{money(imp.total_value)}</td>
+                            <td className="px-3 py-2" style={{ color: COLORS.success }}>{money(paid)}</td>
+                            <td className="px-3 py-2" style={{ color: COLORS.warn }}>{money(open)}</td>
+                            <td className="px-3 py-2"><StatusBadge status={open <= 0 ? "pago" : "pendente"} /></td>
                           </tr>
                         );
                       })}
@@ -7599,7 +7638,7 @@ function App() {
               </div>
 
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
                   <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Vale Transporte / Refeição — por funcionário</div>
                   <button onClick={exportVtVrExcel} disabled={vtVrByEmployee.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
                 </div>
@@ -7616,13 +7655,13 @@ function App() {
                     <tbody>
                       {vtVrByEmployee.map((e, i) => (
                         <tr key={e.name} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                          <td className="p-3 font-semibold">{e.name}</td>
-                          <td className="p-3">{e.qtd}</td>
-                          <td className="p-3">{money(e.vr)}</td>
-                          <td className="p-3">{money(e.vt)}</td>
-                          <td className="p-3 font-bold">{money(e.total)}</td>
-                          <td className="p-3" style={{ color: COLORS.success }}>{money(e.pago)}</td>
-                          <td className="p-3" style={{ color: COLORS.warn }}>{money(e.aberto)}</td>
+                          <td className="px-3 py-2 font-semibold">{e.name}</td>
+                          <td className="px-3 py-2">{e.qtd}</td>
+                          <td className="px-3 py-2">{money(e.vr)}</td>
+                          <td className="px-3 py-2">{money(e.vt)}</td>
+                          <td className="px-3 py-2 font-bold">{money(e.total)}</td>
+                          <td className="px-3 py-2" style={{ color: COLORS.success }}>{money(e.pago)}</td>
+                          <td className="px-3 py-2" style={{ color: COLORS.warn }}>{money(e.aberto)}</td>
                         </tr>
                       ))}
                     </tbody>

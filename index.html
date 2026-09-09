@@ -3424,14 +3424,26 @@ function App() {
   // Gera a versão com marca d'água "PAGO".
   // Se paidFlags for informado (ex: [true, false, true]), marca só a faixa da
   // página correspondente a cada parcela paga — útil quando vários boletos
+  // Baixa o arquivo do storage. Tenta o cliente do Supabase primeiro (sem CORS);
+  // se não der, cai pro fetch normal.
+  async function downloadFileBytes(fileUrl) {
+    const marker = "/storage/v1/object/public/boletos/";
+    const idx = fileUrl.indexOf(marker);
+    if (idx !== -1) {
+      const path = decodeURIComponent(fileUrl.slice(idx + marker.length).split("?")[0]);
+      const { data, error } = await supa.storage.from("boletos").download(path);
+      if (!error && data) return await data.arrayBuffer();
+    }
+    return await fetch(fileUrl).then((res) => res.arrayBuffer());
+  }
   // vêm empilhados na mesma folha, em ordem de vencimento.
   async function generatePaidWatermarkBlob(fileUrl, fileName, paidFlags) {
     const isPdf = /\.pdf($|\?)/i.test(fileName || fileUrl);
     const n = Array.isArray(paidFlags) && paidFlags.length > 1 ? paidFlags.length : 1;
 
     if (isPdf) {
-      const existingBytes = await fetch(fileUrl).then((res) => res.arrayBuffer());
-      const pdfDoc = await PDFLib.PDFDocument.load(existingBytes);
+      const existingBytes = await downloadFileBytes(fileUrl);
+      const pdfDoc = await PDFLib.PDFDocument.load(existingBytes, { ignoreEncryption: true });
       const font = await pdfDoc.embedFont(PDFLib.StandardFonts.HelveticaBold);
       const pages = pdfDoc.getPages();
 
@@ -3466,18 +3478,21 @@ function App() {
       const bytes = await pdfDoc.save();
       return new Blob([bytes], { type: "application/pdf" });
     }
-
+    // Baixa a imagem como blob (evita problema de CORS ao ler o canvas)
+    const imgBytes = await downloadFileBytes(fileUrl);
+    const imgBlob = new Blob([imgBytes]);
+    const imgUrl = URL.createObjectURL(imgBlob);
     const img = await new Promise((resolve, reject) => {
       const el = new Image();
-      el.crossOrigin = "anonymous";
       el.onload = () => resolve(el);
       el.onerror = reject;
-      el.src = fileUrl;
+      el.src = imgUrl;
     });
     const canvas = document.createElement("canvas");
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext("2d");
     ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(imgUrl);
     const faixaH = canvas.height / n;
     for (let i = 0; i < n; i++) {
       if (n > 1 && !paidFlags[i]) continue;
@@ -3898,6 +3913,7 @@ function App() {
           // Nenhuma parcela paga: volta a mostrar o boleto original
           await supa.from("supplier_orders").update({ file_url_watermarked: null }).eq("id", o.id);
         } else {
+          showToast("Gerando marca d'água no boleto...");
           const blob = await generatePaidWatermarkBlob(o.file_url, o.file_name, flags);
           const ext = /\.pdf($|\?)/i.test(o.file_name || o.file_url) ? "pdf" : "png";
           const path = `pedidos-etiquetas/${o.id}-pago-${Date.now()}.${ext}`;
@@ -3905,10 +3921,12 @@ function App() {
           if (error) throw error;
           const { data } = supa.storage.from("boletos").getPublicUrl(path);
           await supa.from("supplier_orders").update({ file_url_watermarked: data.publicUrl }).eq("id", o.id);
+          showToast("✓ Marca d'água aplicada no boleto.");
         }
         await loadSupplierOrders();
       } catch (e) {
         console.error("Erro ao gerar marca d'água:", e);
+        showToast(`Não deu pra marcar o boleto: ${e.message || "erro ao processar o arquivo"}`);
       }
     }
   }

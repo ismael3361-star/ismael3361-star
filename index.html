@@ -531,13 +531,13 @@ async function autoDownloadBoleto(b, client) {
 
 function MiniMoneyField({ label, value, onSave, fieldKey, title }) {
   return (
-    <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }} title={title}>
-      {label}
-      <span className="flex items-center rounded-lg border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: "#0E1729" }}>
-        <span className="pl-2 text-[11px]" style={{ color: COLORS.inkFaint }}>R$</span>
+    <label className="block" style={{ color: COLORS.inkMuted }} title={title}>
+      <span className="block text-[10px] font-semibold mb-0.5 truncate">{label}</span>
+      <span className="flex items-center rounded-lg border overflow-hidden w-full" style={{ borderColor: COLORS.cardBorder, background: "#0E1729" }}>
+        <span className="pl-2 text-[11px] shrink-0" style={{ color: COLORS.inkFaint }}>R$</span>
         <input type="number" step="0.01" key={fieldKey} defaultValue={value || ""} placeholder="0,00"
           onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(value) || 0)) onSave(v); }}
-          className="w-16 pl-1 pr-2 py-1 text-xs outline-none" style={{ background: "transparent", color: COLORS.ink }} />
+          className="w-full min-w-0 pl-1 pr-2 py-1.5 text-xs outline-none" style={{ background: "transparent", color: COLORS.ink }} />
       </span>
     </label>
   );
@@ -5607,56 +5607,75 @@ function App() {
                         background: b?.paid ? "rgba(34,197,94,0.07)" : "transparent",
                         borderLeft: b?.paid ? `4px solid ${COLORS.success}` : `4px solid transparent`,
                       }}>
-                      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                        <div className="flex items-center gap-3">
-                          <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} className="shrink-0" />
-                          <div className="w-14 shrink-0">
-                            {c.bank_number ? (
-                              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.info, background: "rgba(59,130,246,0.15)" }}>{c.bank_number}</span>
-                            ) : (
-                              <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.inkFaint, background: "rgba(255,255,255,0.05)" }}>-</span>
-                            )}
-                          </div>
-                          <Avatar name={c.name} size={34} />
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {editingNameId === c.id ? (
-                                <input
-                                  autoFocus
-                                  defaultValue={c.name}
-                                  onBlur={(e) => handleRenameClient(c.id, e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setEditingNameId(null); }}
-                                  className="rounded-lg border px-2 py-1 text-sm font-bold outline-none"
-                                  style={{ borderColor: COLORS.brandLight, background: "#0E1729", color: COLORS.ink }}
-                                />
-                              ) : (
-                                <span className="font-bold text-sm cursor-pointer hover:underline" style={{ color: COLORS.ink }} onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
-                              )}
-                              <StatusBadge status={status} />
-                              {overdue > 0 && <span className="text-[11px] font-semibold" style={{ color: COLORS.danger }}>há {overdue} dia{overdue > 1 ? "s" : ""}</span>}
-                              {dueSoon && <span className="text-[11px] font-semibold" style={{ color: COLORS.warn }}>vence em {daysUntilDue(c, monthDate)} dia{daysUntilDue(c, monthDate) !== 1 ? "s" : ""}</span>}
-                            </div>
-                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{money(effectiveValue(c, boletos[c.id]))} · vence em {clientDueDisplay(c, monthDate)} · {c.annual ? "anual" : "mensal"}</div>
-                          </div>
+                      {/* LINHA 1: identificação do cliente */}
+                      <div className="flex items-center gap-3 mb-3">
+                        <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} className="shrink-0" />
+                        <div className="w-12 shrink-0 text-center">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ color: c.bank_number ? COLORS.info : COLORS.inkFaint, background: c.bank_number ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.05)" }}>{c.bank_number || "-"}</span>
                         </div>
+                        <Avatar name={c.name} size={34} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {editingNameId === c.id ? (
+                              <input autoFocus defaultValue={c.name}
+                                onBlur={(e) => handleRenameClient(c.id, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setEditingNameId(null); }}
+                                className="rounded-lg border px-2 py-1 text-sm font-bold outline-none"
+                                style={{ borderColor: COLORS.brandLight, background: "#0E1729", color: COLORS.ink }} />
+                            ) : (
+                              <span className="font-bold text-sm cursor-pointer hover:underline" style={{ color: COLORS.ink }} onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
+                            )}
+                            <StatusBadge status={status} />
+                            {overdue > 0 && <span className="text-[11px] font-semibold" style={{ color: COLORS.danger }}>há {overdue} dia{overdue > 1 ? "s" : ""}</span>}
+                            {dueSoon && <span className="text-[11px] font-semibold" style={{ color: COLORS.warn }}>vence em {daysUntilDue(c, monthDate)} dia{daysUntilDue(c, monthDate) !== 1 ? "s" : ""}</span>}
+                          </div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>vence em {clientDueDisplay(c, monthDate)} · {c.annual ? "anual" : "mensal"} · total {money(effectiveValue(c, boletos[c.id]))}</div>
+                        </div>
+                      </div>
+
+                      {/* LINHA 2: valores em grade alinhada */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 pl-[54px]">
                         <MiniMoneyField label="Mensalidade" value={c.value} fieldKey={`val-${c.id}`} onSave={(v) => handleUpdateClientValue(c.id, v)} />
                         <MiniMoneyField label="Consultas" value={b?.consultations_value} fieldKey={`cons-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { consultations_value: v })} />
                         <MiniMoneyField label="VPN" value={b?.vpn_value} fieldKey={`vpn-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { vpn_value: v })} title="Cobrança de VPN nesse mês" />
                         <MiniMoneyField label="Troca servidor" value={b?.server_change_value} fieldKey={`srv-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { server_change_value: v })} title="Cobrança de troca de servidor nesse mês" />
-                        <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer px-2.5 py-1 rounded-full" style={{ color: b?.paid ? COLORS.success : COLORS.inkMuted, background: b?.paid ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)" }}>
-                          <input type="checkbox" checked={!!b?.paid} onChange={(e) => upsertBoleto(c.id, { paid: e.target.checked, paid_value: e.target.checked ? (b?.paid_value || effectiveValue(c, b)) : b?.paid_value })} /> Pago
-                        </label>
-                        {b?.paid && (
-                          <>
-                            <MiniMoneyField label="Valor pago" value={b?.paid_value} fieldKey={`paidval-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { paid_value: v })} />
-                            <select value={b?.payment_method || ""} onChange={(e) => upsertBoleto(c.id, { payment_method: e.target.value })} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
-                              <option value="">Como pagou?</option>
-                              <option value="boleto">Boleto</option>
-                              <option value="pix">PIX</option>
-                            </select>
-                          </>
-                        )}
                       </div>
+
+                      {/* LINHA 3: bloco de pagamento */}
+                      <div className="rounded-lg p-2.5 mb-3 ml-[54px]" style={{ background: b?.paid ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.03)" }}>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          <label className="flex items-center gap-1.5 text-xs font-bold cursor-pointer px-2.5 py-1.5 rounded-full shrink-0" style={{ color: b?.paid ? COLORS.success : COLORS.inkMuted, background: b?.paid ? "rgba(34,197,94,0.2)" : "rgba(255,255,255,0.06)" }}>
+                            <input type="checkbox" checked={!!b?.paid} onChange={(e) => upsertBoleto(c.id, {
+                                paid: e.target.checked,
+                                paid_value: e.target.checked ? (b?.paid_value || effectiveValue(c, b)) : b?.paid_value,
+                                paid_date: e.target.checked ? (b?.paid_date || new Date().toISOString().slice(0, 10)) : null,
+                              })} /> {b?.paid ? "✓ Pago" : "Marcar como pago"}
+                          </label>
+                          {b?.paid && (
+                            <>
+                              <div className="w-28 shrink-0">
+                                <MiniMoneyField label="Valor pago" value={b?.paid_value} fieldKey={`paidval-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { paid_value: v })} />
+                              </div>
+                              <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
+                                Data
+                                <input type="date" key={`paiddate-${c.id}-${mKey}`} defaultValue={b?.paid_date || ""}
+                                  onBlur={(e) => { if (e.target.value !== (b?.paid_date || "")) upsertBoleto(c.id, { paid_date: e.target.value || null }); }}
+                                  className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                              </label>
+                              <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
+                                Forma
+                                <select value={b?.payment_method || ""} onChange={(e) => upsertBoleto(c.id, { payment_method: e.target.value })} className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+                                  <option value="">-</option>
+                                  <option value="boleto">Boleto</option>
+                                  <option value="pix">PIX</option>
+                                </select>
+                              </label>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* LINHA 4: ações */}
                       <div className="flex flex-wrap items-center gap-2 pl-[54px]">
                         <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>
                           {busyId === c.id ? "Enviando..." : b?.file_name ? "🔄 Trocar PDF" : "📎 Anexar boleto"}

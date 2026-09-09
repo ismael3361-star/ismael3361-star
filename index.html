@@ -281,6 +281,18 @@ const STATUS_META = {
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function fmtMoney(v) { return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 function fmtDate(d) { return d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "-"; }
+// Vencimento do cliente: usa a data completa se existir; se só tiver o dia
+// (clientes antigos/importados), monta a data com o mês/ano de referência.
+function clientDueDisplay(c, monthDate) {
+  if (c?.next_due_date) return fmtDate(c.next_due_date);
+  if (c?.due_day) {
+    const ref = monthDate || new Date();
+    const dia = String(c.due_day).padStart(2, "0");
+    const mes = String(ref.getMonth() + 1).padStart(2, "0");
+    return `${dia}/${mes}/${ref.getFullYear()}`;
+  }
+  return "-";
+}
 function onlyDigits(s) { return (s || "").replace(/\D/g, ""); }
 function waNumber(phone) { let d = onlyDigits(phone); if (d.length <= 11) d = "55" + d; return d; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
@@ -4378,6 +4390,21 @@ function App() {
     await supa.from("romaneios").update({ purchase_cost: Number(newCost) || 0, commission_value: newValue }).eq("id", r.id);
     await loadRomaneios();
   }
+  async function handleRecalcAllCommissions() {
+    if (!confirm(`Recalcular a comissão de todos os ${romaneios.length} romaneio(s)?\n\nA conta usada será: (venda - custo) x %.\nOs valores de custo e % de cada romaneio são mantidos como estão.`)) return;
+    let ok = 0;
+    for (const r of romaneios) {
+      const venda = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+      const lucro = Math.max(0, venda - (Number(r.purchase_cost) || 0));
+      const correto = lucro * ((Number(r.commission_percent) || 0) / 100);
+      if (Math.abs(correto - (Number(r.commission_value) || 0)) > 0.005) {
+        const { error } = await supa.from("romaneios").update({ commission_value: correto }).eq("id", r.id);
+        if (!error) ok++;
+      }
+    }
+    await loadRomaneios();
+    showToast(ok > 0 ? `${ok} romaneio(s) corrigido(s).` : "Todos já estavam com o valor correto.");
+  }
 
   async function handleRemoveProof(r) {
     if (!confirm("Remover o comprovante anexado deste romaneio?")) return;
@@ -4880,7 +4907,7 @@ function App() {
       const b = boletos[c.id];
       const st = STATUS_META[computeStatus(c, b, monthDate)].label;
       const pagoEm = b?.paid ? (b.paid_value ? fmtMoney(b.paid_value) : "sim") : "-";
-      return [c.bank_number || "-", c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(b?.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", fmtDate(c.next_due_date), st, pagoEm];
+      return [c.bank_number || "-", c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(b?.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", clientDueDisplay(c, monthDate), st, pagoEm];
     });
     doc.autoTable({ startY: 38, head: [["Banco", "Cliente", "Mensalidade", "Consultas", "Cloud", "Ciclo", "Vencimento", "Status", "Valor pago"]], body: rows, styles: { fontSize: 8 }, headStyles: { fillColor: [124, 92, 255] } });
     doc.save(`mensalidades-${mKey}.pdf`);
@@ -5463,7 +5490,7 @@ function App() {
                             </div>
                           </td>
                           <td className="p-3 font-semibold">{money(effectiveValue(c, boletos[c.id]))}</td>
-                          <td className="p-3">{fmtDate(c.next_due_date)}</td>
+                          <td className="p-3">{clientDueDisplay(c, monthDate)}</td>
                           <td className="p-3">
                             <div className="flex gap-1 justify-end">
                               <button onClick={() => setHistoryClient(c)} className="p-1.5 rounded-lg hover:bg-white/5 transition" title="Histórico e anotações">🕓</button>
@@ -5569,7 +5596,7 @@ function App() {
                               {overdue > 0 && <span className="text-[11px] font-semibold" style={{ color: COLORS.danger }}>há {overdue} dia{overdue > 1 ? "s" : ""}</span>}
                               {dueSoon && <span className="text-[11px] font-semibold" style={{ color: COLORS.warn }}>vence em {daysUntilDue(c, monthDate)} dia{daysUntilDue(c, monthDate) !== 1 ? "s" : ""}</span>}
                             </div>
-                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{money(effectiveValue(c, boletos[c.id]))} · vence em {fmtDate(c.next_due_date)} · {c.annual ? "anual" : "mensal"}</div>
+                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{money(effectiveValue(c, boletos[c.id]))} · vence em {clientDueDisplay(c, monthDate)} · {c.annual ? "anual" : "mensal"}</div>
                           </div>
                         </div>
                         <MiniMoneyField label="Mensalidade" value={c.value} fieldKey={`val-${c.id}`} onSave={(v) => handleUpdateClientValue(c.id, v)} />
@@ -5655,7 +5682,7 @@ function App() {
                                       onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(c.value) || 0)) handleUpdateClientValue(c.id, v); }}
                                       className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
                                   </span>
-                                  · vence em {fmtDate(c.next_due_date)}
+                                  · vence em {clientDueDisplay(c, monthDate)}
                                 </div>
                               </div>
                             </div>
@@ -6599,6 +6626,23 @@ function App() {
                       </div>
                     </div>
 
+                    {(() => {
+                      const desatualizados = romaneios.filter((r) => Math.abs(calcComissao(r) - (Number(r.commission_value) || 0)) > 0.005);
+                      if (desatualizados.length === 0) return null;
+                      return (
+                        <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: COLORS.warn, background: "rgba(245,158,11,0.1)" }}>
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">🔄</span>
+                            <div>
+                              <div className="text-sm font-bold" style={{ color: COLORS.warn }}>{desatualizados.length} romaneio(s) com valor de comissão desatualizado no banco</div>
+                              <div className="text-xs" style={{ color: COLORS.inkMuted }}>A tela já mostra o valor certo, mas o Excel exportado usa o valor salvo. Clique pra corrigir de vez.</div>
+                            </div>
+                          </div>
+                          <button onClick={handleRecalcAllCommissions} className="px-4 py-2 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: COLORS.warn }}>🔄 Recalcular todos</button>
+                        </div>
+                      );
+                    })()}
+
                     {sellers.length === 0 ? (
                       <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                         <div className="text-3xl mb-2">💰</div>
@@ -6689,7 +6733,7 @@ function App() {
                               {c.name}
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>{c._diasAtraso} dia{c._diasAtraso !== 1 ? "s" : ""} atrasado</span>
                             </div>
-                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{money(effectiveValue(c, boletos[c.id]))} · vence em {fmtDate(c.next_due_date)} · {c.phone || "sem WhatsApp"}</div>
+                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{money(effectiveValue(c, boletos[c.id]))} · vence em {clientDueDisplay(c, monthDate)} · {c.phone || "sem WhatsApp"}</div>
                           </div>
                         </div>
                         <div className="flex gap-1.5">
@@ -6726,7 +6770,7 @@ function App() {
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                             <td className="p-3 font-semibold">{c.name}</td>
                             <td className="p-3">{money(effectiveValue(c, b))}</td>
-                            <td className="p-3">{fmtDate(c.next_due_date)}</td>
+                            <td className="p-3">{clientDueDisplay(c, monthDate)}</td>
                             <td className="p-3"><StatusBadge status={b?.paid ? "pago" : "pendente"} /></td>
                           </tr>
                         );

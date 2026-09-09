@@ -3856,6 +3856,42 @@ function App() {
     const novas = (o.installments || []).map((it, i) => i === idx ? { ...it, paid: !it.paid } : it);
     await supa.from("supplier_orders").update({ installments: novas }).eq("id", o.id);
     await loadSupplierOrders();
+    // Se todas as parcelas ficaram pagas e existe boleto anexado, gera a versão com marca d'água
+    const tudoPago = novas.length > 0 && novas.every((it) => it.paid);
+    if (tudoPago && o.file_url && !o.file_url_watermarked) {
+      try {
+        const blob = await generatePaidWatermarkBlob(o.file_url, o.file_name);
+        const ext = /\.pdf($|\?)/i.test(o.file_name || o.file_url) ? "pdf" : "png";
+        const path = `pedidos-etiquetas/${o.id}-pago-${Date.now()}.${ext}`;
+        const { error } = await supa.storage.from("boletos").upload(path, blob, { upsert: true });
+        if (error) throw error;
+        const { data } = supa.storage.from("boletos").getPublicUrl(path);
+        await supa.from("supplier_orders").update({ file_url_watermarked: data.publicUrl }).eq("id", o.id);
+        await loadSupplierOrders();
+      } catch (e) {
+        console.error("Erro ao gerar marca d'água:", e);
+      }
+    }
+  }
+  async function handleUploadSupplierFile(o, file) {
+    if (!file) return;
+    try {
+      const path = `pedidos-etiquetas/${o.id}-${Date.now()}-${file.name}`;
+      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supa.storage.from("boletos").getPublicUrl(path);
+      await supa.from("supplier_orders").update({ file_url: data.publicUrl, file_name: file.name, file_url_watermarked: null }).eq("id", o.id);
+      await loadSupplierOrders();
+      showToast("Boleto anexado.");
+    } catch (e) {
+      showToast(`Erro: ${e.message || "não foi possível anexar o arquivo"}`);
+    }
+  }
+  async function handleRemoveSupplierFile(o) {
+    if (!confirm("Remover o boleto anexado deste pedido?")) return;
+    await supa.from("supplier_orders").update({ file_url: null, file_name: null, file_url_watermarked: null }).eq("id", o.id);
+    await loadSupplierOrders();
+    showToast("Boleto removido.");
   }
   function exportSupplierOrdersExcel(list) {
     const rows = list.map((o) => {
@@ -5036,16 +5072,6 @@ function App() {
   const dueSoonValue = useMemo(() => clients.filter((c) => isDueSoon(c, boletos[c.id], monthDate)).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos, monthDate]);
   const ticketMedio = stats.count > 0 ? totalPrevisto / stats.count : 0;
 
-  const clientsByDueDay = useMemo(() => {
-    const map = {};
-    clients.filter((c) => !c.cancelled && c.due_day).forEach((c) => {
-      const day = Number(c.due_day);
-      if (!map[day]) map[day] = [];
-      map[day].push(c);
-    });
-    return map;
-  }, [clients]);
-
   // Contas a pagar que vencem no mês exibido no calendário, agrupadas por dia
   const expensesByDueDay = useMemo(() => {
     const map = {};
@@ -5059,6 +5085,23 @@ function App() {
     });
     return map;
   }, [expenses, monthDate]);
+
+  // Parcelas dos pedidos de etiqueta que vencem no mês exibido
+  const supplierByDueDay = useMemo(() => {
+    const map = {};
+    const y = monthDate.getFullYear(), m = monthDate.getMonth();
+    supplierOrders.forEach((o) => {
+      (o.installments || []).forEach((it, idx) => {
+        if (!it.due_date) return;
+        const d = new Date(it.due_date + "T00:00:00");
+        if (d.getFullYear() !== y || d.getMonth() !== m) return;
+        const day = d.getDate();
+        if (!map[day]) map[day] = [];
+        map[day].push({ ...it, _order: o, _parcela: idx + 1, _totalParcelas: (o.installments || []).length });
+      });
+    });
+    return map;
+  }, [supplierOrders, monthDate]);
 
   const dueDayGroups = useMemo(() => {
     const map = {};
@@ -5554,8 +5597,8 @@ function App() {
                   <div>
                     <div className="text-sm mb-3 flex items-center gap-3 flex-wrap" style={{ color: COLORS.inkMuted }}>
                       <span>{MONTHS_PT[month]} de {year}</span>
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>↓ a receber (mensalidades)</span>
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>↑ a pagar (contas)</span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>🧾 contas a pagar</span>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }}>🏷️ pedidos de etiquetas</span>
                     </div>
                     <div className="grid grid-cols-7 gap-1.5 mb-1.5">
                       {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => (
@@ -5565,29 +5608,29 @@ function App() {
                     <div className="grid grid-cols-7 gap-1.5">
                       {cells.map((day, i) => {
                         if (!day) return <div key={i} />;
-                        const dayClients = clientsByDueDay[day] || [];
                         const dayExpenses = expensesByDueDay[day] || [];
-                        const total = dayClients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0);
+                        const daySupplier = supplierByDueDay[day] || [];
                         const totalExpenses = dayExpenses.reduce((s, e) => s + (Number(e.value) || 0), 0);
+                        const totalSupplier = daySupplier.reduce((s, it) => s + (Number(it.value) || 0), 0);
                         const isToday = isCurrentMonth && today.getDate() === day;
-                        const hasContent = dayClients.length > 0 || dayExpenses.length > 0;
+                        const hasContent = dayExpenses.length > 0 || daySupplier.length > 0;
                         return (
-                          <div key={i} onClick={() => hasContent && setSelectedCalendarDay({ day, clients: dayClients, expenses: dayExpenses })}
+                          <div key={i} onClick={() => hasContent && setSelectedCalendarDay({ day, expenses: dayExpenses, supplier: daySupplier })}
                             className="rounded-xl border p-2 min-h-[74px] sm:min-h-[92px] transition"
                             style={{ borderColor: isToday ? COLORS.brandLight : COLORS.cardBorder, background: isToday ? "rgba(124,92,255,0.08)" : COLORS.card, cursor: hasContent ? "pointer" : "default" }}
                             onMouseEnter={(e) => { if (hasContent) e.currentTarget.style.borderColor = COLORS.brandLight; }}
                             onMouseLeave={(e) => { if (hasContent) e.currentTarget.style.borderColor = isToday ? COLORS.brandLight : COLORS.cardBorder; }}>
                             <div className="text-xs font-bold mb-1" style={{ color: isToday ? COLORS.brandLight : COLORS.ink }}>{day}</div>
-                            {dayClients.length > 0 && (
+                            {dayExpenses.length > 0 && (
                               <div className="mb-1">
-                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>↓ {dayClients.length} receber</div>
-                                <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{money(total)}</div>
+                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }} title={dayExpenses.map((e) => `${e.category}${e.description ? " - " + e.description : ""}`).join("\n")}>🧾 {dayExpenses.length} conta{dayExpenses.length > 1 ? "s" : ""}</div>
+                                <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{money(totalExpenses)}</div>
                               </div>
                             )}
-                            {dayExpenses.length > 0 && (
+                            {daySupplier.length > 0 && (
                               <div>
-                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }} title={dayExpenses.map((e) => `${e.category}${e.description ? " - " + e.description : ""}`).join("\n")}>↑ {dayExpenses.length} pagar</div>
-                                <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{money(totalExpenses)}</div>
+                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }} title={daySupplier.map((it) => `NF ${it._order.invoice_number || "-"} · parcela ${it._parcela}/${it._totalParcelas}`).join("\n")}>🏷️ {daySupplier.length} etiqueta{daySupplier.length > 1 ? "s" : ""}</div>
+                                <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{money(totalSupplier)}</div>
                               </div>
                             )}
                           </div>
@@ -6427,7 +6470,19 @@ function App() {
           {effectiveTab === "pedidos_etiquetas" && (
             <div>
               {(() => {
-                const doAno = supplierOrders.filter((o) => o.order_date && new Date(o.order_date + "T00:00:00").getFullYear() === supplierYear);
+                const doAno = supplierOrders
+                  .filter((o) => o.order_date && new Date(o.order_date + "T00:00:00").getFullYear() === supplierYear)
+                  .map((o) => {
+                    // Data usada pra ordenar: o vencimento mais próximo ainda em aberto;
+                    // se estiver tudo pago, usa o último vencimento.
+                    const abertas = (o.installments || []).filter((it) => !it.paid && it.due_date).map((it) => it.due_date).sort();
+                    const todas = (o.installments || []).filter((it) => it.due_date).map((it) => it.due_date).sort();
+                    return { ...o, _ord: abertas[0] || todas[todas.length - 1] || o.order_date, _temAberto: abertas.length > 0 };
+                  })
+                  .sort((a, b) => {
+                    if (a._temAberto !== b._temAberto) return a._temAberto ? -1 : 1; // em aberto primeiro
+                    return (a._ord || "").localeCompare(b._ord || "");
+                  });
                 const anos = [...new Set(supplierOrders.filter((o) => o.order_date).map((o) => new Date(o.order_date + "T00:00:00").getFullYear()))].sort((a, b) => b - a);
                 if (anos.length === 0) anos.push(new Date().getFullYear());
                 const somaQtd = doAno.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
@@ -6498,6 +6553,7 @@ function App() {
                                 <th className="text-left p-3 font-bold uppercase">Vencimentos / parcelas</th>
                                 <th className="text-left p-3 font-bold uppercase">Aberto</th>
                                 <th className="text-left p-3 font-bold uppercase">Pago</th>
+                                <th className="text-left p-3 font-bold uppercase">Boleto</th>
                                 <th className="text-left p-3 font-bold uppercase"></th>
                               </tr>
                             </thead>
@@ -6531,6 +6587,21 @@ function App() {
                                     <td className="p-3 font-bold" style={{ color: aberto > 0 ? COLORS.warn : COLORS.inkFaint }}>{aberto > 0 ? money(aberto) : "-"}</td>
                                     <td className="p-3 font-bold" style={{ color: COLORS.success }}>{pago > 0 ? money(pago) : "-"}</td>
                                     <td className="p-3">
+                                      {o.file_url ? (
+                                        <div className="flex items-center gap-1">
+                                          <a href={tudoPago && o.file_url_watermarked ? o.file_url_watermarked : o.file_url} target="_blank" className="text-[11px] font-bold px-2 py-1 rounded-full border whitespace-nowrap" style={{ borderColor: tudoPago ? COLORS.success : COLORS.brandLight, color: tudoPago ? COLORS.success : COLORS.brandLight }}>
+                                            {tudoPago ? "✓📎 Pago" : "📎 Ver"}
+                                          </a>
+                                          <button onClick={() => handleRemoveSupplierFile(o)} className="text-[11px] px-1" style={{ color: COLORS.danger }} title="Remover anexo">✕</button>
+                                        </div>
+                                      ) : (
+                                        <label className="text-[11px] font-bold px-2 py-1 rounded-full border cursor-pointer whitespace-nowrap" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
+                                          📎 Anexar
+                                          <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => handleUploadSupplierFile(o, e.target.files?.[0])} />
+                                        </label>
+                                      )}
+                                    </td>
+                                    <td className="p-3">
                                       <button onClick={() => { setEditingSupplier(o); setShowSupplierForm(true); }} className="mr-1.5">✏️</button>
                                       <button onClick={() => handleDeleteSupplierOrder(o.id)} style={{ color: COLORS.danger }}>🗑️</button>
                                     </td>
@@ -6546,6 +6617,7 @@ function App() {
                                 <td className="p-3"></td>
                                 <td className="p-3 font-bold" style={{ color: COLORS.warn }}>{money(somaAberto)}</td>
                                 <td className="p-3 font-bold" style={{ color: COLORS.success }}>{money(somaPago)}</td>
+                                <td className="p-3"></td>
                                 <td className="p-3"></td>
                               </tr>
                             </tfoot>
@@ -7659,31 +7731,9 @@ function App() {
               <button onClick={() => setSelectedCalendarDay(null)} className="text-lg px-2" style={{ color: COLORS.inkMuted }}>✕</button>
             </div>
             <div className="p-4 space-y-4">
-              {selectedCalendarDay.clients.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>↓ A receber ({selectedCalendarDay.clients.length})</div>
-                  <div className="space-y-1.5">
-                    {selectedCalendarDay.clients.map((c) => {
-                      const b = boletos[c.id];
-                      return (
-                        <div key={c.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border" style={{ borderColor: COLORS.cardBorder }}>
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Avatar name={c.name} size={26} />
-                            <span className="text-sm truncate" style={{ color: COLORS.ink }}>{c.name}</span>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-sm font-bold" style={{ color: COLORS.ink }}>{money(effectiveValue(c, b))}</span>
-                            <StatusBadge status={computeStatus(c, b, monthDate)} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
               {selectedCalendarDay.expenses.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>↑ A pagar ({selectedCalendarDay.expenses.length})</div>
+                  <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>🧾 Contas a pagar ({selectedCalendarDay.expenses.length})</div>
                   <div className="space-y-1.5">
                     {selectedCalendarDay.expenses.map((e) => (
                       <div key={e.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border" style={{ borderColor: COLORS.cardBorder }}>
@@ -7694,6 +7744,25 @@ function App() {
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-sm font-bold" style={{ color: COLORS.ink }}>{money(e.value)}</span>
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: e.paid ? COLORS.success : COLORS.warn, background: e.paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>{e.paid ? "✓ Pago" : "Em aberto"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(selectedCalendarDay.supplier || []).length > 0 && (
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>🏷️ Pedidos de etiquetas ({selectedCalendarDay.supplier.length})</div>
+                  <div className="space-y-1.5">
+                    {selectedCalendarDay.supplier.map((it, idx) => (
+                      <div key={idx} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border" style={{ borderColor: COLORS.cardBorder }}>
+                        <div className="min-w-0">
+                          <div className="text-sm truncate" style={{ color: COLORS.ink }}>NF {it._order.invoice_number || "-"} · {it._order.model || "-"}</div>
+                          <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>Parcela {it._parcela} de {it._totalParcelas} · {it._order.quantity} caixas</div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-sm font-bold" style={{ color: COLORS.ink }}>{money(it.value)}</span>
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: it.paid ? COLORS.success : COLORS.warn, background: it.paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>{it.paid ? "✓ Pago" : "Em aberto"}</span>
                         </div>
                       </div>
                     ))}

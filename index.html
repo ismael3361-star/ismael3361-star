@@ -60,6 +60,11 @@
   }
   input[type="checkbox"] { accent-color: #7C5CFF; width: 16px; height: 16px; cursor: pointer; }
 
+  /* Remove as setinhas de aumentar/diminuir dos campos numéricos */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
   /* Cartões com profundidade suave e brilho fino de borda */
   [class*="rounded-2xl"][class*="border"] {
     box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 4px 18px rgba(0,0,0,0.28), 0 0 0 1px rgba(124,92,255,0.04);
@@ -1562,12 +1567,6 @@ function PayrollForm({ initial, employees, onSave, onCancel }) {
   const [overtime, setOvertime] = useState(initial?.overtime ?? "");
   const [bonus, setBonus] = useState(initial?.bonus ?? "");
   const [otherEarnings, setOtherEarnings] = useState(initial?.other_earnings ?? "");
-  const [inss, setInss] = useState(initial?.inss ?? "");
-  const [irrf, setIrrf] = useState(initial?.irrf ?? "");
-  const [vtDiscount, setVtDiscount] = useState(initial?.vt_discount ?? "");
-  const [vrDiscount, setVrDiscount] = useState(initial?.vr_discount ?? "");
-  const [advance, setAdvance] = useState(initial?.advance ?? "");
-  const [otherDiscounts, setOtherDiscounts] = useState(initial?.other_discounts ?? "");
   const [notes, setNotes] = useState(initial?.notes || "");
 
   const employee = employees.find((e) => e.id === employeeId);
@@ -1577,8 +1576,8 @@ function PayrollForm({ initial, employees, onSave, onCancel }) {
   }, [employeeId, isAdvance]);
 
   const totalEarnings = (Number(baseSalary) || 0) + (Number(overtime) || 0) + (Number(bonus) || 0) + (Number(otherEarnings) || 0);
-  const totalDiscounts = (Number(inss) || 0) + (Number(irrf) || 0) + (Number(vtDiscount) || 0) + (Number(vrDiscount) || 0) + (Number(advance) || 0) + (Number(otherDiscounts) || 0);
-  const netTotal = totalEarnings - totalDiscounts;
+  const totalDiscounts = 0;
+  const netTotal = totalEarnings;
   const canSave = employeeId && totalEarnings > 0;
 
   return (
@@ -1618,33 +1617,9 @@ function PayrollForm({ initial, employees, onSave, onCancel }) {
         </div>
       </div>
 
-      {!isAdvance && (
-        <div className="pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
-          <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>Descontos (o que subtrai)</div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <TextField label="INSS" value={inss} onChange={setInss} type="number" placeholder="0" />
-            <TextField label="IRRF" value={irrf} onChange={setIrrf} type="number" placeholder="0" />
-            <TextField label="Vale transporte" value={vtDiscount} onChange={setVtDiscount} type="number" placeholder="0" />
-            <TextField label="Vale refeição" value={vrDiscount} onChange={setVrDiscount} type="number" placeholder="0" />
-            <TextField label="Adiantamento / vale" value={advance} onChange={setAdvance} type="number" placeholder="0" />
-            <TextField label="Outros descontos" value={otherDiscounts} onChange={setOtherDiscounts} type="number" placeholder="0" />
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-3 gap-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
-        <div className="rounded-lg p-3" style={{ background: "rgba(34,197,94,0.10)" }}>
-          <div className="text-[10px] font-bold uppercase mb-1" style={{ color: COLORS.success }}>Total proventos</div>
-          <div className="text-base font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalEarnings)}</div>
-        </div>
-        <div className="rounded-lg p-3" style={{ background: "rgba(239,68,68,0.10)" }}>
-          <div className="text-[10px] font-bold uppercase mb-1" style={{ color: COLORS.danger }}>Total descontos</div>
-          <div className="text-base font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalDiscounts)}</div>
-        </div>
-        <div className="rounded-lg p-3" style={{ background: "rgba(124,92,255,0.12)" }}>
-          <div className="text-[10px] font-bold uppercase mb-1" style={{ color: COLORS.brandLight }}>Líquido a receber</div>
-          <div className="text-base font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(netTotal)}</div>
-        </div>
+      <div className="rounded-lg p-3 mt-3" style={{ background: "rgba(124,92,255,0.12)" }}>
+        <div className="text-[10px] font-bold uppercase mb-1" style={{ color: COLORS.brandLight }}>Total a receber</div>
+        <div className="text-xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(netTotal)}</div>
       </div>
 
       <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
@@ -1655,8 +1630,7 @@ function PayrollForm({ initial, employees, onSave, onCancel }) {
             id: initial?.id || uid(), employee_id: employeeId, employee_name: employee?.name || "", employee_cargo: employee?.cargo || null,
             reference_month: referenceMonth.trim(), payment_date: paymentDate || null, is_advance: isAdvance,
             base_salary: Number(baseSalary) || 0, overtime: Number(overtime) || 0, bonus: Number(bonus) || 0, other_earnings: Number(otherEarnings) || 0,
-            inss: Number(inss) || 0, irrf: Number(irrf) || 0, vt_discount: Number(vtDiscount) || 0, vr_discount: Number(vrDiscount) || 0,
-            advance: Number(advance) || 0, other_discounts: Number(otherDiscounts) || 0,
+            inss: 0, irrf: 0, vt_discount: 0, vr_discount: 0, advance: 0, other_discounts: 0,
             total_earnings: totalEarnings, total_discounts: totalDiscounts, net_total: netTotal,
             paid: initial?.paid || false, paid_date: initial?.paid_date || null, notes: notes.trim() || null,
           })}
@@ -3096,6 +3070,7 @@ function App() {
   const [showPaidVtVr, setShowPaidVtVr] = useState(false);
   const [userRole, setUserRole] = useState(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
   const mKey = monthKey(monthDate);
 
   useEffect(() => {
@@ -3778,24 +3753,12 @@ function App() {
       ["Bônus / comissão", rec.bonus],
       ["Outros proventos", rec.other_earnings],
     ].filter((r) => Number(r[1]) > 0);
-    const descontos = [
-      ["INSS", rec.inss], ["IRRF", rec.irrf], ["Vale transporte", rec.vt_discount],
-      ["Vale refeição", rec.vr_discount], ["Adiantamento / vale", rec.advance], ["Outros descontos", rec.other_discounts],
-    ].filter((r) => Number(r[1]) > 0);
 
-    const body = [];
-    const maxLen = Math.max(proventos.length, descontos.length);
-    for (let i = 0; i < maxLen; i++) {
-      body.push([
-        proventos[i] ? proventos[i][0] : "", proventos[i] ? fmtMoney(proventos[i][1]) : "",
-        descontos[i] ? descontos[i][0] : "", descontos[i] ? fmtMoney(descontos[i][1]) : "",
-      ]);
-    }
     doc.autoTable({
       startY: y,
-      head: [["Proventos", "Valor", "Descontos", "Valor"]],
-      body,
-      foot: [["TOTAL PROVENTOS", fmtMoney(rec.total_earnings), "TOTAL DESCONTOS", fmtMoney(rec.total_discounts)]],
+      head: [["Descrição", "Valor"]],
+      body: proventos.map((r) => [r[0], fmtMoney(r[1])]),
+      foot: [["TOTAL", fmtMoney(rec.total_earnings)]],
       styles: { fontSize: 9 },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
@@ -4416,6 +4379,12 @@ function App() {
     await loadRomaneios();
   }
 
+  async function handleRemoveProof(r) {
+    if (!confirm("Remover o comprovante anexado deste romaneio?")) return;
+    await supa.from("romaneios").update({ payment_proof_url: null }).eq("id", r.id);
+    await loadRomaneios();
+    showToast("Comprovante removido.");
+  }
   async function quickUploadProof(r, file) {
     if (!file) return;
     try {
@@ -4899,16 +4868,21 @@ function App() {
     doc.setFontSize(16);
     doc.text(`Relatório de Mensalidades - ${MONTHS_PT[monthDate.getMonth()]}/${monthDate.getFullYear()}`, 14, 18);
     doc.setFontSize(10); doc.setTextColor(100);
-    const cloudCount = clients.filter((c) => c.cloud).length;
-    const consultasTotal = clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0);
-    doc.text(`Clientes: ${stats.count}   Mensal: ${fmtMoney(stats.totalMonthly)}   Anual: ${fmtMoney(stats.totalAnnual)}   Recebido: ${fmtMoney(paidValue)}`, 14, 26);
+    // Mesma regra da tela de Clientes: sem cancelados e só quem tem banco ou mensalidade
+    const clientesRelatorio = filteredClients
+      .filter((c) => !c.cancelled && (c.bank_number || (Number(c.value) || 0) > 0 || c.annual))
+      .sort((a, b) => (a.bank_number || "").localeCompare(b.bank_number || "", "pt-BR", { numeric: true }));
+    const cloudCount = clientesRelatorio.filter((c) => c.cloud).length;
+    const consultasTotal = clientesRelatorio.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0);
+    doc.text(`Clientes: ${clientesRelatorio.length}   Mensal: ${fmtMoney(stats.totalMonthly)}   Anual: ${fmtMoney(stats.totalAnnual)}   Recebido: ${fmtMoney(paidValue)}`, 14, 26);
     doc.text(`Clientes cloud: ${cloudCount}   Total em consultas: ${fmtMoney(consultasTotal)}`, 14, 32);
-    const rows = filteredClients.map((c) => {
+    const rows = clientesRelatorio.map((c) => {
       const b = boletos[c.id];
       const st = STATUS_META[computeStatus(c, b, monthDate)].label;
-      return [c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(b?.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", fmtDate(c.next_due_date), st];
+      const pagoEm = b?.paid ? (b.paid_value ? fmtMoney(b.paid_value) : "sim") : "-";
+      return [c.bank_number || "-", c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(b?.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", fmtDate(c.next_due_date), st, pagoEm];
     });
-    doc.autoTable({ startY: 38, head: [["Cliente", "Mensalidade", "Consultas", "Cloud", "Ciclo", "Vencimento", "Status"]], body: rows, styles: { fontSize: 8 }, headStyles: { fillColor: [124, 92, 255] } });
+    doc.autoTable({ startY: 38, head: [["Banco", "Cliente", "Mensalidade", "Consultas", "Cloud", "Ciclo", "Vencimento", "Status", "Valor pago"]], body: rows, styles: { fontSize: 8 }, headStyles: { fillColor: [124, 92, 255] } });
     doc.save(`mensalidades-${mKey}.pdf`);
   }
 
@@ -4930,9 +4904,9 @@ function App() {
 
   return (
     <div className="h-screen w-full flex overflow-hidden" style={{ background: "transparent", fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
-      <aside className="w-20 sm:w-64 shrink-0 border-r p-3 sm:p-5 flex flex-col gap-6 h-full overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.sidebar }}>
+      <aside className="w-16 sm:w-52 shrink-0 border-r p-2 sm:p-3 flex flex-col gap-3 h-full overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.sidebar }}>
         <div className="hidden sm:flex justify-center">
-          <img src={LOGO_DATA_URI} alt="Miré" className="w-36 h-auto object-contain" style={{ filter: "drop-shadow(0 0 14px rgba(124,92,255,0.35))" }} />
+          <img src={LOGO_DATA_URI} alt="Miré" className="w-28 h-auto object-contain" style={{ filter: "drop-shadow(0 0 14px rgba(124,92,255,0.35))" }} />
         </div>
         <div className="flex sm:hidden justify-center"><img src={LOGO_DATA_URI} alt="Miré" className="w-12 h-auto object-contain" style={{ filter: "drop-shadow(0 0 10px rgba(124,92,255,0.4))" }} /></div>
 
@@ -5037,18 +5011,18 @@ function App() {
             return [{ group: userRole.charAt(0).toUpperCase() + userRole.slice(1), items: flatItems }];
           })().map((g, gi) => (
             <div key={g.group} className="mb-1" style={{ borderTop: gi > 0 ? `1px solid ${COLORS.cardBorder}` : "none", paddingTop: gi > 0 ? "8px" : "0" }}>
-              <div className="hidden sm:block text-[10px] font-bold uppercase tracking-wider px-3 mb-1" style={{ color: COLORS.inkFaint }}>{g.group}</div>
+              <div className="hidden sm:block text-[9px] font-bold uppercase tracking-wider px-2 mb-0.5" style={{ color: COLORS.inkFaint }}>{g.group}</div>
               {g.items.map((t) => {
                 const active = tab === t.id;
                 return (
                   <button key={t.id} onClick={() => setTab(t.id)}
-                    className="flex flex-col sm:flex-row items-center sm:gap-3 justify-center sm:justify-start w-full px-2 sm:px-3 py-2.5 rounded-xl font-semibold transition-all relative overflow-hidden"
+                    className="flex flex-col sm:flex-row items-center sm:gap-2 justify-center sm:justify-start w-full px-1.5 sm:px-2.5 py-1.5 rounded-lg font-semibold transition-all relative overflow-hidden"
                     style={{ background: active ? `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` : "transparent", color: active ? "#fff" : COLORS.inkMuted, boxShadow: active ? "0 4px 18px rgba(124,92,255,0.45), inset 0 1px 0 rgba(255,255,255,0.2)" : "none" }}
                     onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(124,92,255,0.08)"; }}
                     onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
                     {active && <span className="hidden sm:block absolute left-0 top-0 bottom-0 w-1" style={{ background: "#fff", opacity: 0.6 }} />}
                     <span className="text-base leading-none">{t.icon}</span>
-                    <span className="text-[10px] sm:text-sm leading-tight text-center sm:text-left mt-0.5 sm:mt-0">{t.label}</span>
+                    <span className="text-[9px] sm:text-[13px] leading-tight text-center sm:text-left mt-0.5 sm:mt-0">{t.label}</span>
                   </button>
                 );
               })}
@@ -5365,8 +5339,13 @@ function App() {
                         const total = dayClients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0);
                         const totalExpenses = dayExpenses.reduce((s, e) => s + (Number(e.value) || 0), 0);
                         const isToday = isCurrentMonth && today.getDate() === day;
+                        const hasContent = dayClients.length > 0 || dayExpenses.length > 0;
                         return (
-                          <div key={i} className="rounded-xl border p-2 min-h-[74px] sm:min-h-[92px]" style={{ borderColor: isToday ? COLORS.brandLight : COLORS.cardBorder, background: isToday ? "rgba(124,92,255,0.08)" : COLORS.card }}>
+                          <div key={i} onClick={() => hasContent && setSelectedCalendarDay({ day, clients: dayClients, expenses: dayExpenses })}
+                            className="rounded-xl border p-2 min-h-[74px] sm:min-h-[92px] transition"
+                            style={{ borderColor: isToday ? COLORS.brandLight : COLORS.cardBorder, background: isToday ? "rgba(124,92,255,0.08)" : COLORS.card, cursor: hasContent ? "pointer" : "default" }}
+                            onMouseEnter={(e) => { if (hasContent) e.currentTarget.style.borderColor = COLORS.brandLight; }}
+                            onMouseLeave={(e) => { if (hasContent) e.currentTarget.style.borderColor = isToday ? COLORS.brandLight : COLORS.cardBorder; }}>
                             <div className="text-xs font-bold mb-1" style={{ color: isToday ? COLORS.brandLight : COLORS.ink }}>{day}</div>
                             {dayClients.length > 0 && (
                               <div className="mb-1">
@@ -5556,7 +5535,11 @@ function App() {
                   const overdue = status === "atrasado" ? daysOverdue(c, monthDate) : 0;
                   const dueSoon = isDueSoon(c, b, monthDate);
                   return (
-                    <div key={c.id} className="p-4 hover:bg-white/[0.015] transition-colors" style={{ borderColor: COLORS.cardBorder }}>
+                    <div key={c.id} className="p-4 transition-colors" style={{
+                        borderColor: COLORS.cardBorder,
+                        background: b?.paid ? "rgba(34,197,94,0.07)" : "transparent",
+                        borderLeft: b?.paid ? `4px solid ${COLORS.success}` : `4px solid transparent`,
+                      }}>
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                         <div className="flex items-center gap-3">
                           <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} className="shrink-0" />
@@ -5836,7 +5819,10 @@ function App() {
                         )}
                         <button onClick={() => exportRomaneioExcel(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
                         {r.payment_proof_url ? (
-                          <a href={r.payment_proof_url} target="_blank" className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>✓ Comprovante</a>
+                          <>
+                            <a href={r.payment_proof_url} target="_blank" className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>✓ Comprovante</a>
+                            <button onClick={() => handleRemoveProof(r)} className="px-2 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }} title="Remover comprovante anexado">✕</button>
+                          </>
                         ) : (
                           <label className="px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
                             📎 Anexar comprovante
@@ -6587,8 +6573,14 @@ function App() {
                   bySeller[s].push(r);
                 });
                 const sellers = Object.keys(bySeller).sort((a, b) => a.localeCompare(b, "pt-BR"));
-                const totalComissao = romaneios.reduce((s, r) => s + (Number(r.commission_value) || 0), 0);
-                const totalPago = romaneios.filter((r) => r.commission_paid).reduce((s, r) => s + (Number(r.commission_value) || 0), 0);
+                // Calcula sempre na hora: (venda - custo) x %
+                const calcComissao = (r) => {
+                  const venda = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+                  const lucro = Math.max(0, venda - (Number(r.purchase_cost) || 0));
+                  return lucro * ((Number(r.commission_percent) || 0) / 100);
+                };
+                const totalComissao = romaneios.reduce((s, r) => s + calcComissao(r), 0);
+                const totalPago = romaneios.filter((r) => r.commission_paid).reduce((s, r) => s + calcComissao(r), 0);
                 const totalAberto = totalComissao - totalPago;
                 return (
                   <>
@@ -6614,7 +6606,7 @@ function App() {
                       </div>
                     ) : sellers.map((s) => {
                       const rows = bySeller[s];
-                      const sellerTotal = rows.reduce((sum, r) => sum + (Number(r.commission_value) || 0), 0);
+                      const sellerTotal = rows.reduce((sum, r) => sum + calcComissao(r), 0);
                       return (
                         <div key={s} className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}`, background: "rgba(124,92,255,0.08)" }}>
@@ -6657,7 +6649,7 @@ function App() {
                                       <span style={{ color: COLORS.inkMuted }}>%</span>
                                     </div>
                                   </td>
-                                  <td className="p-3 font-bold">{money(r.commission_value)}</td>
+                                  <td className="p-3 font-bold" style={{ color: COLORS.success }}>{money(lucro * ((Number(r.commission_percent) || 0) / 100))}</td>
                                   <td className="p-3">
                                     <button onClick={() => handleToggleCommissionPaid(r)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: r.commission_paid ? COLORS.success : COLORS.cardBorder, color: r.commission_paid ? COLORS.success : COLORS.inkMuted, background: r.commission_paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
                                       {r.commission_paid ? "✓ Pago" : "○ Marcar como pago"}
@@ -7254,6 +7246,61 @@ function App() {
       {pixModal && <PixQRModal {...pixModal} onClose={() => setPixModal(null)} />}
       {viewingTech && <TechImplementationViewer t={viewingTech} onClose={() => setViewingTech(null)} />}
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} showToast={showToast} />}
+      {selectedCalendarDay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setSelectedCalendarDay(null)}>
+          <div className="rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }} onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b sticky top-0 flex items-center justify-between" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+              <div className="font-bold text-sm" style={{ color: COLORS.ink }}>
+                📅 {String(selectedCalendarDay.day).padStart(2, "0")}/{String(monthDate.getMonth() + 1).padStart(2, "0")}/{monthDate.getFullYear()}
+              </div>
+              <button onClick={() => setSelectedCalendarDay(null)} className="text-lg px-2" style={{ color: COLORS.inkMuted }}>✕</button>
+            </div>
+            <div className="p-4 space-y-4">
+              {selectedCalendarDay.clients.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>↓ A receber ({selectedCalendarDay.clients.length})</div>
+                  <div className="space-y-1.5">
+                    {selectedCalendarDay.clients.map((c) => {
+                      const b = boletos[c.id];
+                      return (
+                        <div key={c.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border" style={{ borderColor: COLORS.cardBorder }}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Avatar name={c.name} size={26} />
+                            <span className="text-sm truncate" style={{ color: COLORS.ink }}>{c.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-sm font-bold" style={{ color: COLORS.ink }}>{money(effectiveValue(c, b))}</span>
+                            <StatusBadge status={computeStatus(c, b, monthDate)} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {selectedCalendarDay.expenses.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>↑ A pagar ({selectedCalendarDay.expenses.length})</div>
+                  <div className="space-y-1.5">
+                    {selectedCalendarDay.expenses.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border" style={{ borderColor: COLORS.cardBorder }}>
+                        <div className="min-w-0">
+                          <div className="text-sm truncate" style={{ color: COLORS.ink }}>{e.category}{e.description ? ` — ${e.description}` : ""}</div>
+                          {e.client_invoice_number && <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>Nota: {e.client_invoice_number}</div>}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-sm font-bold" style={{ color: COLORS.ink }}>{money(e.value)}</span>
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: e.paid ? COLORS.success : COLORS.warn, background: e.paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>{e.paid ? "✓ Pago" : "Em aberto"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       {historyClient && <ClientHistoryModal client={historyClient} onClose={() => setHistoryClient(null)} />}
     </div>
   );

@@ -283,6 +283,24 @@ function fmtMoney(v) { return (Number(v) || 0).toLocaleString("pt-BR", { style: 
 function fmtDate(d) { return d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "-"; }
 // Vencimento do cliente: usa a data completa se existir; se só tiver o dia
 // (clientes antigos/importados), monta a data com o mês/ano de referência.
+// Comissão do romaneio: custo é UNITÁRIO (por caixa/peça), multiplicado pela quantidade.
+// Comissão = (venda total - custo total) x %
+function romaneioVenda(r) {
+  return (r?.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+}
+function romaneioQtd(r) {
+  return (r?.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0);
+}
+function romaneioCustoTotal(r) {
+  return romaneioQtd(r) * (Number(r?.purchase_cost) || 0);
+}
+function romaneioLucro(r) {
+  return Math.max(0, romaneioVenda(r) - romaneioCustoTotal(r));
+}
+function romaneioComissao(r) {
+  return romaneioLucro(r) * ((Number(r?.commission_percent) || 0) / 100);
+}
+
 function clientDueDisplay(c, monthDate) {
   if (c?.next_due_date) return fmtDate(c.next_due_date);
   if (c?.due_day) {
@@ -2636,14 +2654,17 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
   const canSave = clientId && number.trim();
 
   function buildPayload() {
-    const total = items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+    const validItems = items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0);
+    const total = validItems.reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+    const qtdTotal = validItems.reduce((s, it) => s + (Number(it.quantidade) || 0), 0);
+    const custoTotal = qtdTotal * (Number(purchaseCost) || 0);
     return {
       id: initial?.id || uid(), romaneio_client_id: clientId, number: number.trim(), order_date: orderDate, seller: seller.trim(),
-      items: items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0).map((it) => ({ codigo: it.codigo.trim(), descricao: it.descricao.trim(), quantidade: Number(it.quantidade) || 0, valorUnit: Number(it.valorUnit) || 0 })),
+      items: validItems.map((it) => ({ codigo: it.codigo.trim(), descricao: it.descricao.trim(), quantidade: Number(it.quantidade) || 0, valorUnit: Number(it.valorUnit) || 0 })),
       payment_method: paymentMethod.trim(), payment_term: paymentTerm.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(), freight: freight.trim(),
       delivery_address: deliveryAddress.trim() || null, payment_proof_url: paymentProofUrl || null,
       commission_percent: Number(commissionPercent) || 0, purchase_cost: Number(purchaseCost) || 0,
-      commission_value: Math.max(0, total - (Number(purchaseCost) || 0)) * ((Number(commissionPercent) || 0) / 100), commission_paid: initial?.commission_paid || false,
+      commission_value: Math.max(0, total - custoTotal) * ((Number(commissionPercent) || 0) / 100), commission_paid: initial?.commission_paid || false,
     };
   }
 
@@ -2678,13 +2699,18 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
           <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
         </label>
         <TextField label="Vendedor" value={seller} onChange={setSeller} placeholder="Nome do vendedor" />
-        <TextField label="Valor de compra (custo)" value={purchaseCost} onChange={setPurchaseCost} type="number" placeholder="Ex: 172,00" />
+        <TextField label="Custo unitário de compra" value={purchaseCost} onChange={setPurchaseCost} type="number" placeholder="Ex: 172,00 (por caixa)" />
         <TextField label="Comissão sobre o lucro (%)" value={commissionPercent} onChange={setCommissionPercent} type="number" placeholder="25" />
-        {(Number(purchaseCost) > 0 || Number(commissionPercent) > 0) && (
-          <div className="sm:col-span-2 text-xs rounded-lg p-2.5" style={{ background: "rgba(124,92,255,0.08)", color: COLORS.inkMuted }}>
-            Venda {fmtMoney(total)} − Compra {fmtMoney(purchaseCost)} = Lucro {fmtMoney(Math.max(0, total - (Number(purchaseCost) || 0)))} · Comissão ({Number(commissionPercent) || 0}%): <b style={{ color: COLORS.success }}>{fmtMoney(Math.max(0, total - (Number(purchaseCost) || 0)) * ((Number(commissionPercent) || 0) / 100))}</b>
-          </div>
-        )}
+        {(Number(purchaseCost) > 0 || Number(commissionPercent) > 0) && (() => {
+          const qtdTotal = items.reduce((s, it) => s + (Number(it.quantidade) || 0), 0);
+          const custoTotal = qtdTotal * (Number(purchaseCost) || 0);
+          const lucro = Math.max(0, total - custoTotal);
+          return (
+            <div className="sm:col-span-2 text-xs rounded-lg p-2.5" style={{ background: "rgba(124,92,255,0.08)", color: COLORS.inkMuted }}>
+              Venda {fmtMoney(total)} − Custo ({qtdTotal} × {fmtMoney(purchaseCost)} = {fmtMoney(custoTotal)}) = Lucro {fmtMoney(lucro)} · Comissão ({Number(commissionPercent) || 0}%): <b style={{ color: COLORS.success }}>{fmtMoney(lucro * ((Number(commissionPercent) || 0) / 100))}</b>
+            </div>
+          );
+        })()}
         <TextField label="Frete" value={freight} onChange={setFreight} placeholder="CIF / FOB" />
         <TextField label="Forma de pagamento" value={paymentMethod} onChange={setPaymentMethod} placeholder="Ex: À vista no PIX" />
         <TextField label="Prazo de pagamento" value={paymentTerm} onChange={setPaymentTerm} placeholder="Ex: A pronta entrega / 30 dias" />
@@ -4377,15 +4403,13 @@ function App() {
     await loadRomaneios();
   }
   async function handleUpdateCommissionPercent(r, newPercent) {
-    const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
-    const lucro = Math.max(0, total - (Number(r.purchase_cost) || 0));
+    const lucro = romaneioLucro(r);
     const newValue = lucro * ((Number(newPercent) || 0) / 100);
     await supa.from("romaneios").update({ commission_percent: Number(newPercent) || 0, commission_value: newValue }).eq("id", r.id);
     await loadRomaneios();
   }
   async function handleUpdateCommissionCost(r, newCost) {
-    const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
-    const lucro = Math.max(0, total - (Number(newCost) || 0));
+    const lucro = romaneioLucro({ ...r, purchase_cost: newCost });
     const newValue = lucro * ((Number(r.commission_percent) || 0) / 100);
     await supa.from("romaneios").update({ purchase_cost: Number(newCost) || 0, commission_value: newValue }).eq("id", r.id);
     await loadRomaneios();
@@ -4394,9 +4418,7 @@ function App() {
     if (!confirm(`Recalcular a comissão de todos os ${romaneios.length} romaneio(s)?\n\nA conta usada será: (venda - custo) x %.\nOs valores de custo e % de cada romaneio são mantidos como estão.`)) return;
     let ok = 0;
     for (const r of romaneios) {
-      const venda = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
-      const lucro = Math.max(0, venda - (Number(r.purchase_cost) || 0));
-      const correto = lucro * ((Number(r.commission_percent) || 0) / 100);
+      const correto = romaneioComissao(r);
       if (Math.abs(correto - (Number(r.commission_value) || 0)) > 0.005) {
         const { error } = await supa.from("romaneios").update({ commission_value: correto }).eq("id", r.id);
         if (!error) ok++;
@@ -4909,7 +4931,25 @@ function App() {
       const pagoEm = b?.paid ? (b.paid_value ? fmtMoney(b.paid_value) : "sim") : "-";
       return [c.bank_number || "-", c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(b?.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", clientDueDisplay(c, monthDate), st, pagoEm];
     });
-    doc.autoTable({ startY: 38, head: [["Banco", "Cliente", "Mensalidade", "Consultas", "Cloud", "Ciclo", "Vencimento", "Status", "Valor pago"]], body: rows, styles: { fontSize: 8 }, headStyles: { fillColor: [124, 92, 255] } });
+    doc.autoTable({
+      startY: 38,
+      head: [["Banco", "Cliente", "Mensalidade", "Consultas", "Cloud", "Ciclo", "Vencimento", "Status", "Valor pago"]],
+      body: rows,
+      styles: { fontSize: 7.5, cellPadding: 1.5 },
+      headStyles: { fillColor: [124, 92, 255], fontSize: 7.5 },
+      columnStyles: {
+        0: { cellWidth: 12, overflow: "visible" },
+        1: { cellWidth: 52, overflow: "linebreak" },
+        2: { cellWidth: 20, halign: "right", overflow: "visible" },
+        3: { cellWidth: 19, halign: "right", overflow: "visible" },
+        4: { cellWidth: 11, halign: "center", overflow: "visible" },
+        5: { cellWidth: 14, halign: "center", overflow: "visible" },
+        6: { cellWidth: 19, halign: "center", overflow: "visible" },
+        7: { cellWidth: 17, halign: "center", overflow: "visible" },
+        8: { cellWidth: 20, halign: "right", overflow: "visible" },
+      },
+      margin: { left: 10, right: 10 },
+    });
     doc.save(`mensalidades-${mKey}.pdf`);
   }
 
@@ -6600,12 +6640,7 @@ function App() {
                   bySeller[s].push(r);
                 });
                 const sellers = Object.keys(bySeller).sort((a, b) => a.localeCompare(b, "pt-BR"));
-                // Calcula sempre na hora: (venda - custo) x %
-                const calcComissao = (r) => {
-                  const venda = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
-                  const lucro = Math.max(0, venda - (Number(r.purchase_cost) || 0));
-                  return lucro * ((Number(r.commission_percent) || 0) / 100);
-                };
+                const calcComissao = romaneioComissao;
                 const totalComissao = romaneios.reduce((s, r) => s + calcComissao(r), 0);
                 const totalPago = romaneios.filter((r) => r.commission_paid).reduce((s, r) => s + calcComissao(r), 0);
                 const totalAberto = totalComissao - totalPago;
@@ -6662,8 +6697,10 @@ function App() {
                               <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
                                 <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Romaneio</th>
                                 <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Data</th>
+                                <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Qtd</th>
                                 <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Venda</th>
-                                <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Compra</th>
+                                <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Custo unit.</th>
+                                <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Custo total</th>
                                 <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Lucro</th>
                                 <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">%</th>
                                 <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Comissão</th>
@@ -6672,18 +6709,22 @@ function App() {
                             </thead>
                             <tbody>
                               {rows.map((r, i) => {
-                                const venda = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
-                                const lucro = Math.max(0, venda - (Number(r.purchase_cost) || 0));
+                                const venda = romaneioVenda(r);
+                                const qtd = romaneioQtd(r);
+                                const custoTotal = romaneioCustoTotal(r);
+                                const lucro = romaneioLucro(r);
                                 return (
                                 <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                                   <td className="p-3 font-semibold">{r.number}</td>
                                   <td className="p-3">{r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                                  <td className="p-3">{qtd}</td>
                                   <td className="p-3">{money(venda)}</td>
                                   <td className="p-3">
                                     <input type="number" key={`cost-${r.id}`} defaultValue={r.purchase_cost || 0}
                                       onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(r.purchase_cost) || 0)) handleUpdateCommissionCost(r, v); }}
-                                      className="w-20 rounded-lg border px-1.5 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                                      className="w-20 rounded-lg border px-1.5 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} title="Custo de UMA unidade — o sistema multiplica pela quantidade" />
                                   </td>
+                                  <td className="p-3" style={{ color: COLORS.inkMuted }}>{money(custoTotal)}</td>
                                   <td className="p-3" style={{ color: COLORS.brandLight }}>{money(lucro)}</td>
                                   <td className="p-3">
                                     <div className="flex items-center gap-1">

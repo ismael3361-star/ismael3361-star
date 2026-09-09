@@ -124,7 +124,7 @@ const PROPOSAL_STAGE_COLORS = { enviada: "#3B82F6", negociacao: "#F59E0B", fecha
 const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
   comercial: ["clientes", "propostas", "romaneio"],
-  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha"],
+  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas"],
   operacional: ["itag", "implantacao_tecnica", "escala"],
 };
 
@@ -1547,6 +1547,124 @@ function EmployeePicker({ employees, value, onSelect, onCreateNew }) {
 }
 
 const VT_RATES = { "1": 5.4, "2": 9.38 };
+
+const SUPPLIER_MODELS = ["MODELO 03", "MODELO 04", "MODELO 03 + MODELO 04"];
+
+function SupplierOrderForm({ initial, onSave, onCancel }) {
+  const [orderDate, setOrderDate] = useState(initial?.order_date || new Date().toISOString().slice(0, 10));
+  const [invoiceNumber, setInvoiceNumber] = useState(initial?.invoice_number || "");
+  const [model, setModel] = useState(initial?.model || SUPPLIER_MODELS[0]);
+  const [arrivalDate, setArrivalDate] = useState(initial?.arrival_date || "");
+  const [quantity, setQuantity] = useState(initial?.quantity ?? "");
+  const [unitValue, setUnitValue] = useState(initial?.unit_value ?? 172);
+  const [installments, setInstallments] = useState(initial?.installments?.length ? initial.installments : [{ due_date: "", value: "", paid: false }]);
+  const [notes, setNotes] = useState(initial?.notes || "");
+
+  const total = (Number(quantity) || 0) * (Number(unitValue) || 0);
+  const totalPago = installments.filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+  const totalAberto = installments.filter((it) => !it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+
+  function updateInst(i, field, val) { setInstallments((prev) => prev.map((it, idx) => idx === i ? { ...it, [field]: val } : it)); }
+  function addInst() { setInstallments((prev) => [...prev, { due_date: "", value: "", paid: false }]); }
+  function removeInst(i) { setInstallments((prev) => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev); }
+  function dividirParcelas(n) {
+    const cada = total / n;
+    const base = orderDate ? new Date(orderDate + "T00:00:00") : new Date();
+    const novas = [];
+    for (let i = 0; i < n; i++) {
+      const d = new Date(base);
+      d.setDate(d.getDate() + 28 + (i * 14)); // 1ª ~28 dias, demais a cada 14
+      novas.push({ due_date: d.toISOString().slice(0, 10), value: cada.toFixed(2), paid: false });
+    }
+    setInstallments(novas);
+  }
+
+  const canSave = orderDate && Number(quantity) > 0;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar pedido" : "Novo pedido de etiquetas"}</div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pedido</span>
+          <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
+        <TextField label="Nota fiscal" value={invoiceNumber} onChange={setInvoiceNumber} placeholder="53533" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Modelo</span>
+          <select value={model} onChange={(e) => setModel(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+            {SUPPLIER_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de entrada</span>
+          <input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
+        <TextField label="Quantidade (caixas)" value={quantity} onChange={setQuantity} type="number" placeholder="16" />
+        <TextField label="Valor unitário" value={unitValue} onChange={setUnitValue} type="number" placeholder="172" />
+      </div>
+
+      <div className="rounded-lg p-3" style={{ background: "rgba(124,92,255,0.10)" }}>
+        <span className="text-sm font-bold" style={{ color: COLORS.brandLight }}>Total do pedido: {fmtMoney(total)}</span>
+        <span className="text-xs ml-2" style={{ color: COLORS.inkMuted }}>({quantity || 0} × {fmtMoney(unitValue)})</span>
+      </div>
+
+      <div className="pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Vencimentos / parcelas</span>
+          <div className="flex gap-1.5">
+            {[1, 2, 3].map((n) => (
+              <button key={n} type="button" onClick={() => dividirParcelas(n)} className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Dividir em {n}x</button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          {installments.map((it, i) => (
+            <div key={i} className="flex gap-2 items-center flex-wrap">
+              <span className="text-xs font-bold w-6 shrink-0" style={{ color: COLORS.inkFaint }}>{i + 1}ª</span>
+              <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="flex-1 min-w-[130px] rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor" className="w-28 rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <button type="button" onClick={() => updateInst(i, "paid", !it.paid)} className="text-xs font-bold px-2.5 py-1.5 rounded-lg border shrink-0" style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.12)" : "transparent" }}>
+                {it.paid ? "✓ Pago" : "○ Em aberto"}
+              </button>
+              {installments.length > 1 && <button type="button" onClick={() => removeInst(i)} className="px-1.5 text-sm shrink-0" style={{ color: COLORS.danger }}>🗑️</button>}
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={addInst} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar parcela</button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg p-2.5" style={{ background: "rgba(34,197,94,0.10)" }}>
+          <div className="text-[10px] font-bold uppercase" style={{ color: COLORS.success }}>Valor pago</div>
+          <div className="text-base font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalPago)}</div>
+        </div>
+        <div className="rounded-lg p-2.5" style={{ background: "rgba(245,158,11,0.10)" }}>
+          <div className="text-[10px] font-bold uppercase" style={{ color: COLORS.warn }}>Valor em aberto</div>
+          <div className="text-base font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(totalAberto)}</div>
+        </div>
+      </div>
+
+      <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
+
+      <div className="flex gap-2">
+        <button disabled={!canSave}
+          onClick={() => onSave({
+            id: initial?.id || uid(), order_date: orderDate, invoice_number: invoiceNumber.trim() || null,
+            model, arrival_date: arrivalDate || null, quantity: Number(quantity) || 0, unit_value: Number(unitValue) || 0,
+            total_value: total,
+            installments: installments.filter((it) => it.due_date || Number(it.value) > 0).map((it) => ({ due_date: it.due_date || null, value: Number(it.value) || 0, paid: !!it.paid })),
+            notes: notes.trim() || null,
+          })}
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar pedido
+        </button>
+        <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
+}
 
 function EmployeeForm({ initial, onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || "");
@@ -3089,6 +3207,10 @@ function App() {
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [payrollSubTab, setPayrollSubTab] = useState("pagamentos");
+  const [supplierOrders, setSupplierOrders] = useState([]);
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState(null);
+  const [supplierYear, setSupplierYear] = useState(new Date().getFullYear());
   const [globalSearch, setGlobalSearch] = useState("");
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showTechForm, setShowTechForm] = useState(false);
@@ -3713,6 +3835,46 @@ function App() {
     await loadEmployees();
     return emp;
   }
+  const loadSupplierOrders = useCallback(async () => {
+    const { data } = await supa.from("supplier_orders").select("*").order("order_date", { ascending: false });
+    setSupplierOrders(data || []);
+  }, []);
+  async function handleSaveSupplierOrder(o) {
+    const { error } = await supa.from("supplier_orders").upsert(o);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadSupplierOrders();
+    setShowSupplierForm(false); setEditingSupplier(null);
+    showToast("Pedido salvo.");
+  }
+  async function handleDeleteSupplierOrder(id) {
+    if (!confirm("Remover este pedido?")) return;
+    await supa.from("supplier_orders").delete().eq("id", id);
+    await loadSupplierOrders();
+    showToast("Pedido removido.");
+  }
+  async function handleToggleSupplierInst(o, idx) {
+    const novas = (o.installments || []).map((it, i) => i === idx ? { ...it, paid: !it.paid } : it);
+    await supa.from("supplier_orders").update({ installments: novas }).eq("id", o.id);
+    await loadSupplierOrders();
+  }
+  function exportSupplierOrdersExcel(list) {
+    const rows = list.map((o) => {
+      const pago = (o.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+      const aberto = (o.installments || []).filter((it) => !it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+      return {
+        "Data Pedido": fmtDate(o.order_date), "Nota Fiscal": o.invoice_number || "-", "Modelo": o.model || "-",
+        "Entrada": fmtDate(o.arrival_date), "Quantidade": o.quantity, "Valor Unitário": o.unit_value,
+        "Total": o.total_value,
+        "Vencimentos": (o.installments || []).map((it) => fmtDate(it.due_date)).join("  "),
+        "Valor Aberto": aberto, "Valor Pago": pago,
+        "Obs.": (o.installments || []).every((it) => it.paid) && (o.installments || []).length > 0 ? "PAGO" : (o.notes || ""),
+      };
+    });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, `PEDIDOS ${supplierYear}`);
+    XLSX.writeFile(wb, `pedidos-etiquetas-${supplierYear}.xlsx`);
+  }
   const loadPayrollRecords = useCallback(async () => {
     const { data } = await supa.from("payroll_records").select("*").order("payment_date", { ascending: false });
     setPayrollRecords(data || []);
@@ -3908,7 +4070,7 @@ function App() {
     doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -5060,6 +5222,7 @@ function App() {
                 { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
                 { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
                 { id: "folha", label: "Folha de Pagamento", icon: "👥" },
+                { id: "pedidos_etiquetas", label: "Pedidos Etiquetas", icon: "🏷️" },
                 { id: "comissao", label: "Comissão Vendedor", icon: "💰" },
               ]},
               { group: "Operacional", items: [
@@ -5157,6 +5320,7 @@ function App() {
                 {effectiveTab === "comissao" && "Comissão do Vendedor"}
                 {effectiveTab === "escala" && "Escala de Sábado"}
                 {effectiveTab === "folha" && "Folha de Pagamento"}
+                {effectiveTab === "pedidos_etiquetas" && "Pedidos de Etiquetas"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
                 {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : ["clientes", "boletos", "calendario"].includes(effectiveTab) ? `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}` : ""}
@@ -6259,6 +6423,141 @@ function App() {
             </div>
           )}
 
+
+          {effectiveTab === "pedidos_etiquetas" && (
+            <div>
+              {(() => {
+                const doAno = supplierOrders.filter((o) => o.order_date && new Date(o.order_date + "T00:00:00").getFullYear() === supplierYear);
+                const anos = [...new Set(supplierOrders.filter((o) => o.order_date).map((o) => new Date(o.order_date + "T00:00:00").getFullYear()))].sort((a, b) => b - a);
+                if (anos.length === 0) anos.push(new Date().getFullYear());
+                const somaQtd = doAno.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+                const somaTotal = doAno.reduce((s, o) => s + (Number(o.total_value) || 0), 0);
+                const somaPago = doAno.reduce((s, o) => s + (o.installments || []).filter((it) => it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0);
+                const somaAberto = doAno.reduce((s, o) => s + (o.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0);
+                const hoje = new Date().toISOString().slice(0, 10);
+                const atrasadas = doAno.flatMap((o) => (o.installments || []).filter((it) => !it.paid && it.due_date && it.due_date < hoje).map((it) => ({ ...it, nf: o.invoice_number })));
+                return (
+                  <>
+                    {atrasadas.length > 0 && (
+                      <div className="rounded-2xl border p-4 mb-4 flex items-center gap-3" style={{ borderColor: COLORS.danger, background: "rgba(239,68,68,0.1)" }}>
+                        <span className="text-2xl">⚠️</span>
+                        <div>
+                          <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{atrasadas.length} parcela(s) vencida(s) e não paga(s)</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>Total: {money(atrasadas.reduce((s, it) => s + (Number(it.value) || 0), 0))}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Caixas compradas</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{somaQtd}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Total do ano</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(somaTotal)}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Valor pago</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(somaPago)}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Valor em aberto</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(somaAberto)}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                      <div className="flex gap-1.5">
+                        {anos.map((a) => (
+                          <button key={a} onClick={() => setSupplierYear(a)} className="px-3 py-1.5 rounded-lg text-sm font-semibold border" style={{ borderColor: supplierYear === a ? COLORS.brandLight : COLORS.cardBorder, color: supplierYear === a ? COLORS.brandLight : COLORS.inkMuted, background: supplierYear === a ? "rgba(124,92,255,0.1)" : "transparent" }}>{a}</button>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        {doAno.length > 0 && <button onClick={() => exportSupplierOrdersExcel(doAno)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>}
+                        <button onClick={() => { setEditingSupplier(null); setShowSupplierForm(true); }} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo pedido</button>
+                      </div>
+                    </div>
+
+                    {showSupplierForm && <div className="mb-4"><SupplierOrderForm initial={editingSupplier} onSave={handleSaveSupplierOrder} onCancel={() => { setShowSupplierForm(false); setEditingSupplier(null); }} /></div>}
+
+                    {!showSupplierForm && (
+                      <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        {doAno.length === 0 ? (
+                          <div className="p-10 text-center"><div className="text-3xl mb-2">🏷️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pedido em {supplierYear}.</div></div>
+                        ) : (
+                          <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                            <thead>
+                              <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                                <th className="text-left p-3 font-bold uppercase">Data</th>
+                                <th className="text-left p-3 font-bold uppercase">NF</th>
+                                <th className="text-left p-3 font-bold uppercase">Modelo</th>
+                                <th className="text-left p-3 font-bold uppercase">Entrada</th>
+                                <th className="text-left p-3 font-bold uppercase">Qtd</th>
+                                <th className="text-left p-3 font-bold uppercase">Vr. Unit.</th>
+                                <th className="text-left p-3 font-bold uppercase">Vencimentos / parcelas</th>
+                                <th className="text-left p-3 font-bold uppercase">Aberto</th>
+                                <th className="text-left p-3 font-bold uppercase">Pago</th>
+                                <th className="text-left p-3 font-bold uppercase"></th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {doAno.map((o, i) => {
+                                const pago = (o.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                                const aberto = (o.installments || []).filter((it) => !it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                                const tudoPago = (o.installments || []).length > 0 && (o.installments || []).every((it) => it.paid);
+                                return (
+                                  <tr key={o.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", background: tudoPago ? "rgba(34,197,94,0.05)" : "transparent" }}>
+                                    <td className="p-3">{fmtDate(o.order_date)}</td>
+                                    <td className="p-3 font-semibold">{o.invoice_number || "-"}</td>
+                                    <td className="p-3">{o.model || "-"}</td>
+                                    <td className="p-3">{fmtDate(o.arrival_date)}</td>
+                                    <td className="p-3">{o.quantity}</td>
+                                    <td className="p-3">{money(o.unit_value)}</td>
+                                    <td className="p-3">
+                                      <div className="flex flex-wrap gap-1">
+                                        {(o.installments || []).map((it, idx) => {
+                                          const venceu = !it.paid && it.due_date && it.due_date < hoje;
+                                          return (
+                                            <button key={idx} onClick={() => handleToggleSupplierInst(o, idx)}
+                                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap"
+                                              style={{ borderColor: it.paid ? COLORS.success : venceu ? COLORS.danger : COLORS.cardBorder, color: it.paid ? COLORS.success : venceu ? COLORS.danger : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.1)" : venceu ? "rgba(239,68,68,0.1)" : "transparent" }}>
+                                              {it.paid ? "✓" : venceu ? "⚠" : "○"} {fmtDate(it.due_date)} · {money(it.value)}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </td>
+                                    <td className="p-3 font-bold" style={{ color: aberto > 0 ? COLORS.warn : COLORS.inkFaint }}>{aberto > 0 ? money(aberto) : "-"}</td>
+                                    <td className="p-3 font-bold" style={{ color: COLORS.success }}>{pago > 0 ? money(pago) : "-"}</td>
+                                    <td className="p-3">
+                                      <button onClick={() => { setEditingSupplier(o); setShowSupplierForm(true); }} className="mr-1.5">✏️</button>
+                                      <button onClick={() => handleDeleteSupplierOrder(o.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                            <tfoot>
+                              <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                                <td className="p-3 font-bold" colSpan={4}>TOTAL {supplierYear}</td>
+                                <td className="p-3 font-bold">{somaQtd}</td>
+                                <td className="p-3"></td>
+                                <td className="p-3"></td>
+                                <td className="p-3 font-bold" style={{ color: COLORS.warn }}>{money(somaAberto)}</td>
+                                <td className="p-3 font-bold" style={{ color: COLORS.success }}>{money(somaPago)}</td>
+                                <td className="p-3"></td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
 
           {effectiveTab === "folha" && (
             <div>

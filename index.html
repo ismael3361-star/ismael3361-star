@@ -1463,9 +1463,20 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
   const [representativeName, setRepresentativeName] = useState(initial?.representative_name || "");
   const [percentage, setPercentage] = useState(initial?.percentage ?? "");
   const [notes, setNotes] = useState(initial?.notes || "");
-
   const selectedClient = clients.find((x) => x.id === clientId);
-  const commissionPreview = selectedClient ? (Number(selectedClient.value) || 0) * (Number(percentage) || 0) / 100 : 0;
+  const [useCustomValue, setUseCustomValue] = useState(initial?.monthly_value_override != null);
+  const [customValue, setCustomValue] = useState(initial?.monthly_value_override ?? selectedClient?.value ?? "");
+
+  function handleClientChange(id) {
+    setClientId(id);
+    if (!useCustomValue) {
+      const c = clients.find((x) => x.id === id);
+      setCustomValue(c?.value ?? "");
+    }
+  }
+
+  const effectiveValue = useCustomValue ? (Number(customValue) || 0) : (Number(selectedClient?.value) || 0);
+  const commissionPreview = effectiveValue * (Number(percentage) || 0) / 100;
   const canSave = clientId && representativeName.trim() && Number(percentage) > 0;
 
   return (
@@ -1474,7 +1485,7 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
-          <select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={!!initial} className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+          <select value={clientId} onChange={(e) => handleClientChange(e.target.value)} disabled={!!initial} className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
             <option value="">Selecione um cliente...</option>
             {clients.map((c) => <option key={c.id} value={c.id}>{c.name} — {fmtMoney(c.value)}</option>)}
           </select>
@@ -1487,7 +1498,18 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
         <TextField label="% de comissão" value={percentage} onChange={setPercentage} type="number" placeholder="Ex: 30" />
         <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Ex: Anual" />
       </div>
-      {selectedClient && <div className="text-sm font-bold" style={{ color: COLORS.success }}>Comissão sobre a mensalidade atual ({fmtMoney(selectedClient.value)}): {fmtMoney(commissionPreview)}</div>}
+      <div className="rounded-lg border p-3" style={{ borderColor: COLORS.cardBorder }}>
+        <label className="flex items-center gap-2 text-xs font-semibold mb-2" style={{ color: COLORS.inkMuted }}>
+          <input type="checkbox" checked={useCustomValue} onChange={(e) => { setUseCustomValue(e.target.checked); if (!e.target.checked) setCustomValue(selectedClient?.value ?? ""); }} />
+          Usar um valor de mensalidade diferente do cadastro do cliente (pra base da comissão)
+        </label>
+        {useCustomValue ? (
+          <TextField label="Valor da mensalidade (comissão)" value={customValue} onChange={setCustomValue} type="number" placeholder="0" />
+        ) : (
+          <div className="text-xs" style={{ color: COLORS.inkMuted }}>Usando o valor atual do cliente: <strong style={{ color: COLORS.ink }}>{fmtMoney(selectedClient?.value)}</strong> (acompanha automaticamente se a mensalidade mudar)</div>
+        )}
+      </div>
+      {selectedClient && <div className="text-sm font-bold" style={{ color: COLORS.success }}>Comissão sobre {fmtMoney(effectiveValue)}: {fmtMoney(commissionPreview)}</div>}
       <div className="flex gap-2">
         <button
           disabled={!canSave}
@@ -1495,6 +1517,7 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
             id: initial?.id || uid(), client_id: clientId,
             representative_name: representativeName.trim(), percentage: Number(percentage) || 0,
             notes: notes.trim() || null,
+            monthly_value_override: useCustomValue ? (Number(customValue) || 0) : null,
           })}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
           Salvar
@@ -4436,6 +4459,35 @@ function App() {
     doc.save(`migracoes-banco-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
+  function exportClientCommissionsExcel(rows, filenamePrefix = "comissao-representantes") {
+    const wb = XLSX.utils.book_new();
+    const byRep = {};
+    rows.forEach((r) => {
+      const rep = r.representative_name || "Sem representante";
+      if (!byRep[rep]) byRep[rep] = [];
+      byRep[rep].push(r);
+    });
+    const repNames = Object.keys(byRep).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    repNames.forEach((rep) => {
+      const list = byRep[rep];
+      const data = list.map((r) => ({
+        Banco: r.bank_number || "", Loja: r.name || "", CNPJ: r.cnpj || "", Vencimento: r.due_day || "",
+        Mensalidade: Number(r.value) || 0, Porcentagem: `${r.percentage}%`, "Valor comissão": Number(r.commission) || 0,
+        Representante: rep, "Obs.": r.notes || "",
+      }));
+      const totalMensalidade = list.reduce((s, r) => s + (Number(r.value) || 0), 0);
+      const totalComissao = list.reduce((s, r) => s + (Number(r.commission) || 0), 0);
+      data.push({ Banco: "", Loja: "", CNPJ: "", Vencimento: "", Mensalidade: totalMensalidade, Porcentagem: "", "Valor comissão": totalComissao, Representante: "", "Obs.": "" });
+      const ws = XLSX.utils.json_to_sheet(data);
+      const sheetName = rep.replace(/[\\/*?:\[\]]/g, "").slice(0, 31) || "Representante";
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    });
+    if (repNames.length === 0) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([]), "Sem dados");
+    }
+    XLSX.writeFile(wb, `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   function exportClientCommissionsPDF(rows, title = "Comissão de Representantes") {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape" });
@@ -6811,11 +6863,13 @@ function App() {
                 const liveRows = clientCommissions.map((cc) => {
                   const cli = clients.find((c) => c.id === cc.client_id);
                   if (!cli) return null;
+                  const effectiveValue = cc.monthly_value_override != null ? Number(cc.monthly_value_override) : Number(cli.value) || 0;
                   return {
                     commId: cc.id, client_id: cc.client_id,
-                    bank_number: cli.bank_number, name: cli.name, cnpj: cli.cnpj, due_day: cli.due_day, value: cli.value,
+                    bank_number: cli.bank_number, name: cli.name, cnpj: cli.cnpj, due_day: cli.due_day, value: effectiveValue,
+                    isCustomValue: cc.monthly_value_override != null, monthly_value_override: cc.monthly_value_override,
                     representative_name: cc.representative_name, percentage: cc.percentage, notes: cc.notes,
-                    commission: (Number(cli.value) || 0) * (Number(cc.percentage) || 0) / 100,
+                    commission: effectiveValue * (Number(cc.percentage) || 0) / 100,
                   };
                 }).filter(Boolean).sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
 
@@ -6888,6 +6942,7 @@ function App() {
                         {isHistory && (
                           <button onClick={() => handleDeleteCommissionHistoryMonth(commissionViewMonth)} className="px-3 py-2 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.danger, color: COLORS.danger }}>🗑️ Apagar fechamento</button>
                         )}
+                        <button onClick={() => exportClientCommissionsExcel(rows, isHistory ? `comissao-${commissionViewMonth}` : "comissao-representantes")} disabled={rows.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
                         <button onClick={() => exportClientCommissionsPDF(visibleRows, isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes")} disabled={visibleRows.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                         {!isHistory && <button onClick={() => { setEditingClientCommission(null); setShowClientCommissionForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Atribuir representante</button>}
                       </div>
@@ -6918,52 +6973,59 @@ function App() {
 
                     {!isHistory && showClientCommissionForm && <div className="mb-4"><ClientCommissionForm initial={editingClientCommission} clients={editingClientCommission ? clients : availableClients} existingReps={existingReps} onSave={handleSaveClientCommission} onCancel={() => { setShowClientCommissionForm(false); setEditingClientCommission(null); }} /></div>}
 
-                    <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                      {visibleRows.length === 0 ? (
-                        <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com representante atribuído {commissionRepFilter ? `para ${commissionRepFilter}` : ""}.</div>
-                      ) : (
-                        <table className="w-full text-xs" style={{ color: COLORS.ink }}>
-                          <thead>
-                            <tr style={{ color: COLORS.inkMuted }}>
-                              <th className="text-left p-3">Banco</th><th className="text-left p-3">Loja</th><th className="text-left p-3">CNPJ</th>
-                              <th className="text-left p-3">Venc.</th><th className="text-left p-3">Mensalidade</th><th className="text-left p-3">%</th>
-                              <th className="text-left p-3">Comissão</th><th className="text-left p-3">Representante</th>
-                              <th className="text-left p-3">Obs.</th>{!isHistory && <th className="text-left p-3"></th>}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {visibleRows.map((r, i) => (
-                              <tr key={r.commId} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                                <td className="p-3">{r.bank_number || "-"}</td>
-                                <td className="p-3 font-semibold">{r.name}</td>
-                                <td className="p-3">{r.cnpj || "-"}</td>
-                                <td className="p-3">{r.due_day || "-"}</td>
-                                <td className="p-3">{money(r.value)}</td>
-                                <td className="p-3">{r.percentage}%</td>
-                                <td className="p-3 font-bold">{money(r.commission)}</td>
-                                <td className="p-3">{r.representative_name}</td>
-                                <td className="p-3">{r.notes || "-"}</td>
-                                {!isHistory && (
-                                  <td className="p-3">
-                                    <button onClick={() => { setEditingClientCommission({ id: r.commId, client_id: r.client_id, representative_name: r.representative_name, percentage: r.percentage, notes: r.notes }); setShowClientCommissionForm(true); }} className="mr-2">✏️</button>
-                                    <button onClick={() => handleDeleteClientCommission(r.commId)} style={{ color: COLORS.danger }}>🗑️</button>
-                                  </td>
-                                )}
+                    {visibleRows.length === 0 ? (
+                      <div className="rounded-2xl border p-8 text-center text-sm" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.inkMuted }}>Nenhum cliente com representante atribuído {commissionRepFilter ? `para ${commissionRepFilter}` : ""}.</div>
+                    ) : repNames.filter((r) => !commissionRepFilter || r === commissionRepFilter).map((repName) => {
+                      const repRows = visibleRows.filter((r) => r.representative_name === repName);
+                      const repTotalMensalidade = repRows.reduce((s, r) => s + (Number(r.value) || 0), 0);
+                      const repTotalComissao = repRows.reduce((s, r) => s + r.commission, 0);
+                      return (
+                        <div key={repName} className="rounded-2xl border overflow-x-auto mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}`, background: "rgba(124,92,255,0.08)" }}>
+                            <div className="text-sm font-bold" style={{ color: COLORS.brandLight }}>👤 {repName}</div>
+                            <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Total: {money(repTotalComissao)}</div>
+                          </div>
+                          <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                            <thead>
+                              <tr style={{ color: COLORS.inkMuted }}>
+                                <th className="text-left p-3">Banco</th><th className="text-left p-3">Loja</th><th className="text-left p-3">CNPJ</th>
+                                <th className="text-left p-3">Venc.</th><th className="text-left p-3">Mensalidade</th><th className="text-left p-3">%</th>
+                                <th className="text-left p-3">Comissão</th><th className="text-left p-3">Obs.</th>{!isHistory && <th className="text-left p-3"></th>}
                               </tr>
-                            ))}
-                          </tbody>
-                          <tfoot>
-                            <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}`, fontWeight: 700 }}>
-                              <td className="p-3" colSpan={4}>TOTAL</td>
-                              <td className="p-3">{money(totalMensalidade)}</td>
-                              <td className="p-3"></td>
-                              <td className="p-3">{money(totalComissao)}</td>
-                              <td className="p-3" colSpan={isHistory ? 2 : 3}></td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      )}
-                    </div>
+                            </thead>
+                            <tbody>
+                              {repRows.map((r, i) => (
+                                <tr key={r.commId} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                  <td className="p-3">{r.bank_number || "-"}</td>
+                                  <td className="p-3 font-semibold">{r.name}</td>
+                                  <td className="p-3">{r.cnpj || "-"}</td>
+                                  <td className="p-3">{r.due_day || "-"}</td>
+                                  <td className="p-3">{money(r.value)}{r.isCustomValue && <span title="Valor customizado para a comissão" className="ml-1 cursor-help">✏️</span>}</td>
+                                  <td className="p-3">{r.percentage}%</td>
+                                  <td className="p-3 font-bold">{money(r.commission)}</td>
+                                  <td className="p-3">{r.notes || "-"}</td>
+                                  {!isHistory && (
+                                    <td className="p-3">
+                                      <button onClick={() => { setEditingClientCommission({ id: r.commId, client_id: r.client_id, representative_name: r.representative_name, percentage: r.percentage, notes: r.notes, monthly_value_override: r.monthly_value_override }); setShowClientCommissionForm(true); }} className="mr-2">✏️</button>
+                                      <button onClick={() => handleDeleteClientCommission(r.commId)} style={{ color: COLORS.danger }}>🗑️</button>
+                                    </td>
+                                  )}
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}`, fontWeight: 700 }}>
+                                <td className="p-3" colSpan={4}>TOTAL</td>
+                                <td className="p-3">{money(repTotalMensalidade)}</td>
+                                <td className="p-3"></td>
+                                <td className="p-3">{money(repTotalComissao)}</td>
+                                <td className="p-3" colSpan={isHistory ? 1 : 2}></td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      );
+                    })}
 
                     {cancelledLiveRows.length > 0 && (
                       <div className="rounded-2xl border mt-4 overflow-hidden" style={{ borderColor: COLORS.danger, background: "rgba(239,68,68,0.06)" }}>

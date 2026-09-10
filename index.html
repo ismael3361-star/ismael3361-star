@@ -1458,58 +1458,46 @@ function DueDayChart({ groups }) {
   return <canvas ref={ref} height="220"></canvas>;
 }
 
-function RepCommissionForm({ initial, clients, existingReps, onSave, onCancel }) {
-  const [representativeName, setRepresentativeName] = useState(initial?.representative_name || "");
+function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel }) {
   const [clientId, setClientId] = useState(initial?.client_id || "");
-  const [clientName, setClientName] = useState(initial?.client_name || "");
-  const [referenceMonth, setReferenceMonth] = useState(initial?.reference_month || new Date().toISOString().slice(0, 7));
-  const [monthlyValue, setMonthlyValue] = useState(initial?.monthly_value ?? "");
+  const [representativeName, setRepresentativeName] = useState(initial?.representative_name || "");
   const [percentage, setPercentage] = useState(initial?.percentage ?? "");
+  const [notes, setNotes] = useState(initial?.notes || "");
 
-  function handleClientChange(id) {
-    setClientId(id);
-    const c = clients.find((x) => x.id === id);
-    if (c) { setClientName(c.name); setMonthlyValue(c.value ?? ""); }
-  }
-
-  const commissionValue = (Number(monthlyValue) || 0) * (Number(percentage) || 0) / 100;
-  const canSave = representativeName.trim() && clientName.trim() && referenceMonth && Number(percentage) > 0;
+  const selectedClient = clients.find((x) => x.id === clientId);
+  const commissionPreview = selectedClient ? (Number(selectedClient.value) || 0) * (Number(percentage) || 0) / 100 : 0;
+  const canSave = clientId && representativeName.trim() && Number(percentage) > 0;
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
-      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar comissão" : "Nova comissão"}</div>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar representante do cliente" : "Atribuir representante a um cliente"}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)} disabled={!!initial} className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+            <option value="">Selecione um cliente...</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name} — {money(c.value)}</option>)}
+          </select>
+        </label>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Representante</span>
           <input value={representativeName} onChange={(e) => setRepresentativeName(e.target.value)} list="rep-names-list" placeholder="Nome do representante" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
           <datalist id="rep-names-list">{existingReps.map((r) => <option key={r} value={r} />)}</datalist>
         </label>
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
-          <select value={clientId} onChange={(e) => handleClientChange(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
-            <option value="">Selecione um cliente...</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </label>
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mês de referência</span>
-          <input type="month" value={referenceMonth} onChange={(e) => setReferenceMonth(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-        </label>
-        <TextField label="Valor da mensalidade" value={monthlyValue} onChange={setMonthlyValue} type="number" placeholder="0" />
-        <TextField label="% de comissão" value={percentage} onChange={setPercentage} type="number" placeholder="Ex: 5" />
+        <TextField label="% de comissão" value={percentage} onChange={setPercentage} type="number" placeholder="Ex: 30" />
+        <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Ex: Anual" />
       </div>
-      <div className="text-sm font-bold" style={{ color: COLORS.success }}>Comissão calculada: {fmtMoney(commissionValue)}</div>
+      {selectedClient && <div className="text-sm font-bold" style={{ color: COLORS.success }}>Comissão sobre a mensalidade atual ({money(selectedClient.value)}): {money(commissionPreview)}</div>}
       <div className="flex gap-2">
         <button
           disabled={!canSave}
           onClick={() => onSave({
-            id: initial?.id || uid(), representative_name: representativeName.trim(),
-            client_id: clientId || null, client_name: clientName.trim(),
-            reference_month: referenceMonth, monthly_value: Number(monthlyValue) || 0,
-            percentage: Number(percentage) || 0, commission_value: commissionValue,
+            id: initial?.id || uid(), client_id: clientId,
+            representative_name: representativeName.trim(), percentage: Number(percentage) || 0,
+            notes: notes.trim() || null,
           })}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
-          Salvar comissão
+          Salvar
         </button>
         <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Cancelar</button>
       </div>
@@ -3346,10 +3334,10 @@ function App() {
   const [dbMigrations, setDbMigrations] = useState([]);
   const [showDbMigrationForm, setShowDbMigrationForm] = useState(false);
   const [editingDbMigration, setEditingDbMigration] = useState(null);
-  const [repCommissions, setRepCommissions] = useState([]);
-  const [showRepCommissionForm, setShowRepCommissionForm] = useState(false);
-  const [editingRepCommission, setEditingRepCommission] = useState(null);
-  const [repCommissionMonth, setRepCommissionMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [clientCommissions, setClientCommissions] = useState([]);
+  const [showClientCommissionForm, setShowClientCommissionForm] = useState(false);
+  const [editingClientCommission, setEditingClientCommission] = useState(null);
+  const [commissionRepFilter, setCommissionRepFilter] = useState("");
   const [itagSubTab, setItagSubTab] = useState("entrada");
   const [showItagEntryForm, setShowItagEntryForm] = useState(false);
   const [editingItagEntry, setEditingItagEntry] = useState(null);
@@ -3497,22 +3485,22 @@ function App() {
     await loadDbMigrations();
     showToast("Registro removido.");
   }
-  const loadRepCommissions = useCallback(async () => {
-    const { data } = await supa.from("rep_commissions").select("*").order("reference_month", { ascending: false });
-    setRepCommissions(data || []);
+  const loadClientCommissions = useCallback(async () => {
+    const { data } = await supa.from("client_commissions").select("*");
+    setClientCommissions(data || []);
   }, []);
-  async function handleSaveRepCommission(c) {
-    const { error } = await supa.from("rep_commissions").upsert(c);
+  async function handleSaveClientCommission(c) {
+    const { error } = await supa.from("client_commissions").upsert(c);
     if (error) { showToast(`Erro: ${error.message}`); return; }
-    await loadRepCommissions();
-    setShowRepCommissionForm(false); setEditingRepCommission(null);
-    showToast("Comissão salva.");
+    await loadClientCommissions();
+    setShowClientCommissionForm(false); setEditingClientCommission(null);
+    showToast("Representante atribuído.");
   }
-  async function handleDeleteRepCommission(id) {
-    if (!confirm("Remover este lançamento de comissão?")) return;
-    await supa.from("rep_commissions").delete().eq("id", id);
-    await loadRepCommissions();
-    showToast("Lançamento removido.");
+  async function handleDeleteClientCommission(id) {
+    if (!confirm("Remover a atribuição de representante desse cliente?")) return;
+    await supa.from("client_commissions").delete().eq("id", id);
+    await loadClientCommissions();
+    showToast("Removido.");
   }
   async function handleSaveItagEntry(e) {
     const { error } = await supa.from("itag_entries").upsert(e);
@@ -4402,33 +4390,35 @@ function App() {
     doc.save(`migracoes-banco-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  function exportRepCommissionsPDF(list, monthLabel) {
+  function exportClientCommissionsPDF(rows) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: "landscape" });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
-    doc.text(`Comissão de Representantes — ${monthLabel}`, 14, 32);
+    doc.text("Comissão de Representantes", 14, 32);
     doc.setFontSize(9);
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
-    const rows = list.map((c) => [
-      c.representative_name || "-", c.client_name || "-", fmtMoney(c.monthly_value), `${c.percentage}%`, fmtMoney(c.commission_value),
+    const body = rows.map((r) => [
+      r.bank_number || "-", r.name || "-", r.cnpj || "-", r.due_day || "-",
+      fmtMoney(r.value), `${r.percentage}%`, fmtMoney(r.commission), r.representative_name || "-", r.notes || "-",
     ]);
-    const total = list.reduce((s, c) => s + (Number(c.commission_value) || 0), 0);
+    const totalMensalidade = rows.reduce((s, r) => s + (Number(r.value) || 0), 0);
+    const totalComissao = rows.reduce((s, r) => s + r.commission, 0);
 
     doc.autoTable({
       startY: 44,
-      head: [["Representante", "Cliente", "Mensalidade", "%", "Comissão"]],
-      body: rows,
-      foot: [["TOTAL", "", "", "", fmtMoney(total)]],
-      styles: { fontSize: 8.5 },
+      head: [["Banco", "Loja", "CNPJ", "Venc.", "Mensalidade", "%", "Comissão", "Representante", "Obs."]],
+      body,
+      foot: [["", "", "", "", fmtMoney(totalMensalidade), "", fmtMoney(totalComissao), "", ""]],
+      styles: { fontSize: 8 },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
       margin: { left: 14, right: 14 },
     });
-    doc.save(`comissao-representantes-${monthLabel}.pdf`);
+    doc.save(`comissao-representantes-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
   function exportItagEntriesPDF() {
@@ -4492,7 +4482,7 @@ function App() {
     doc.save(`rfid-faturado-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadDbMigrations(); loadRepCommissions(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadDbMigrations(); loadClientCommissions(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -6771,76 +6761,105 @@ function App() {
           {effectiveTab === "comissao_representantes" && (
             <div>
               {(() => {
-                const monthList = repCommissions.filter((c) => c.reference_month === repCommissionMonth);
+                const rows = clientCommissions.map((cc) => {
+                  const cli = clients.find((c) => c.id === cc.client_id);
+                  if (!cli) return null;
+                  return {
+                    commId: cc.id, client_id: cc.client_id,
+                    bank_number: cli.bank_number, name: cli.name, cnpj: cli.cnpj, due_day: cli.due_day, value: cli.value,
+                    representative_name: cc.representative_name, percentage: cc.percentage, notes: cc.notes,
+                    commission: (Number(cli.value) || 0) * (Number(cc.percentage) || 0) / 100,
+                  };
+                }).filter(Boolean).sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
+
+                const existingReps = [...new Set(rows.map((r) => r.representative_name).filter(Boolean))];
+                const visibleRows = commissionRepFilter ? rows.filter((r) => r.representative_name === commissionRepFilter) : rows;
+
                 const byRep = {};
-                monthList.forEach((c) => {
-                  const r = c.representative_name || "Sem nome";
-                  byRep[r] = (byRep[r] || 0) + (Number(c.commission_value) || 0);
-                });
-                const reps = Object.keys(byRep).sort((a, b) => a.localeCompare(b, "pt-BR"));
-                const existingReps = [...new Set(repCommissions.map((c) => c.representative_name).filter(Boolean))];
-                const totalMonth = monthList.reduce((s, c) => s + (Number(c.commission_value) || 0), 0);
-                const [y, mo] = repCommissionMonth.split("-");
-                const monthLabel = `${MONTHS_PT[Number(mo) - 1]}/${y}`;
+                rows.forEach((r) => { byRep[r.representative_name] = (byRep[r.representative_name] || 0) + r.commission; });
+                const repNames = Object.keys(byRep).sort((a, b) => a.localeCompare(b, "pt-BR"));
+                const totalMensalidade = visibleRows.reduce((s, r) => s + (Number(r.value) || 0), 0);
+                const totalComissao = visibleRows.reduce((s, r) => s + r.commission, 0);
+
+                const assignedIds = new Set(clientCommissions.map((cc) => cc.client_id));
+                const availableClients = clients.filter((c) => !c.cancelled && !assignedIds.has(c.id) && (!editingClientCommission || c.id === editingClientCommission.client_id));
+
                 return (
                   <>
                     <div className="flex flex-col sm:flex-row gap-2 mb-4 sm:items-center sm:justify-between">
                       <label className="block">
-                        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mês de referência</span>
-                        <input type="month" value={repCommissionMonth} onChange={(e) => setRepCommissionMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
+                        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Filtrar por representante</span>
+                        <select value={commissionRepFilter} onChange={(e) => setCommissionRepFilter(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
+                          <option value="">Todos os representantes</option>
+                          {repNames.map((r) => <option key={r} value={r}>{r}</option>)}
+                        </select>
                       </label>
                       <div className="flex gap-2">
-                        <button onClick={() => exportRepCommissionsPDF(monthList, monthLabel)} disabled={monthList.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
-                        <button onClick={() => { setEditingRepCommission(null); setShowRepCommissionForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova comissão</button>
+                        <button onClick={() => exportClientCommissionsPDF(visibleRows)} disabled={visibleRows.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                        <button onClick={() => { setEditingClientCommission(null); setShowClientCommissionForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Atribuir representante</button>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                      {reps.length === 0 ? (
+                      {repNames.length === 0 ? (
                         <div className="rounded-2xl p-4 border col-span-2 sm:col-span-3" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                          <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum lançamento em {monthLabel}.</div>
+                          <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com representante atribuído ainda.</div>
                         </div>
-                      ) : reps.map((r) => (
+                      ) : repNames.map((r) => (
                         <div key={r} className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                           <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>👤 {r}</div>
                           <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(byRep[r])}</div>
                         </div>
                       ))}
                       <div className="rounded-2xl p-4 border-2" style={{ background: COLORS.card, borderColor: "#D4AF37" }}>
-                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: "#D4AF37" }}>Total do mês</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalMonth)}</div>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: "#D4AF37" }}>Total {commissionRepFilter ? `(${commissionRepFilter})` : "geral"}</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalComissao)}</div>
                       </div>
                     </div>
 
-                    {showRepCommissionForm && <div className="mb-4"><RepCommissionForm initial={editingRepCommission} clients={clients} existingReps={existingReps} onSave={handleSaveRepCommission} onCancel={() => { setShowRepCommissionForm(false); setEditingRepCommission(null); }} /></div>}
+                    {showClientCommissionForm && <div className="mb-4"><ClientCommissionForm initial={editingClientCommission} clients={editingClientCommission ? clients : availableClients} existingReps={existingReps} onSave={handleSaveClientCommission} onCancel={() => { setShowClientCommissionForm(false); setEditingClientCommission(null); }} /></div>}
 
                     <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                      {monthList.length === 0 ? (
-                        <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma comissão lançada em {monthLabel}.</div>
+                      {visibleRows.length === 0 ? (
+                        <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com representante atribuído {commissionRepFilter ? `para ${commissionRepFilter}` : ""}.</div>
                       ) : (
                         <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                           <thead>
                             <tr style={{ color: COLORS.inkMuted }}>
-                              <th className="text-left p-3">Representante</th><th className="text-left p-3">Cliente</th>
-                              <th className="text-left p-3">Mensalidade</th><th className="text-left p-3">%</th>
-                              <th className="text-left p-3">Comissão</th><th className="text-left p-3"></th>
+                              <th className="text-left p-3">Banco</th><th className="text-left p-3">Loja</th><th className="text-left p-3">CNPJ</th>
+                              <th className="text-left p-3">Venc.</th><th className="text-left p-3">Mensalidade</th><th className="text-left p-3">%</th>
+                              <th className="text-left p-3">Comissão</th><th className="text-left p-3">Representante</th>
+                              <th className="text-left p-3">Obs.</th><th className="text-left p-3"></th>
                             </tr>
                           </thead>
                           <tbody>
-                            {monthList.map((c, i) => (
-                              <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                                <td className="p-3 font-semibold">{c.representative_name}</td>
-                                <td className="p-3">{c.client_name}</td>
-                                <td className="p-3">{money(c.monthly_value)}</td>
-                                <td className="p-3">{c.percentage}%</td>
-                                <td className="p-3 font-bold">{money(c.commission_value)}</td>
+                            {visibleRows.map((r, i) => (
+                              <tr key={r.commId} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                <td className="p-3">{r.bank_number || "-"}</td>
+                                <td className="p-3 font-semibold">{r.name}</td>
+                                <td className="p-3">{r.cnpj || "-"}</td>
+                                <td className="p-3">{r.due_day || "-"}</td>
+                                <td className="p-3">{money(r.value)}</td>
+                                <td className="p-3">{r.percentage}%</td>
+                                <td className="p-3 font-bold">{money(r.commission)}</td>
+                                <td className="p-3">{r.representative_name}</td>
+                                <td className="p-3">{r.notes || "-"}</td>
                                 <td className="p-3">
-                                  <button onClick={() => { setEditingRepCommission(c); setShowRepCommissionForm(true); }} className="mr-2">✏️</button>
-                                  <button onClick={() => handleDeleteRepCommission(c.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                                  <button onClick={() => { setEditingClientCommission({ id: r.commId, client_id: r.client_id, representative_name: r.representative_name, percentage: r.percentage, notes: r.notes }); setShowClientCommissionForm(true); }} className="mr-2">✏️</button>
+                                  <button onClick={() => handleDeleteClientCommission(r.commId)} style={{ color: COLORS.danger }}>🗑️</button>
                                 </td>
                               </tr>
                             ))}
                           </tbody>
+                          <tfoot>
+                            <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}`, fontWeight: 700 }}>
+                              <td className="p-3" colSpan={4}>TOTAL</td>
+                              <td className="p-3">{money(totalMensalidade)}</td>
+                              <td className="p-3"></td>
+                              <td className="p-3">{money(totalComissao)}</td>
+                              <td className="p-3" colSpan={3}></td>
+                            </tr>
+                          </tfoot>
                         </table>
                       )}
                     </div>

@@ -126,6 +126,7 @@ const ROLE_ALLOWED_TABS = {
   comercial: ["clientes", "propostas", "romaneio"],
   financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas"],
   operacional: ["itag", "implantacao_tecnica", "escala"],
+  migracao: ["migracoes"],
 };
 
 // PWA: manifest e ícone dinâmicos a partir do logo (permite "instalar" o sistema como app)
@@ -1442,6 +1443,72 @@ function DueDayChart({ groups }) {
     options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: tickDark }, y: { beginAtZero: true, ticks: { ...tickDark, stepSize: 1 }, grid: gridDark } } },
   }, [JSON.stringify(groups)]);
   return <canvas ref={ref} height="220"></canvas>;
+}
+
+function DbMigrationForm({ initial, onSave, onCancel }) {
+  const [clientName, setClientName] = useState(initial?.client_name || "");
+  const [requestedBy, setRequestedBy] = useState(initial?.requested_by || "");
+  const [requestDate, setRequestDate] = useState(initial?.request_date || new Date().toISOString().slice(0, 10));
+  const [migratedBank, setMigratedBank] = useState(initial?.migrated_bank || "");
+  const [migClients, setMigClients] = useState(initial?.migrated_clients || false);
+  const [migProducts, setMigProducts] = useState(initial?.migrated_products || false);
+  const [migStock, setMigStock] = useState(initial?.migrated_stock || false);
+  const [migSales, setMigSales] = useState(initial?.migrated_sales || false);
+  const [migOthers, setMigOthers] = useState(initial?.migrated_others || false);
+  const [othersDesc, setOthersDesc] = useState(initial?.others_description || "");
+
+  const canSave = clientName.trim() && requestDate && migratedBank.trim();
+
+  function Check({ checked, onChange, label }) {
+    return (
+      <button type="button" onClick={() => onChange(!checked)}
+        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold border text-left"
+        style={{ borderColor: checked ? COLORS.brand : COLORS.cardBorder, color: checked ? COLORS.brandLight : COLORS.inkMuted, background: checked ? "rgba(124,92,255,0.1)" : "transparent" }}>
+        <span>{checked ? "☑" : "☐"}</span>{label}
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar migração" : "Nova migração de banco"}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TextField label="Cliente" value={clientName} onChange={setClientName} placeholder="Nome da loja/cliente" required />
+        <TextField label="Solicitado por" value={requestedBy} onChange={setRequestedBy} placeholder="Quem pediu a migração" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da solicitação</span>
+          <input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
+        <TextField label="Banco migrado" value={migratedBank} onChange={setMigratedBank} placeholder="Ex: Bling, Tiny, Consinco..." required />
+      </div>
+      <div>
+        <span className="block text-xs font-semibold mb-1.5" style={{ color: COLORS.inkMuted }}>O que foi migrado</span>
+        <div className="flex flex-wrap gap-2">
+          <Check checked={migClients} onChange={setMigClients} label="Clientes" />
+          <Check checked={migProducts} onChange={setMigProducts} label="Produtos" />
+          <Check checked={migStock} onChange={setMigStock} label="Estoque" />
+          <Check checked={migSales} onChange={setMigSales} label="Vendas" />
+          <Check checked={migOthers} onChange={setMigOthers} label="Outros" />
+        </div>
+      </div>
+      {migOthers && <TextField label="Informe o que mais foi migrado" value={othersDesc} onChange={setOthersDesc} placeholder="Descreva aqui" />}
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({
+            id: initial?.id || uid(), client_name: clientName.trim(), requested_by: requestedBy.trim() || null,
+            request_date: requestDate, migrated_bank: migratedBank.trim(),
+            migrated_clients: migClients, migrated_products: migProducts, migrated_stock: migStock,
+            migrated_sales: migSales, migrated_others: migOthers,
+            others_description: migOthers ? (othersDesc.trim() || null) : null,
+          })}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar migração
+        </button>
+        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Cancelar</button>
+      </div>
+    </div>
+  );
 }
 
 function ItagEntryForm({ initial, onSave, onCancel }) {
@@ -3184,6 +3251,9 @@ function App() {
   const [editingRomaneio, setEditingRomaneio] = useState(null);
   const [itagEntries, setItagEntries] = useState([]);
   const [itagBillings, setItagBillings] = useState([]);
+  const [dbMigrations, setDbMigrations] = useState([]);
+  const [showDbMigrationForm, setShowDbMigrationForm] = useState(false);
+  const [editingDbMigration, setEditingDbMigration] = useState(null);
   const [itagSubTab, setItagSubTab] = useState("entrada");
   const [showItagEntryForm, setShowItagEntryForm] = useState(false);
   const [editingItagEntry, setEditingItagEntry] = useState(null);
@@ -3313,6 +3383,24 @@ function App() {
     const { data } = await supa.from("itag_billings").select("*").order("due_date", { ascending: false });
     setItagBillings(data || []);
   }, []);
+  const loadDbMigrations = useCallback(async () => {
+    const { data } = await supa.from("db_migrations").select("*").order("request_date", { ascending: false });
+    setDbMigrations(data || []);
+  }, []);
+  async function handleSaveDbMigration(m) {
+    const payload = { ...m, updated_by: session?.user?.email || "desconhecido" };
+    const { error } = await supa.from("db_migrations").upsert(payload);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadDbMigrations();
+    setShowDbMigrationForm(false); setEditingDbMigration(null);
+    showToast("Migração salva.");
+  }
+  async function handleDeleteDbMigration(id) {
+    if (!confirm("Remover este registro de migração?")) return;
+    await supa.from("db_migrations").delete().eq("id", id);
+    await loadDbMigrations();
+    showToast("Registro removido.");
+  }
   async function handleSaveItagEntry(e) {
     const { error } = await supa.from("itag_entries").upsert(e);
     if (error) { showToast(`Erro: ${error.message}`); return; }
@@ -4225,7 +4313,7 @@ function App() {
     doc.save(`rfid-faturado-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadDbMigrations(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -5398,6 +5486,7 @@ function App() {
                 { id: "itag", label: "Pedidos RFID", icon: "🏷️" },
                 { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
                 { id: "escala", label: "Escala de Sábado", icon: "🗓️" },
+                { id: "migracoes", label: "Migração de Banco", icon: "🗄️" },
               ]},
               { group: "Sistema", items: [
                 { id: "atividades", label: "Atividades", icon: "🕓" },
@@ -5503,6 +5592,7 @@ function App() {
                 {effectiveTab === "escala" && "Escala de Sábado"}
                 {effectiveTab === "folha" && "Folha de Pagamento"}
                 {effectiveTab === "pedidos_etiquetas" && "Pedidos de Etiquetas"}
+                {effectiveTab === "migracoes" && "Migração de Banco de Dados"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
                 {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : ["clientes", "boletos", "calendario"].includes(effectiveTab) ? `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}` : ""}
@@ -6424,6 +6514,50 @@ function App() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {effectiveTab === "migracoes" && (
+            <div>
+              <div className="flex justify-end mb-3">
+                <button onClick={() => { setEditingDbMigration(null); setShowDbMigrationForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova migração</button>
+              </div>
+              {showDbMigrationForm && <div className="mb-4"><DbMigrationForm initial={editingDbMigration} onSave={handleSaveDbMigration} onCancel={() => { setShowDbMigrationForm(false); setEditingDbMigration(null); }} /></div>}
+              <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                {dbMigrations.length === 0 ? (
+                  <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma migração registrada ainda.</div>
+                ) : (
+                  <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted }}>
+                        <th className="text-left p-3">Cliente</th><th className="text-left p-3">Solicitado por</th><th className="text-left p-3">Data</th>
+                        <th className="text-left p-3">Banco migrado</th><th className="text-left p-3">O que foi migrado</th><th className="text-left p-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dbMigrations.map((m, i) => {
+                        const itens = [
+                          m.migrated_clients && "Clientes", m.migrated_products && "Produtos", m.migrated_stock && "Estoque",
+                          m.migrated_sales && "Vendas", m.migrated_others && (m.others_description ? `Outros (${m.others_description})` : "Outros"),
+                        ].filter(Boolean);
+                        return (
+                          <tr key={m.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <td className="p-3 font-semibold">{m.client_name}</td>
+                            <td className="p-3">{m.requested_by || "-"}</td>
+                            <td className="p-3">{m.request_date ? new Date(m.request_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                            <td className="p-3">{m.migrated_bank}</td>
+                            <td className="p-3">{itens.length > 0 ? itens.join(", ") : "-"}</td>
+                            <td className="p-3">
+                              <button onClick={() => { setEditingDbMigration(m); setShowDbMigrationForm(true); }} className="mr-2">✏️</button>
+                              <button onClick={() => handleDeleteDbMigration(m.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
 

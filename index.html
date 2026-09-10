@@ -128,6 +128,14 @@ const ROLE_ALLOWED_TABS = {
   operacional: ["itag", "implantacao_tecnica", "escala"],
   migracao: ["migracoes"],
 };
+const ROLE_LABELS = {
+  admin: "Administrador",
+  tecnico: "Técnico",
+  comercial: "Comercial",
+  financeiro: "Financeiro",
+  operacional: "Operacional",
+  migracao: "Técnico de Migração",
+};
 
 // PWA: manifest e ícone dinâmicos a partir do logo (permite "instalar" o sistema como app)
 (function setupPWA() {
@@ -277,6 +285,11 @@ const STATUS_META = {
   atrasado: { label: "Atrasado", icon: "!", color: COLORS.danger, bg: "rgba(239,68,68,0.15)" },
   enviado: { label: "Enviado", icon: "➜", color: COLORS.brandLight, bg: "rgba(124,92,255,0.15)" },
   pendente: { label: "Em aberto", icon: "•", color: COLORS.inkMuted, bg: "rgba(138,151,172,0.15)" },
+};
+const MIGRATION_STATUS_META = {
+  pendente: { label: "Pendente", icon: "•", color: COLORS.inkMuted, bg: "rgba(138,151,172,0.15)" },
+  andamento: { label: "Em andamento", icon: "⏳", color: COLORS.warn, bg: "rgba(245,158,11,0.15)" },
+  concluida: { label: "Concluída", icon: "✓", color: COLORS.success, bg: "rgba(34,197,94,0.15)" },
 };
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
@@ -1450,6 +1463,9 @@ function DbMigrationForm({ initial, onSave, onCancel }) {
   const [requestedBy, setRequestedBy] = useState(initial?.requested_by || "");
   const [requestDate, setRequestDate] = useState(initial?.request_date || new Date().toISOString().slice(0, 10));
   const [migratedBank, setMigratedBank] = useState(initial?.migrated_bank || "");
+  const [status, setStatus] = useState(initial?.status || "pendente");
+  const [completionDate, setCompletionDate] = useState(initial?.completion_date || "");
+  const [notes, setNotes] = useState(initial?.notes || "");
   const [migClients, setMigClients] = useState(initial?.migrated_clients || false);
   const [migProducts, setMigProducts] = useState(initial?.migrated_products || false);
   const [migStock, setMigStock] = useState(initial?.migrated_stock || false);
@@ -1480,6 +1496,22 @@ function DbMigrationForm({ initial, onSave, onCancel }) {
           <input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
         </label>
         <TextField label="Banco migrado" value={migratedBank} onChange={setMigratedBank} placeholder="Ex: Bling, Tiny, Consinco..." required />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Status</span>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+            <option value="pendente">Pendente</option>
+            <option value="andamento">Em andamento</option>
+            <option value="concluida">Concluída</option>
+          </select>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de conclusão</span>
+          <input type="date" value={completionDate} onChange={(e) => setCompletionDate(e.target.value)} disabled={status !== "concluida"} className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
+      </div>
+      <div>
+        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Observações</span>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Pendências, problemas encontrados, detalhes úteis..." className="w-full rounded-lg border px-3 py-2 text-sm outline-none resize-y" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
       </div>
       <div>
         <span className="block text-xs font-semibold mb-1.5" style={{ color: COLORS.inkMuted }}>O que foi migrado</span>
@@ -1498,6 +1530,7 @@ function DbMigrationForm({ initial, onSave, onCancel }) {
           onClick={() => onSave({
             id: initial?.id || uid(), client_name: clientName.trim(), requested_by: requestedBy.trim() || null,
             request_date: requestDate, migrated_bank: migratedBank.trim(),
+            status, completion_date: status === "concluida" ? (completionDate || null) : null, notes: notes.trim() || null,
             migrated_clients: migClients, migrated_products: migProducts, migrated_stock: migStock,
             migrated_sales: migSales, migrated_others: migOthers,
             others_description: migOthers ? (othersDesc.trim() || null) : null,
@@ -4252,6 +4285,43 @@ function App() {
     doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
+  function exportDbMigrationsPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text("Migrações de Banco de Dados", 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+
+    const rows = dbMigrations.map((m) => {
+      const itens = [
+        m.migrated_clients && "Clientes", m.migrated_products && "Produtos", m.migrated_stock && "Estoque",
+        m.migrated_sales && "Vendas", m.migrated_others && (m.others_description ? `Outros (${m.others_description})` : "Outros"),
+      ].filter(Boolean).join(", ") || "-";
+      const statusLabel = MIGRATION_STATUS_META[m.status || "pendente"].label;
+      return [
+        m.client_name || "-", m.requested_by || "-",
+        m.request_date ? new Date(m.request_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+        m.migrated_bank || "-", itens, statusLabel,
+        m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+        m.notes || "-",
+      ];
+    });
+
+    doc.autoTable({
+      startY: 44,
+      head: [["Cliente", "Solicitado por", "Data", "Banco migrado", "O que foi migrado", "Status", "Conclusão", "Observações"]],
+      body: rows,
+      styles: { fontSize: 7.5 },
+      headStyles: { fillColor: [124, 92, 255] },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`migracoes-banco-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
   function exportItagEntriesPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -5557,9 +5627,9 @@ function App() {
         </button>
 
         <div className="rounded-2xl p-2.5 flex items-center gap-2.5" style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.12), rgba(155,130,255,0.06))", border: `1px solid ${COLORS.cardBorder}` }}>
-          <Avatar name="Administrador" size={36} />
+          <Avatar name={ROLE_LABELS[userRole] || "Usuário"} size={36} />
           <div className="hidden sm:block min-w-0 flex-1">
-            <div className="text-xs font-bold truncate" style={{ color: COLORS.ink }}>Administrador</div>
+            <div className="text-xs font-bold truncate" style={{ color: COLORS.ink }}>{ROLE_LABELS[userRole] || "Usuário"}</div>
             <button onClick={() => setShowChangePassword(true)} className="text-[10px] font-semibold flex items-center gap-1 hover:underline" style={{ color: COLORS.brandLight }}>🔑 Trocar senha</button>
           </div>
           <button onClick={() => supa.auth.signOut()} className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: "rgba(239,68,68,0.12)", color: COLORS.danger, fontSize: 14 }} title="Sair do sistema"
@@ -6519,7 +6589,22 @@ function App() {
 
           {effectiveTab === "migracoes" && (
             <div>
-              <div className="flex justify-end mb-3">
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.inkMuted }}>Pendentes</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => (m.status || "pendente") === "pendente").length}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Em andamento</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => m.status === "andamento").length}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Concluídas</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => m.status === "concluida").length}</div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mb-3">
+                <button onClick={exportDbMigrationsPDF} disabled={dbMigrations.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                 <button onClick={() => { setEditingDbMigration(null); setShowDbMigrationForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova migração</button>
               </div>
               {showDbMigrationForm && <div className="mb-4"><DbMigrationForm initial={editingDbMigration} onSave={handleSaveDbMigration} onCancel={() => { setShowDbMigrationForm(false); setEditingDbMigration(null); }} /></div>}
@@ -6531,7 +6616,8 @@ function App() {
                     <thead>
                       <tr style={{ color: COLORS.inkMuted }}>
                         <th className="text-left p-3">Cliente</th><th className="text-left p-3">Solicitado por</th><th className="text-left p-3">Data</th>
-                        <th className="text-left p-3">Banco migrado</th><th className="text-left p-3">O que foi migrado</th><th className="text-left p-3"></th>
+                        <th className="text-left p-3">Banco migrado</th><th className="text-left p-3">O que foi migrado</th>
+                        <th className="text-left p-3">Status</th><th className="text-left p-3">Conclusão</th><th className="text-left p-3"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -6540,13 +6626,19 @@ function App() {
                           m.migrated_clients && "Clientes", m.migrated_products && "Produtos", m.migrated_stock && "Estoque",
                           m.migrated_sales && "Vendas", m.migrated_others && (m.others_description ? `Outros (${m.others_description})` : "Outros"),
                         ].filter(Boolean);
+                        const sm = MIGRATION_STATUS_META[m.status || "pendente"];
                         return (
                           <tr key={m.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                            <td className="p-3 font-semibold">{m.client_name}</td>
+                            <td className="p-3 font-semibold">
+                              {m.client_name}
+                              {m.notes && <span title={m.notes} className="ml-1.5 cursor-help" style={{ color: COLORS.inkFaint }}>📝</span>}
+                            </td>
                             <td className="p-3">{m.requested_by || "-"}</td>
                             <td className="p-3">{m.request_date ? new Date(m.request_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                             <td className="p-3">{m.migrated_bank}</td>
                             <td className="p-3">{itens.length > 0 ? itens.join(", ") : "-"}</td>
+                            <td className="p-3"><span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ color: sm.color, background: sm.bg }}><span>{sm.icon}</span>{sm.label}</span></td>
+                            <td className="p-3">{m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                             <td className="p-3">
                               <button onClick={() => { setEditingDbMigration(m); setShowDbMigrationForm(true); }} className="mr-2">✏️</button>
                               <button onClick={() => handleDeleteDbMigration(m.id)} style={{ color: COLORS.danger }}>🗑️</button>

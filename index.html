@@ -4164,6 +4164,67 @@ function App() {
     doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
+  function exportItagEntriesPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text("RFID — Entrada de compras", 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+
+    const rows = itagEntries.map((e) => [
+      e.purchase_date ? new Date(e.purchase_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+      e.invoice_number || "-", e.model || "-", e.quantity || "-", fmtMoney(e.unit_value), fmtMoney(e.total_value),
+    ]);
+    const totalGeral = itagEntries.reduce((s, e) => s + (Number(e.total_value) || 0), 0);
+
+    doc.autoTable({
+      startY: 44,
+      head: [["Data", "NF", "Modelo", "Qtd", "Vr. Unit.", "Total"]],
+      body: rows,
+      foot: [["TOTAL", "", "", "", "", fmtMoney(totalGeral)]],
+      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`rfid-entradas-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
+  function exportItagBillingsPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text("RFID — Faturado ao cliente", 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+
+    const rows = itagBillings.map((b) => [
+      b.client_name || "-", b.due_date ? new Date(b.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+      b.quantity || "-", fmtMoney(b.boleto_value), fmtMoney(b.paid_value), fmtMoney(b.open_value),
+      b.status === "PAGO" ? "Pago" : b.status === "ATRASADO" ? "Atrasado" : "Pendente",
+    ]);
+    const totalGeral = itagBillings.reduce((s, b) => s + (Number(b.boleto_value) || 0), 0);
+
+    doc.autoTable({
+      startY: 44,
+      head: [["Cliente", "Vencimento", "Qtd", "Boleto", "Pago", "Em aberto", "Situação"]],
+      body: rows,
+      foot: [["TOTAL", "", "", fmtMoney(totalGeral), "", "", ""]],
+      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`rfid-faturado-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
   useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
@@ -4600,6 +4661,9 @@ function App() {
     doc.text("RECEBIDO:", 14, y); y += 10;
     doc.text("NOME: ______________________________________     Data: ___/___/_____", 14, y); y += 16;
     doc.text("CARIMBO DA EMPRESA", 14, y);
+    y += 22;
+    if (y > 270) { doc.addPage(); y = 20; }
+    doc.text("OBS.: ________________________________________________________________________", 14, y);
 
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
@@ -5049,7 +5113,11 @@ function App() {
   const filteredClients = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return clients;
-    return clients.filter((c) => [c.name, c.phone, c.email, c.bank_number].filter(Boolean).some((f) => String(f).toLowerCase().includes(q)));
+    return clients.filter((c) => {
+      const textMatch = [c.name, c.phone, c.email].filter(Boolean).some((f) => String(f).toLowerCase().includes(q));
+      const bankMatch = c.bank_number && String(c.bank_number).trim().toLowerCase() === q;
+      return textMatch || bankMatch;
+    });
   }, [clients, search]);
 
   const sortedClients = useMemo(() => {
@@ -5315,19 +5383,19 @@ function App() {
               { group: "Comercial", items: [
                 { id: "clientes", label: "Clientes", icon: "👥" },
                 { id: "propostas", label: "Propostas", icon: "📝" },
-                { id: "romaneio", label: "Romaneio Etiqueta", icon: "📦" },
+                { id: "romaneio", label: "Pedido Etiqueta", icon: "📦" },
               ]},
               { group: "Financeiro", items: [
                 { id: "boletos", label: "Mensalidades", icon: "📄" },
                 { id: "implantacoes", label: "Implantações", icon: "🏗️" },
-                { id: "vtvr", label: "Vale Transp./Refeição", icon: "🎫" },
+                { id: "vtvr", label: "VR e VA", icon: "🎫" },
                 { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
                 { id: "folha", label: "Folha de Pagamento", icon: "👥" },
-                { id: "pedidos_etiquetas", label: "Pedidos Etiquetas", icon: "🏷️" },
-                { id: "comissao", label: "Comissão Vendedor", icon: "💰" },
+                { id: "pedidos_etiquetas", label: "Compras Etiquetas", icon: "🏷️" },
+                { id: "comissao", label: "Comissão Etiquetas", icon: "💰" },
               ]},
               { group: "Operacional", items: [
-                { id: "itag", label: "RFID", icon: "🏷️" },
+                { id: "itag", label: "Pedidos RFID", icon: "🏷️" },
                 { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
                 { id: "escala", label: "Escala de Sábado", icon: "🗓️" },
               ]},
@@ -5390,12 +5458,12 @@ function App() {
         </nav>
 
         <button onClick={() => setHideValues((v) => !v)}
-          className="flex items-center justify-center sm:justify-start gap-2.5 px-1.5 sm:px-2 py-1.5 rounded-xl font-semibold text-[13px] w-full transition-all"
+          className="flex items-center justify-center sm:justify-start gap-2 px-1.5 sm:px-2 py-1 rounded-lg font-semibold text-[11px] w-full transition-all"
           style={{ color: hideValues ? COLORS.brandLight : COLORS.inkMuted, background: hideValues ? "rgba(124,92,255,0.1)" : "transparent" }}
           onMouseEnter={(e) => { if (!hideValues) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
           onMouseLeave={(e) => { if (!hideValues) e.currentTarget.style.background = "transparent"; }}
           title={hideValues ? "Mostrar todos os valores do sistema" : "Ocultar todos os valores do sistema"}>
-          <span className="flex items-center justify-center rounded-lg shrink-0" style={{ width: 30, height: 30, background: "rgba(255,255,255,0.05)", fontSize: 15 }}>{hideValues ? "👁️" : "🙈"}</span>
+          <span className="flex items-center justify-center rounded-md shrink-0" style={{ width: 22, height: 22, background: "rgba(255,255,255,0.05)", fontSize: 12 }}>{hideValues ? "👁️" : "🙈"}</span>
           <span className="hidden sm:inline">{hideValues ? "Mostrar valores" : "Ocultar valores"}</span>
         </button>
 
@@ -5544,19 +5612,11 @@ function App() {
                 </div>
               </div>
 
-              {/* Linha 2: 3 gráficos */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {/* Linha 2: gráfico de receita */}
+              <div className="grid grid-cols-1 gap-4">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Status dos clientes</div>
-                  <DonutStatusClients clients={clients} boletos={boletos} monthDate={monthDate} />
-                </div>
-                <div className="rounded-2xl p-4 border lg:col-span-1" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Receita mensal (mensalidade + consultas)</div>
                   <ReceitaChart history={receitaHistory} />
-                </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Boletos enviados (mês)</div>
-                  <DonutCanais waCount={stats.sentWa} emailCount={stats.sentEmail} />
                 </div>
               </div>
 
@@ -5716,7 +5776,8 @@ function App() {
 
           {effectiveTab === "clientes" && (
             <div>
-              <div className="flex flex-col sm:flex-row gap-2 mb-2 sm:items-center">
+              <Pagination page={clientsPage} setPage={setClientsPage} totalItems={visibleClients.length} pageSize={PAGE_SIZE} />
+              <div className="flex flex-col sm:flex-row gap-2 mb-2 mt-2 sm:items-center">
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 Buscar por nome ou nº do banco..." className="rounded-lg border px-3 py-2 text-sm outline-none max-w-sm w-full" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
                 <div className="flex gap-2">
                   <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="rounded-lg border px-2 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink, background: COLORS.card }}>
@@ -5831,7 +5892,8 @@ function App() {
 
           {effectiveTab === "boletos" && (
             <div>
-              <div className="flex flex-col sm:flex-row gap-2 mb-3 sm:items-center">
+              <Pagination page={boletosPage} setPage={setBoletosPage} totalItems={filteredByStatus.length} pageSize={PAGE_SIZE} />
+              <div className="flex flex-col sm:flex-row gap-2 mb-3 mt-2 sm:items-center">
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 Buscar por nome ou nº do banco..." className="rounded-lg border px-3 py-2 text-sm outline-none max-w-xs w-full" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
                 <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border px-3 py-2 text-sm font-semibold outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
                   {filterButtons.map((f) => (
@@ -6245,7 +6307,8 @@ function App() {
 
               {itagSubTab === "entrada" && (
                 <div>
-                  <div className="flex justify-end mb-3">
+                  <div className="flex justify-end gap-2 mb-3">
+                    <button onClick={exportItagEntriesPDF} disabled={itagEntries.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                     <button onClick={() => { setEditingItagEntry(null); setShowItagEntryForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova entrada</button>
                   </div>
                   {showItagEntryForm && <div className="mb-4"><ItagEntryForm initial={editingItagEntry} onSave={handleSaveItagEntry} onCancel={() => { setShowItagEntryForm(false); setEditingItagEntry(null); }} /></div>}
@@ -6305,7 +6368,8 @@ function App() {
 
               {itagSubTab === "faturado" && (
                 <div>
-                  <div className="flex justify-end mb-3">
+                  <div className="flex justify-end gap-2 mb-3">
+                    <button onClick={exportItagBillingsPDF} disabled={itagBillings.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                     <button onClick={() => { setEditingItagBilling(null); setShowItagBillingForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo faturamento</button>
                   </div>
                   {showItagBillingForm && <div className="mb-4"><ItagBillingForm initial={editingItagBilling} onSave={handleSaveItagBilling} onCancel={() => { setShowItagBillingForm(false); setEditingItagBilling(null); }} /></div>}

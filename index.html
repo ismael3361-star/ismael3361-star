@@ -5630,7 +5630,9 @@ function App() {
           <Avatar name={ROLE_LABELS[userRole] || "Usuário"} size={36} />
           <div className="hidden sm:block min-w-0 flex-1">
             <div className="text-xs font-bold truncate" style={{ color: COLORS.ink }}>{ROLE_LABELS[userRole] || "Usuário"}</div>
-            <button onClick={() => setShowChangePassword(true)} className="text-[10px] font-semibold flex items-center gap-1 hover:underline" style={{ color: COLORS.brandLight }}>🔑 Trocar senha</button>
+            {!["tecnico", "migracao"].includes(userRole) && (
+              <button onClick={() => setShowChangePassword(true)} className="text-[10px] font-semibold flex items-center gap-1 hover:underline" style={{ color: COLORS.brandLight }}>🔑 Trocar senha</button>
+            )}
           </div>
           <button onClick={() => supa.auth.signOut()} className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: "rgba(239,68,68,0.12)", color: COLORS.danger, fontSize: 14 }} title="Sair do sistema"
             onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239,68,68,0.25)"}

@@ -3223,6 +3223,7 @@ function App() {
   const [pixModal, setPixModal] = useState(null);
   const [editingNameId, setEditingNameId] = useState(null);
   const [showDetailedReports, setShowDetailedReports] = useState(false);
+  const [reportTab, setReportTab] = useState("clientes");
   const [employees, setEmployees] = useState([]);
   const [vtVrRecords, setVtVrRecords] = useState([]);
   const [showVtVrForm, setShowVtVrForm] = useState(false);
@@ -7242,6 +7243,23 @@ function App() {
                 })()}
               </div>
 
+              {/* Abas internas do relatório */}
+              <div className="flex gap-1.5 flex-wrap p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.03)" }}>
+                {[
+                  { id: "clientes", label: "👥 Clientes", },
+                  { id: "cobranca", label: "⚠️ Cobrança" },
+                  { id: "financeiro", label: "💰 Financeiro" },
+                  { id: "documentos", label: "📄 Documentos" },
+                ].map((t) => (
+                  <button key={t.id} onClick={() => setReportTab(t.id)}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+                    style={{ background: reportTab === t.id ? `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` : "transparent", color: reportTab === t.id ? "#fff" : COLORS.inkMuted, boxShadow: reportTab === t.id ? "0 3px 12px rgba(124,92,255,0.4)" : "none" }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {reportTab === "cobranca" && (<>
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.danger, background: COLORS.card }}>
                 <div className="flex items-center justify-between px-4 py-3" style={{ background: "rgba(239,68,68,0.1)" }}>
                   <div className="text-sm font-bold" style={{ color: COLORS.danger }}>⚠️ Relatório de inadimplência — {inadimplentes.length} cliente(s) em atraso</div>
@@ -7273,6 +7291,9 @@ function App() {
                 )}
               </div>
 
+              </>)}
+
+              {reportTab === "clientes" && (<>
               <div className="rounded-2xl border-2 overflow-hidden" style={{ borderColor: "#D4AF37", background: COLORS.card }}>
                 <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2" style={{ background: "rgba(212,175,55,0.12)" }}>
                   <div className="text-sm font-extrabold" style={{ color: "#D4AF37" }}>⭐ Relatório de Clientes Anuais — {stats.countAnnual} cliente(s)</div>
@@ -7421,7 +7442,9 @@ function App() {
                 )}
               </div>
               )}
+              </>)}
 
+              {reportTab === "financeiro" && (<>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Propostas geradas</div>
@@ -7479,6 +7502,9 @@ function App() {
                 )}
               </div>
 
+              </>)}
+
+              {reportTab === "documentos" && (<>
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 <div className="flex items-center justify-between px-4 py-2.5 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
                   <div className="text-sm font-bold" style={{ color: COLORS.ink }}>📦 Relatório de Romaneios</div>
@@ -7558,6 +7584,9 @@ function App() {
                 })()}
               </div>
 
+              </>)}
+
+              {reportTab === "financeiro" && (<>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>RFID — Entradas</div>
@@ -7710,6 +7739,7 @@ function App() {
               <div className="flex justify-end">
                 <button onClick={exportPDF} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: COLORS.brand }}>⬇️ Exportar relatório do mês em PDF</button>
               </div>
+              </>)}
             </div>
           )}
 

@@ -124,7 +124,7 @@ const PROPOSAL_STAGE_COLORS = { enviada: "#3B82F6", negociacao: "#F59E0B", fecha
 const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
   comercial: ["clientes", "propostas", "romaneio"],
-  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas"],
+  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes"],
   operacional: ["itag", "implantacao_tecnica", "escala"],
   migracao: ["migracoes"],
 };
@@ -1456,6 +1456,65 @@ function DueDayChart({ groups }) {
     options: { plugins: { legend: { display: false } }, scales: { x: { grid: { display: false }, ticks: tickDark }, y: { beginAtZero: true, ticks: { ...tickDark, stepSize: 1 }, grid: gridDark } } },
   }, [JSON.stringify(groups)]);
   return <canvas ref={ref} height="220"></canvas>;
+}
+
+function RepCommissionForm({ initial, clients, existingReps, onSave, onCancel }) {
+  const [representativeName, setRepresentativeName] = useState(initial?.representative_name || "");
+  const [clientId, setClientId] = useState(initial?.client_id || "");
+  const [clientName, setClientName] = useState(initial?.client_name || "");
+  const [referenceMonth, setReferenceMonth] = useState(initial?.reference_month || new Date().toISOString().slice(0, 7));
+  const [monthlyValue, setMonthlyValue] = useState(initial?.monthly_value ?? "");
+  const [percentage, setPercentage] = useState(initial?.percentage ?? "");
+
+  function handleClientChange(id) {
+    setClientId(id);
+    const c = clients.find((x) => x.id === id);
+    if (c) { setClientName(c.name); setMonthlyValue(c.value ?? ""); }
+  }
+
+  const commissionValue = (Number(monthlyValue) || 0) * (Number(percentage) || 0) / 100;
+  const canSave = representativeName.trim() && clientName.trim() && referenceMonth && Number(percentage) > 0;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar comissão" : "Nova comissão"}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Representante</span>
+          <input value={representativeName} onChange={(e) => setRepresentativeName(e.target.value)} list="rep-names-list" placeholder="Nome do representante" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <datalist id="rep-names-list">{existingReps.map((r) => <option key={r} value={r} />)}</datalist>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
+          <select value={clientId} onChange={(e) => handleClientChange(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+            <option value="">Selecione um cliente...</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mês de referência</span>
+          <input type="month" value={referenceMonth} onChange={(e) => setReferenceMonth(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        </label>
+        <TextField label="Valor da mensalidade" value={monthlyValue} onChange={setMonthlyValue} type="number" placeholder="0" />
+        <TextField label="% de comissão" value={percentage} onChange={setPercentage} type="number" placeholder="Ex: 5" />
+      </div>
+      <div className="text-sm font-bold" style={{ color: COLORS.success }}>Comissão calculada: {fmtMoney(commissionValue)}</div>
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({
+            id: initial?.id || uid(), representative_name: representativeName.trim(),
+            client_id: clientId || null, client_name: clientName.trim(),
+            reference_month: referenceMonth, monthly_value: Number(monthlyValue) || 0,
+            percentage: Number(percentage) || 0, commission_value: commissionValue,
+          })}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar comissão
+        </button>
+        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Cancelar</button>
+      </div>
+    </div>
+  );
 }
 
 function DbMigrationForm({ initial, onSave, onCancel }) {
@@ -3287,6 +3346,10 @@ function App() {
   const [dbMigrations, setDbMigrations] = useState([]);
   const [showDbMigrationForm, setShowDbMigrationForm] = useState(false);
   const [editingDbMigration, setEditingDbMigration] = useState(null);
+  const [repCommissions, setRepCommissions] = useState([]);
+  const [showRepCommissionForm, setShowRepCommissionForm] = useState(false);
+  const [editingRepCommission, setEditingRepCommission] = useState(null);
+  const [repCommissionMonth, setRepCommissionMonth] = useState(new Date().toISOString().slice(0, 7));
   const [itagSubTab, setItagSubTab] = useState("entrada");
   const [showItagEntryForm, setShowItagEntryForm] = useState(false);
   const [editingItagEntry, setEditingItagEntry] = useState(null);
@@ -3433,6 +3496,23 @@ function App() {
     await supa.from("db_migrations").delete().eq("id", id);
     await loadDbMigrations();
     showToast("Registro removido.");
+  }
+  const loadRepCommissions = useCallback(async () => {
+    const { data } = await supa.from("rep_commissions").select("*").order("reference_month", { ascending: false });
+    setRepCommissions(data || []);
+  }, []);
+  async function handleSaveRepCommission(c) {
+    const { error } = await supa.from("rep_commissions").upsert(c);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadRepCommissions();
+    setShowRepCommissionForm(false); setEditingRepCommission(null);
+    showToast("Comissão salva.");
+  }
+  async function handleDeleteRepCommission(id) {
+    if (!confirm("Remover este lançamento de comissão?")) return;
+    await supa.from("rep_commissions").delete().eq("id", id);
+    await loadRepCommissions();
+    showToast("Lançamento removido.");
   }
   async function handleSaveItagEntry(e) {
     const { error } = await supa.from("itag_entries").upsert(e);
@@ -4322,6 +4402,35 @@ function App() {
     doc.save(`migracoes-banco-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
+  function exportRepCommissionsPDF(list, monthLabel) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text(`Comissão de Representantes — ${monthLabel}`, 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+
+    const rows = list.map((c) => [
+      c.representative_name || "-", c.client_name || "-", fmtMoney(c.monthly_value), `${c.percentage}%`, fmtMoney(c.commission_value),
+    ]);
+    const total = list.reduce((s, c) => s + (Number(c.commission_value) || 0), 0);
+
+    doc.autoTable({
+      startY: 44,
+      head: [["Representante", "Cliente", "Mensalidade", "%", "Comissão"]],
+      body: rows,
+      foot: [["TOTAL", "", "", "", fmtMoney(total)]],
+      styles: { fontSize: 8.5 },
+      headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`comissao-representantes-${monthLabel}.pdf`);
+  }
+
   function exportItagEntriesPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -4383,7 +4492,7 @@ function App() {
     doc.save(`rfid-faturado-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadDbMigrations(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadDbMigrations(); loadRepCommissions(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -5551,6 +5660,7 @@ function App() {
                 { id: "folha", label: "Folha de Pagamento", icon: "👥" },
                 { id: "pedidos_etiquetas", label: "Compras Etiquetas", icon: "🏷️" },
                 { id: "comissao", label: "Comissão Etiquetas", icon: "💰" },
+                { id: "comissao_representantes", label: "Comissão Representantes", icon: "🤝" },
               ]},
               { group: "Operacional", items: [
                 { id: "itag", label: "Pedidos RFID", icon: "🏷️" },
@@ -5667,6 +5777,7 @@ function App() {
                 {effectiveTab === "folha" && "Folha de Pagamento"}
                 {effectiveTab === "pedidos_etiquetas" && "Pedidos de Etiquetas"}
                 {effectiveTab === "migracoes" && "Migração de Banco de Dados"}
+                {effectiveTab === "comissao_representantes" && "Comissão de Representantes"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
                 {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : ["clientes", "boletos", "calendario"].includes(effectiveTab) ? `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}` : ""}
@@ -6654,6 +6765,88 @@ function App() {
                   </table>
                 )}
               </div>
+            </div>
+          )}
+
+          {effectiveTab === "comissao_representantes" && (
+            <div>
+              {(() => {
+                const monthList = repCommissions.filter((c) => c.reference_month === repCommissionMonth);
+                const byRep = {};
+                monthList.forEach((c) => {
+                  const r = c.representative_name || "Sem nome";
+                  byRep[r] = (byRep[r] || 0) + (Number(c.commission_value) || 0);
+                });
+                const reps = Object.keys(byRep).sort((a, b) => a.localeCompare(b, "pt-BR"));
+                const existingReps = [...new Set(repCommissions.map((c) => c.representative_name).filter(Boolean))];
+                const totalMonth = monthList.reduce((s, c) => s + (Number(c.commission_value) || 0), 0);
+                const [y, mo] = repCommissionMonth.split("-");
+                const monthLabel = `${MONTHS_PT[Number(mo) - 1]}/${y}`;
+                return (
+                  <>
+                    <div className="flex flex-col sm:flex-row gap-2 mb-4 sm:items-center sm:justify-between">
+                      <label className="block">
+                        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mês de referência</span>
+                        <input type="month" value={repCommissionMonth} onChange={(e) => setRepCommissionMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
+                      </label>
+                      <div className="flex gap-2">
+                        <button onClick={() => exportRepCommissionsPDF(monthList, monthLabel)} disabled={monthList.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                        <button onClick={() => { setEditingRepCommission(null); setShowRepCommissionForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova comissão</button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                      {reps.length === 0 ? (
+                        <div className="rounded-2xl p-4 border col-span-2 sm:col-span-3" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                          <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum lançamento em {monthLabel}.</div>
+                        </div>
+                      ) : reps.map((r) => (
+                        <div key={r} className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                          <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>👤 {r}</div>
+                          <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(byRep[r])}</div>
+                        </div>
+                      ))}
+                      <div className="rounded-2xl p-4 border-2" style={{ background: COLORS.card, borderColor: "#D4AF37" }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: "#D4AF37" }}>Total do mês</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalMonth)}</div>
+                      </div>
+                    </div>
+
+                    {showRepCommissionForm && <div className="mb-4"><RepCommissionForm initial={editingRepCommission} clients={clients} existingReps={existingReps} onSave={handleSaveRepCommission} onCancel={() => { setShowRepCommissionForm(false); setEditingRepCommission(null); }} /></div>}
+
+                    <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      {monthList.length === 0 ? (
+                        <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma comissão lançada em {monthLabel}.</div>
+                      ) : (
+                        <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                          <thead>
+                            <tr style={{ color: COLORS.inkMuted }}>
+                              <th className="text-left p-3">Representante</th><th className="text-left p-3">Cliente</th>
+                              <th className="text-left p-3">Mensalidade</th><th className="text-left p-3">%</th>
+                              <th className="text-left p-3">Comissão</th><th className="text-left p-3"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {monthList.map((c, i) => (
+                              <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                <td className="p-3 font-semibold">{c.representative_name}</td>
+                                <td className="p-3">{c.client_name}</td>
+                                <td className="p-3">{money(c.monthly_value)}</td>
+                                <td className="p-3">{c.percentage}%</td>
+                                <td className="p-3 font-bold">{money(c.commission_value)}</td>
+                                <td className="p-3">
+                                  <button onClick={() => { setEditingRepCommission(c); setShowRepCommissionForm(true); }} className="mr-2">✏️</button>
+                                  <button onClick={() => handleDeleteRepCommission(c.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 

@@ -5616,6 +5616,7 @@ function App() {
           )}
         </nav>
 
+        {!["tecnico", "migracao"].includes(userRole) && (
         <button onClick={() => setHideValues((v) => !v)}
           className="flex items-center justify-center sm:justify-start gap-2 px-1.5 sm:px-2 py-1 rounded-lg font-semibold text-[11px] w-full transition-all"
           style={{ color: hideValues ? COLORS.brandLight : COLORS.inkMuted, background: hideValues ? "rgba(124,92,255,0.1)" : "transparent" }}
@@ -5625,6 +5626,7 @@ function App() {
           <span className="flex items-center justify-center rounded-md shrink-0" style={{ width: 22, height: 22, background: "rgba(255,255,255,0.05)", fontSize: 12 }}>{hideValues ? "👁️" : "🙈"}</span>
           <span className="hidden sm:inline">{hideValues ? "Mostrar valores" : "Ocultar valores"}</span>
         </button>
+        )}
 
         <div className="rounded-2xl p-2.5 flex items-center gap-2.5" style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.12), rgba(155,130,255,0.06))", border: `1px solid ${COLORS.cardBorder}` }}>
           <Avatar name={ROLE_LABELS[userRole] || "Usuário"} size={36} />

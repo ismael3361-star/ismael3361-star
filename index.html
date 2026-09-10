@@ -3338,6 +3338,9 @@ function App() {
   const [showClientCommissionForm, setShowClientCommissionForm] = useState(false);
   const [editingClientCommission, setEditingClientCommission] = useState(null);
   const [commissionRepFilter, setCommissionRepFilter] = useState("");
+  const [commissionHistory, setCommissionHistory] = useState([]);
+  const [commissionViewMonth, setCommissionViewMonth] = useState("");
+  const [closeMonthKey, setCloseMonthKey] = useState(new Date().toISOString().slice(0, 7));
   const [itagSubTab, setItagSubTab] = useState("entrada");
   const [showItagEntryForm, setShowItagEntryForm] = useState(false);
   const [editingItagEntry, setEditingItagEntry] = useState(null);
@@ -3501,6 +3504,49 @@ function App() {
     await supa.from("client_commissions").delete().eq("id", id);
     await loadClientCommissions();
     showToast("Removido.");
+  }
+  const loadCommissionHistory = useCallback(async () => {
+    const { data } = await supa.from("commission_history").select("*").order("reference_month", { ascending: false });
+    setCommissionHistory(data || []);
+  }, []);
+  async function handleCloseCommissionMonth(monthKey, rows) {
+    if (rows.length === 0) { showToast("Nenhum cliente com representante pra fechar."); return; }
+    if (!confirm(`Fechar o mês ${monthKey} com ${rows.length} cliente(s)? Isso salva uma foto dos valores atuais — se já existir um fechamento desse mês, ele será substituído.`)) return;
+    const payload = rows.map((r) => ({
+      id: `${r.client_id}-${monthKey}`, reference_month: monthKey, client_id: r.client_id, client_name: r.name,
+      bank_number: r.bank_number || null, cnpj: r.cnpj || null, due_day: r.due_day || null,
+      representative_name: r.representative_name, percentage: r.percentage,
+      monthly_value: r.value, commission_value: r.commission, notes: r.notes || null,
+    }));
+    const { error } = await supa.from("commission_history").upsert(payload);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadCommissionHistory();
+    showToast(`Mês ${monthKey} fechado.`);
+  }
+  async function handleDeleteCommissionHistoryMonth(monthKey) {
+    if (!confirm(`Apagar o fechamento do mês ${monthKey}? Essa ação não tem volta.`)) return;
+    await supa.from("commission_history").delete().eq("reference_month", monthKey);
+    await loadCommissionHistory();
+    showToast("Fechamento removido.");
+  }
+  async function handleReplicatePreviousMonth(sourceMonthKey) {
+    const sourceRows = commissionHistory.filter((h) => h.reference_month === sourceMonthKey);
+    if (sourceRows.length === 0) { showToast("Nenhum mês fechado pra replicar."); return; }
+    const existingIds = new Set(clientCommissions.map((cc) => cc.client_id));
+    const toInsert = sourceRows
+      .filter((h) => {
+        const cli = clients.find((c) => c.id === h.client_id);
+        return cli && !cli.cancelled && !existingIds.has(h.client_id);
+      })
+      .map((h) => ({
+        id: uid(), client_id: h.client_id, representative_name: h.representative_name,
+        percentage: h.percentage, notes: h.notes,
+      }));
+    if (toInsert.length === 0) { showToast("Já está tudo replicado (ou os clientes foram cancelados)."); return; }
+    const { error } = await supa.from("client_commissions").upsert(toInsert);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadClientCommissions();
+    showToast(`${toInsert.length} cliente(s) replicado(s) do mês anterior.`);
   }
   async function handleSaveItagEntry(e) {
     const { error } = await supa.from("itag_entries").upsert(e);
@@ -4390,13 +4436,13 @@ function App() {
     doc.save(`migracoes-banco-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  function exportClientCommissionsPDF(rows) {
+  function exportClientCommissionsPDF(rows, title = "Comissão de Representantes") {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape" });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
-    doc.text("Comissão de Representantes", 14, 32);
+    doc.text(title, 14, 32);
     doc.setFontSize(9);
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
@@ -4482,7 +4528,7 @@ function App() {
     doc.save(`rfid-faturado-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadDbMigrations(); loadClientCommissions(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -6761,7 +6807,8 @@ function App() {
           {effectiveTab === "comissao_representantes" && (
             <div>
               {(() => {
-                const rows = clientCommissions.map((cc) => {
+                const isHistory = !!commissionViewMonth;
+                const liveRows = clientCommissions.map((cc) => {
                   const cli = clients.find((c) => c.id === cc.client_id);
                   if (!cli) return null;
                   return {
@@ -6772,7 +6819,27 @@ function App() {
                   };
                 }).filter(Boolean).sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
 
-                const existingReps = [...new Set(rows.map((r) => r.representative_name).filter(Boolean))];
+                const historyRows = commissionHistory
+                  .filter((h) => h.reference_month === commissionViewMonth)
+                  .map((h) => ({
+                    commId: h.id, client_id: h.client_id,
+                    bank_number: h.bank_number, name: h.client_name, cnpj: h.cnpj, due_day: h.due_day, value: h.monthly_value,
+                    representative_name: h.representative_name, percentage: h.percentage, notes: h.notes,
+                    commission: h.commission_value,
+                  }))
+                  .sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
+
+                const rows = isHistory ? historyRows : liveRows.filter((r) => {
+                  const cli = clients.find((c) => c.id === r.client_id);
+                  return !cli || !cli.cancelled;
+                });
+                const cancelledLiveRows = isHistory ? [] : liveRows.filter((r) => {
+                  const cli = clients.find((c) => c.id === r.client_id);
+                  return cli && cli.cancelled;
+                });
+                const closedMonths = [...new Set(commissionHistory.map((h) => h.reference_month))].sort().reverse();
+
+                const existingReps = [...new Set(liveRows.map((r) => r.representative_name).filter(Boolean))];
                 const visibleRows = commissionRepFilter ? rows.filter((r) => r.representative_name === commissionRepFilter) : rows;
 
                 const byRep = {};
@@ -6784,26 +6851,58 @@ function App() {
                 const assignedIds = new Set(clientCommissions.map((cc) => cc.client_id));
                 const availableClients = clients.filter((c) => !c.cancelled && !assignedIds.has(c.id) && (!editingClientCommission || c.id === editingClientCommission.client_id));
 
+                function monthLabel(k) { const [y, mo] = k.split("-"); return `${MONTHS_PT[Number(mo) - 1]}/${y}`; }
+
                 return (
                   <>
-                    <div className="flex flex-col sm:flex-row gap-2 mb-4 sm:items-center sm:justify-between">
-                      <label className="block">
-                        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Filtrar por representante</span>
-                        <select value={commissionRepFilter} onChange={(e) => setCommissionRepFilter(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
-                          <option value="">Todos os representantes</option>
-                          {repNames.map((r) => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                      </label>
-                      <div className="flex gap-2">
-                        <button onClick={() => exportClientCommissionsPDF(visibleRows)} disabled={visibleRows.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
-                        <button onClick={() => { setEditingClientCommission(null); setShowClientCommissionForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Atribuir representante</button>
+                    <div className="flex flex-wrap gap-2 mb-4 items-end justify-between">
+                      <div className="flex flex-wrap gap-2 items-end">
+                        <label className="block">
+                          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Visualizando</span>
+                          <select value={commissionViewMonth} onChange={(e) => setCommissionViewMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
+                            <option value="">Mês atual (ao vivo)</option>
+                            {closedMonths.map((m) => <option key={m} value={m}>{monthLabel(m)} (fechado)</option>)}
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Filtrar por representante</span>
+                          <select value={commissionRepFilter} onChange={(e) => setCommissionRepFilter(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
+                            <option value="">Todos os representantes</option>
+                            {repNames.map((r) => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap gap-2 items-end">
+                        {!isHistory && (
+                          <label className="block">
+                            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Fechar mês</span>
+                            <div className="flex gap-1.5">
+                              <input type="month" value={closeMonthKey} onChange={(e) => setCloseMonthKey(e.target.value)} className="rounded-lg border px-2 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
+                              <button onClick={() => handleCloseCommissionMonth(closeMonthKey, rows)} className="px-3 py-2 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: COLORS.success }}>🔒 Fechar</button>
+                            </div>
+                          </label>
+                        )}
+                        {!isHistory && closedMonths.length > 0 && (
+                          <button onClick={() => handleReplicatePreviousMonth(closedMonths[0])} className="px-3 py-2.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.brand, color: COLORS.brandLight }}>🔁 Replicar {monthLabel(closedMonths[0])}</button>
+                        )}
+                        {isHistory && (
+                          <button onClick={() => handleDeleteCommissionHistoryMonth(commissionViewMonth)} className="px-3 py-2 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.danger, color: COLORS.danger }}>🗑️ Apagar fechamento</button>
+                        )}
+                        <button onClick={() => exportClientCommissionsPDF(visibleRows, isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes")} disabled={visibleRows.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                        {!isHistory && <button onClick={() => { setEditingClientCommission(null); setShowClientCommissionForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Atribuir representante</button>}
                       </div>
                     </div>
+
+                    {isHistory && (
+                      <div className="rounded-xl px-4 py-2.5 mb-4 text-xs font-semibold" style={{ background: "rgba(124,92,255,0.1)", color: COLORS.brandLight }}>
+                        🔒 Mostrando a foto salva de {monthLabel(commissionViewMonth)} — esses valores não mudam mais, mesmo que a mensalidade do cliente mude depois.
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                       {repNames.length === 0 ? (
                         <div className="rounded-2xl p-4 border col-span-2 sm:col-span-3" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                          <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com representante atribuído ainda.</div>
+                          <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com representante {isHistory ? `em ${monthLabel(commissionViewMonth)}` : "atribuído ainda"}.</div>
                         </div>
                       ) : repNames.map((r) => (
                         <div key={r} className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -6817,7 +6916,7 @@ function App() {
                       </div>
                     </div>
 
-                    {showClientCommissionForm && <div className="mb-4"><ClientCommissionForm initial={editingClientCommission} clients={editingClientCommission ? clients : availableClients} existingReps={existingReps} onSave={handleSaveClientCommission} onCancel={() => { setShowClientCommissionForm(false); setEditingClientCommission(null); }} /></div>}
+                    {!isHistory && showClientCommissionForm && <div className="mb-4"><ClientCommissionForm initial={editingClientCommission} clients={editingClientCommission ? clients : availableClients} existingReps={existingReps} onSave={handleSaveClientCommission} onCancel={() => { setShowClientCommissionForm(false); setEditingClientCommission(null); }} /></div>}
 
                     <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                       {visibleRows.length === 0 ? (
@@ -6829,7 +6928,7 @@ function App() {
                               <th className="text-left p-3">Banco</th><th className="text-left p-3">Loja</th><th className="text-left p-3">CNPJ</th>
                               <th className="text-left p-3">Venc.</th><th className="text-left p-3">Mensalidade</th><th className="text-left p-3">%</th>
                               <th className="text-left p-3">Comissão</th><th className="text-left p-3">Representante</th>
-                              <th className="text-left p-3">Obs.</th><th className="text-left p-3"></th>
+                              <th className="text-left p-3">Obs.</th>{!isHistory && <th className="text-left p-3"></th>}
                             </tr>
                           </thead>
                           <tbody>
@@ -6844,10 +6943,12 @@ function App() {
                                 <td className="p-3 font-bold">{money(r.commission)}</td>
                                 <td className="p-3">{r.representative_name}</td>
                                 <td className="p-3">{r.notes || "-"}</td>
-                                <td className="p-3">
-                                  <button onClick={() => { setEditingClientCommission({ id: r.commId, client_id: r.client_id, representative_name: r.representative_name, percentage: r.percentage, notes: r.notes }); setShowClientCommissionForm(true); }} className="mr-2">✏️</button>
-                                  <button onClick={() => handleDeleteClientCommission(r.commId)} style={{ color: COLORS.danger }}>🗑️</button>
-                                </td>
+                                {!isHistory && (
+                                  <td className="p-3">
+                                    <button onClick={() => { setEditingClientCommission({ id: r.commId, client_id: r.client_id, representative_name: r.representative_name, percentage: r.percentage, notes: r.notes }); setShowClientCommissionForm(true); }} className="mr-2">✏️</button>
+                                    <button onClick={() => handleDeleteClientCommission(r.commId)} style={{ color: COLORS.danger }}>🗑️</button>
+                                  </td>
+                                )}
                               </tr>
                             ))}
                           </tbody>
@@ -6857,12 +6958,34 @@ function App() {
                               <td className="p-3">{money(totalMensalidade)}</td>
                               <td className="p-3"></td>
                               <td className="p-3">{money(totalComissao)}</td>
-                              <td className="p-3" colSpan={3}></td>
+                              <td className="p-3" colSpan={isHistory ? 2 : 3}></td>
                             </tr>
                           </tfoot>
                         </table>
                       )}
                     </div>
+
+                    {cancelledLiveRows.length > 0 && (
+                      <div className="rounded-2xl border mt-4 overflow-hidden" style={{ borderColor: COLORS.danger, background: "rgba(239,68,68,0.06)" }}>
+                        <div className="px-4 py-2.5 text-xs font-bold" style={{ color: COLORS.danger }}>
+                          ⚠️ {cancelledLiveRows.length} cliente(s) cancelado(s) ainda com representante vinculado — não entram no total do mês, mas os fechamentos anteriores continuam intactos. Remova a vinculação quando quiser.
+                        </div>
+                        <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                          <tbody>
+                            {cancelledLiveRows.map((r, i) => (
+                              <tr key={r.commId} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                <td className="p-3 font-semibold">{r.name}</td>
+                                <td className="p-3">{r.representative_name}</td>
+                                <td className="p-3">{r.percentage}%</td>
+                                <td className="p-3 text-right">
+                                  <button onClick={() => handleDeleteClientCommission(r.commId)} style={{ color: COLORS.danger }}>🗑️ Remover vinculação</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </>
                 );
               })()}

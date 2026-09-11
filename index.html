@@ -3552,6 +3552,11 @@ function App() {
     await loadCommissionHistory();
     showToast("Fechamento removido.");
   }
+  async function handleUpdateCommissionPaymentDate(historyId, paymentDate) {
+    const { error } = await supa.from("commission_history").update({ payment_date: paymentDate || null }).eq("id", historyId);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    setCommissionHistory((prev) => prev.map((h) => h.id === historyId ? { ...h, payment_date: paymentDate || null } : h));
+  }
   async function handleReplicatePreviousMonth(sourceMonthKey) {
     const sourceRows = commissionHistory.filter((h) => h.reference_month === sourceMonthKey);
     if (sourceRows.length === 0) { showToast("Nenhum mês fechado pra replicar."); return; }
@@ -4473,6 +4478,7 @@ function App() {
       const data = list.map((r) => ({
         Banco: r.bank_number || "", Loja: r.name || "", CNPJ: r.cnpj || "", Vencimento: r.due_day || "",
         Mensalidade: Number(r.value) || 0, Porcentagem: `${r.percentage}%`, "Valor comissão": Number(r.commission) || 0,
+        ...(r.payment_date !== undefined ? { "Data pagamento": r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "Pendente" } : {}),
         Representante: rep, "Obs.": r.notes || "",
       }));
       const totalMensalidade = list.reduce((s, r) => s + (Number(r.value) || 0), 0);
@@ -4499,18 +4505,27 @@ function App() {
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
-    const body = rows.map((r) => [
-      r.bank_number || "-", r.name || "-", r.cnpj || "-", r.due_day || "-",
-      fmtMoney(r.value), `${r.percentage}%`, fmtMoney(r.commission), r.representative_name || "-", r.notes || "-",
-    ]);
+    const hasPaymentDate = rows.some((r) => r.payment_date !== undefined);
+    const body = rows.map((r) => {
+      const base = [r.bank_number || "-", r.name || "-", r.cnpj || "-", r.due_day || "-", fmtMoney(r.value), `${r.percentage}%`, fmtMoney(r.commission)];
+      if (hasPaymentDate) base.push(r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "Pendente");
+      base.push(r.representative_name || "-", r.notes || "-");
+      return base;
+    });
     const totalMensalidade = rows.reduce((s, r) => s + (Number(r.value) || 0), 0);
     const totalComissao = rows.reduce((s, r) => s + r.commission, 0);
+    const head = hasPaymentDate
+      ? ["Banco", "Loja", "CNPJ", "Venc.", "Mensalidade", "%", "Comissão", "Pagamento", "Representante", "Obs."]
+      : ["Banco", "Loja", "CNPJ", "Venc.", "Mensalidade", "%", "Comissão", "Representante", "Obs."];
+    const footRow = hasPaymentDate
+      ? ["", "", "", "", fmtMoney(totalMensalidade), "", fmtMoney(totalComissao), "", "", ""]
+      : ["", "", "", "", fmtMoney(totalMensalidade), "", fmtMoney(totalComissao), "", ""];
 
     doc.autoTable({
       startY: 44,
-      head: [["Banco", "Loja", "CNPJ", "Venc.", "Mensalidade", "%", "Comissão", "Representante", "Obs."]],
+      head: [head],
       body,
-      foot: [["", "", "", "", fmtMoney(totalMensalidade), "", fmtMoney(totalComissao), "", ""]],
+      foot: [footRow],
       styles: { fontSize: 8 },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
@@ -6879,7 +6894,7 @@ function App() {
                     commId: h.id, client_id: h.client_id,
                     bank_number: h.bank_number, name: h.client_name, cnpj: h.cnpj, due_day: h.due_day, value: h.monthly_value,
                     representative_name: h.representative_name, percentage: h.percentage, notes: h.notes,
-                    commission: h.commission_value,
+                    commission: h.commission_value, payment_date: h.payment_date,
                   }))
                   .sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
 
@@ -6990,7 +7005,7 @@ function App() {
                               <tr style={{ color: COLORS.inkMuted }}>
                                 <th className="text-left p-3">Banco</th><th className="text-left p-3">Loja</th><th className="text-left p-3">CNPJ</th>
                                 <th className="text-left p-3">Venc.</th><th className="text-left p-3">Mensalidade</th><th className="text-left p-3">%</th>
-                                <th className="text-left p-3">Comissão</th><th className="text-left p-3">Obs.</th>{!isHistory && <th className="text-left p-3"></th>}
+                                <th className="text-left p-3">Comissão</th>{isHistory && <th className="text-left p-3">Pagamento</th>}<th className="text-left p-3">Obs.</th>{!isHistory && <th className="text-left p-3"></th>}
                               </tr>
                             </thead>
                             <tbody>
@@ -7003,6 +7018,11 @@ function App() {
                                   <td className="p-3">{money(r.value)}{r.isCustomValue && <span title="Valor customizado para a comissão" className="ml-1 cursor-help">✏️</span>}</td>
                                   <td className="p-3">{r.percentage}%</td>
                                   <td className="p-3 font-bold">{money(r.commission)}</td>
+                                  {isHistory && (
+                                    <td className="p-3">
+                                      <input type="date" value={r.payment_date || ""} onChange={(e) => handleUpdateCommissionPaymentDate(r.commId, e.target.value)} className="rounded border px-1.5 py-1 text-[11px] outline-none" style={{ borderColor: r.payment_date ? COLORS.success : COLORS.warn, background: "#0E1729", color: COLORS.ink }} />
+                                    </td>
+                                  )}
                                   <td className="p-3">{r.notes || "-"}</td>
                                   {!isHistory && (
                                     <td className="p-3">
@@ -7019,7 +7039,7 @@ function App() {
                                 <td className="p-3">{money(repTotalMensalidade)}</td>
                                 <td className="p-3"></td>
                                 <td className="p-3">{money(repTotalComissao)}</td>
-                                <td className="p-3" colSpan={isHistory ? 1 : 2}></td>
+                                <td className="p-3" colSpan={2}></td>
                               </tr>
                             </tfoot>
                           </table>

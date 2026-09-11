@@ -5273,6 +5273,15 @@ function App() {
     XLSX.writeFile(wb, `vt-vr-por-funcionario-${monthKey(new Date())}.xlsx`);
   }
 
+  function sendScheduleWhatsApp(s) {
+    const dObj = new Date(s.schedule_date + "T00:00:00");
+    const dateLabel = dObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const weekdayFull = dObj.toLocaleDateString("pt-BR", { weekday: "long" });
+    const techs = [s.technician1_name, s.technician2_name].filter(Boolean);
+    const techLines = techs.length > 0 ? techs.map((t) => `• ${t}`).join("\n") : "Técnicos não definidos";
+    const msg = `📅 *Escala de Sábado*\n${weekdayFull.charAt(0).toUpperCase() + weekdayFull.slice(1)}, ${dateLabel}\n🕗 08:00 às 12:00\n\n${techLines}`;
+    window.open(`https://web.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+  }
   async function sendProposalWhatsApp(p) {
     const prospect = prospects.find((c) => c.id === p.prospect_id);
     if (!prospect?.phone) { showToast("Cliente sem WhatsApp cadastrado."); return; }
@@ -7586,6 +7595,9 @@ function App() {
                           )}
                         </div>
                         <div className="flex items-center justify-end gap-1.5 px-4 pb-3">
+                          {isNext && (
+                            <button onClick={() => sendScheduleWhatsApp(s)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.success, color: COLORS.success }}>📤 Enviar WhatsApp</button>
+                          )}
                           <button onClick={() => { setEditingSchedule(s); setShowScheduleForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
                           <button onClick={() => handleDeleteSchedule(s.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
                         </div>

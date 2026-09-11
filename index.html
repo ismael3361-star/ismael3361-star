@@ -137,6 +137,18 @@ const ROLE_LABELS = {
   migracao: "Técnico de Migração",
 };
 
+const USER_DISPLAY_NAMES = {
+  "ismael.3361@gmail.com": "Ismael",
+  "anderson@miredata.login": "Anderson",
+  "alano@miretada.login": "Alano",
+};
+function displayNameFromEmail(email) {
+  if (!email) return "-";
+  if (USER_DISPLAY_NAMES[email]) return USER_DISPLAY_NAMES[email];
+  const prefix = email.split("@")[0].split(/[.\d_]/)[0];
+  return prefix ? prefix.charAt(0).toUpperCase() + prefix.slice(1) : email;
+}
+
 // PWA: manifest e ícone dinâmicos a partir do logo (permite "instalar" o sistema como app)
 (function setupPWA() {
   try {
@@ -442,24 +454,23 @@ function SystemFooter({ userRole, session }) {
     window.addEventListener("offline", goOffline);
     return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
   }, []);
-  const dataStr = now.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
-  const horaStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const dataStr = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const horaStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   return (
     <div className="shrink-0 border-t flex items-center justify-between gap-3 px-5 sm:px-8 py-2 text-[11px] flex-wrap" style={{ borderColor: COLORS.cardBorder, background: COLORS.sidebar, color: COLORS.inkMuted }}>
+      <div className="flex items-center gap-2 truncate">
+        <span>👤 Logado como:</span>
+        <span className="font-semibold truncate" style={{ color: COLORS.brandLight }}>{displayNameFromEmail(session?.user?.email)}</span>
+      </div>
       <div className="flex items-center gap-3 flex-wrap">
-        <span className="font-semibold" style={{ color: COLORS.ink }}>📅 {dataStr}</span>
-        <span className="font-semibold" style={{ color: COLORS.ink }}>🕒 {horaStr}</span>
+        <span className="font-semibold" style={{ color: COLORS.ink }}>📅 Data: {dataStr}</span>
+        <span className="font-semibold" style={{ color: COLORS.ink }}>🕒 Hora: {horaStr}</span>
         <span className="flex items-center gap-1" title={online ? "Conectado" : "Sem conexão"}>
           <span className="inline-block rounded-full" style={{ width: 7, height: 7, background: online ? COLORS.success : COLORS.danger }}></span>
           {online ? "Online" : "Offline"}
         </span>
       </div>
-      <div className="flex items-center gap-2 truncate">
-        <span>👤 Logado como:</span>
-        <span className="font-semibold truncate" style={{ color: COLORS.brandLight }}>{session?.user?.email || "-"}</span>
-        <span className="hidden sm:inline px-2 py-0.5 rounded-full font-bold" style={{ background: "rgba(124,92,255,0.15)", color: COLORS.brandLight }}>{ROLE_LABELS[userRole] || userRole || "-"}</span>
-      </div>
-      <div className="hidden sm:block" style={{ color: COLORS.inkFaint }}>ADM/MIRE · MireData</div>
+      <div className="font-bold" style={{ color: COLORS.inkFaint }}>ADM/MIRE</div>
     </div>
   );
 }
@@ -1499,6 +1510,77 @@ function DueDayChart({ groups }) {
   return <canvas ref={ref} height="220"></canvas>;
 }
 
+function CommissionClientPicker({ clients, value, onSelect, disabled }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = clients.find((c) => c.id === value);
+  const q = query.trim().toLowerCase();
+  const filtered = !q ? clients.slice(0, 40) : clients.filter((c) =>
+    (c.name || "").toLowerCase().includes(q) || (c.bank_number || "").toLowerCase().includes(q)
+  ).slice(0, 40);
+
+  if (disabled) {
+    return (
+      <label className="block">
+        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
+        <input disabled value={selected ? `${selected.bank_number ? selected.bank_number + " — " : ""}${selected.name}` : ""} className="w-full rounded-lg border px-3 py-2 text-sm outline-none opacity-60" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+      </label>
+    );
+  }
+
+  return (
+    <label className="block relative">
+      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
+      <input
+        value={open ? query : (selected ? `${selected.bank_number ? selected.bank_number + " — " : ""}${selected.name}` : "")}
+        onFocus={() => { setQuery(""); setOpen(true); }}
+        onChange={(e) => setQuery(e.target.value)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Digite o nome ou o nº do banco..."
+        className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+        style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+      {open && (
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border shadow-lg" style={{ borderColor: COLORS.cardBorder, background: "#0E1729" }}>
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-xs" style={{ color: COLORS.inkMuted }}>Nenhum cliente encontrado.</div>
+          ) : filtered.map((c) => (
+            <button key={c.id} type="button" onMouseDown={() => { onSelect(c.id); setOpen(false); setQuery(""); }}
+              className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" style={{ color: COLORS.ink }}>
+              {c.bank_number && <span className="font-bold mr-1.5" style={{ color: COLORS.info }}>{c.bank_number}</span>}
+              {c.name} <span style={{ color: COLORS.inkFaint }}>— {fmtMoney(c.value)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </label>
+  );
+}
+
+function RepresentativePicker({ existingReps, value, onChange }) {
+  const [showNew, setShowNew] = useState(value ? !existingReps.includes(value) : existingReps.length === 0);
+  const [newName, setNewName] = useState(!existingReps.includes(value) ? value : "");
+
+  return (
+    <div>
+      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Representante</span>
+      {!showNew ? (
+        <div className="flex gap-2">
+          <select value={value} onChange={(e) => onChange(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+            <option value="">Selecione...</option>
+            {existingReps.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <button type="button" onClick={() => { setShowNew(true); setNewName(""); onChange(""); }} className="px-3 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>＋ Novo</button>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <input value={newName} onChange={(e) => { setNewName(e.target.value); onChange(e.target.value); }} placeholder="Nome do novo representante" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          {existingReps.length > 0 && <button type="button" onClick={() => { setShowNew(false); setNewName(""); onChange(""); }} className="px-3 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>Cancelar</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel }) {
   const [clientId, setClientId] = useState(initial?.client_id || "");
   const [representativeName, setRepresentativeName] = useState(initial?.representative_name || "");
@@ -1524,18 +1606,8 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
       <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar representante do cliente" : "Atribuir representante a um cliente"}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
-          <select value={clientId} onChange={(e) => handleClientChange(e.target.value)} disabled={!!initial} className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-60" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
-            <option value="">Selecione um cliente...</option>
-            {clients.map((c) => <option key={c.id} value={c.id}>{c.name} — {fmtMoney(c.value)}</option>)}
-          </select>
-        </label>
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Representante</span>
-          <input value={representativeName} onChange={(e) => setRepresentativeName(e.target.value)} list="rep-names-list" placeholder="Nome do representante" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-          <datalist id="rep-names-list">{existingReps.map((r) => <option key={r} value={r} />)}</datalist>
-        </label>
+        <CommissionClientPicker clients={clients} value={clientId} onSelect={handleClientChange} disabled={!!initial} />
+        <RepresentativePicker existingReps={existingReps} value={representativeName} onChange={setRepresentativeName} />
         <TextField label="% de comissão" value={percentage} onChange={setPercentage} type="number" placeholder="Ex: 30" />
         <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Ex: Anual" />
       </div>
@@ -2959,7 +3031,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
   const nextNumberPreview = (settings?.romaneio_next_year === currentYear) ? (settings?.romaneio_next_number || 1) : 1;
   const [number, setNumber] = useState(initial?.number || `${nextNumberPreview}/${currentYear}`);
   const [orderDate, setOrderDate] = useState(initial?.order_date || new Date().toISOString().slice(0, 10));
-  const [seller, setSeller] = useState(initial?.seller || "");
+  const [seller, setSeller] = useState(initial?.seller || "Ismael Oliveira");
   const [commissionPercent, setCommissionPercent] = useState(initial?.commission_percent ?? 5);
   const [purchaseCost, setPurchaseCost] = useState(initial?.purchase_cost ?? "");
   const [items, setItems] = useState(initial?.items?.length ? initial.items : [{ codigo: "", descricao: "", quantidade: "", valorUnit: "" }]);
@@ -3471,6 +3543,7 @@ function App() {
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [supplierYear, setSupplierYear] = useState(new Date().getFullYear());
+  const [supplierSearch, setSupplierSearch] = useState("");
   const [globalSearch, setGlobalSearch] = useState("");
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showTechForm, setShowTechForm] = useState(false);
@@ -5941,7 +6014,11 @@ function App() {
               { group: "Comercial", items: [
                 { id: "clientes", label: "Clientes", icon: "👥" },
                 { id: "propostas", label: "Propostas", icon: "📝" },
-                { id: "romaneio", label: "Pedido Etiqueta", icon: "📦" },
+              ]},
+              { group: "Etiqueta", items: [
+                { id: "pedidos_etiquetas", label: "Compra de etiqueta", icon: "🏷️" },
+                { id: "romaneio", label: "Pedido de etiqueta", icon: "📦" },
+                { id: "comissao", label: "Comissão Etiqueta", icon: "💰" },
               ]},
               { group: "Financeiro", items: [
                 { id: "boletos", label: "Mensalidades", icon: "📄" },
@@ -5949,8 +6026,6 @@ function App() {
                 { id: "vtvr", label: "VR e VA", icon: "🎫" },
                 { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
                 { id: "folha", label: "Folha de Pagamento", icon: "👥" },
-                { id: "pedidos_etiquetas", label: "Compras Etiquetas", icon: "🏷️" },
-                { id: "comissao", label: "Comissão Etiquetas", icon: "💰" },
                 { id: "comissao_representantes", label: "Comissão Representantes", icon: "🤝" },
               ]},
               { group: "Operacional", items: [
@@ -6054,7 +6129,7 @@ function App() {
                 {effectiveTab === "clientes" && "Seus clientes"}
                 {effectiveTab === "boletos" && "Mensalidades do mês"}
                 {effectiveTab === "propostas" && "Propostas comerciais"}
-                {effectiveTab === "romaneio" && "Romaneio Etiqueta de Composição"}
+                {effectiveTab === "romaneio" && "Pedido de Etiqueta"}
                 {effectiveTab === "itag" && "RFID"}
                 {effectiveTab === "implantacoes" && "Controle de Implantações"}
                 {effectiveTab === "implantacao_tecnica" && "Implantação Técnica"}
@@ -6064,10 +6139,10 @@ function App() {
                 {effectiveTab === "config" && "Configurações de mensagens"}
                 {effectiveTab === "atividades" && "Log de Atividades"}
                 {effectiveTab === "despesas" && "Contas a Pagar"}
-                {effectiveTab === "comissao" && "Comissão do Vendedor"}
+                {effectiveTab === "comissao" && "Comissão Etiqueta"}
                 {effectiveTab === "escala" && "Escala de Sábado"}
                 {effectiveTab === "folha" && "Folha de Pagamento"}
-                {effectiveTab === "pedidos_etiquetas" && "Pedidos de Etiquetas"}
+                {effectiveTab === "pedidos_etiquetas" && "Compra de Etiqueta"}
                 {effectiveTab === "migracoes" && "Migração de Banco de Dados"}
                 {effectiveTab === "comissao_representantes" && "Comissão de Representantes"}
               </h2>
@@ -7121,46 +7196,45 @@ function App() {
 
                 return (
                   <>
-                    <div className="flex flex-wrap gap-2 mb-4 items-end justify-between">
-                      <div className="flex flex-wrap gap-2 items-end">
-                        <label className="block">
-                          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Visualizando</span>
-                          <select value={commissionViewMonth} onChange={(e) => setCommissionViewMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
-                            <option value="">Mês atual (ao vivo)</option>
-                            {closedMonths.map((m) => <option key={m} value={m}>{monthLabel(m)} (fechado)</option>)}
-                          </select>
-                        </label>
-                        <label className="block">
-                          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Filtrar por representante</span>
-                          <select value={commissionRepFilter} onChange={(e) => setCommissionRepFilter(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
-                            <option value="">Todos os representantes</option>
-                            {repNames.map((r) => <option key={r} value={r}>{r}</option>)}
-                          </select>
-                        </label>
-                        <label className="block">
-                          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Buscar (nome ou banco)</span>
-                          <input value={commissionSearch} onChange={(e) => setCommissionSearch(e.target.value)} placeholder="Nome ou nº do banco" className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
-                        </label>
-                      </div>
-                      <div className="flex flex-wrap gap-2 items-end">
-                        {!isHistory && (
-                          <label className="block">
-                            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Fechar mês</span>
-                            <div className="flex gap-1.5">
-                              <input type="month" value={closeMonthKey} onChange={(e) => setCloseMonthKey(e.target.value)} className="rounded-lg border px-2 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
-                              <button onClick={() => handleCloseCommissionMonth(closeMonthKey, rows)} className="px-3 py-2 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: COLORS.success }}>🔒 Fechar</button>
-                            </div>
-                          </label>
-                        )}
-                        {!isHistory && closedMonths.length > 0 && (
-                          <button onClick={() => handleReplicatePreviousMonth(closedMonths[0])} className="px-3 py-2.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.brand, color: COLORS.brandLight }}>🔁 Replicar {monthLabel(closedMonths[0])}</button>
-                        )}
-                        {isHistory && (
-                          <button onClick={() => handleDeleteCommissionHistoryMonth(commissionViewMonth)} className="px-3 py-2 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.danger, color: COLORS.danger }}>🗑️ Apagar fechamento</button>
-                        )}
-                        <button onClick={() => exportClientCommissionsExcel(rows, isHistory ? `comissao-${commissionViewMonth}` : "comissao-representantes")} disabled={rows.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
-                        <button onClick={() => exportClientCommissionsPDF(visibleRows, isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes")} disabled={visibleRows.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
-                        {!isHistory && <button onClick={() => { setEditingClientCommission(null); setShowClientCommissionForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Atribuir representante</button>}
+                    <div className="flex flex-wrap gap-2 mb-3 items-end">
+                      <label className="block">
+                        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Visualizando</span>
+                        <select value={commissionViewMonth} onChange={(e) => setCommissionViewMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
+                          <option value="">Mês atual (ao vivo)</option>
+                          {closedMonths.map((m) => <option key={m} value={m}>{monthLabel(m)} (fechado)</option>)}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Representante</span>
+                        <select value={commissionRepFilter} onChange={(e) => setCommissionRepFilter(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
+                          <option value="">Todos os representantes</option>
+                          {repNames.map((r) => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                      </label>
+                      <label className="block flex-1 min-w-[180px]">
+                        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Buscar</span>
+                        <input value={commissionSearch} onChange={(e) => setCommissionSearch(e.target.value)} placeholder="🔍 Nome ou nº do banco..." className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
+                      </label>
+                      {!isHistory && <button onClick={() => { setEditingClientCommission(null); setShowClientCommissionForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white shrink-0" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Atribuir representante</button>}
+                    </div>
+
+                    <div className="rounded-xl border p-2.5 flex items-center gap-2 flex-wrap mb-4" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.015)" }}>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1 shrink-0" style={{ color: COLORS.inkFaint }}>Ferramentas</span>
+                      {!isHistory && (
+                        <div className="flex gap-1.5 items-center">
+                          <input type="month" value={closeMonthKey} onChange={(e) => setCloseMonthKey(e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
+                          <button onClick={() => handleCloseCommissionMonth(closeMonthKey, rows)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: COLORS.success }}>🔒 Fechar mês</button>
+                        </div>
+                      )}
+                      {!isHistory && closedMonths.length > 0 && (
+                        <button onClick={() => handleReplicatePreviousMonth(closedMonths[0])} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.brand, color: COLORS.brandLight }}>🔁 Replicar {monthLabel(closedMonths[0])}</button>
+                      )}
+                      {isHistory && (
+                        <button onClick={() => handleDeleteCommissionHistoryMonth(commissionViewMonth)} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.danger, color: COLORS.danger }}>🗑️ Apagar fechamento</button>
+                      )}
+                      <div className="ml-auto flex gap-2">
+                        <button onClick={() => exportClientCommissionsExcel(rows, isHistory ? `comissao-${commissionViewMonth}` : "comissao-representantes")} disabled={rows.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
+                        <button onClick={() => exportClientCommissionsPDF(visibleRows, isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes")} disabled={visibleRows.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                       </div>
                     </div>
 
@@ -7453,7 +7527,7 @@ function App() {
           {effectiveTab === "pedidos_etiquetas" && (
             <div>
               {(() => {
-                const doAno = supplierOrders
+                const doAnoAll = supplierOrders
                   .filter((o) => o.order_date && new Date(o.order_date + "T00:00:00").getFullYear() === supplierYear)
                   .map((o) => {
                     // Data usada pra ordenar: o vencimento mais próximo ainda em aberto;
@@ -7466,6 +7540,10 @@ function App() {
                     if (a._temAberto !== b._temAberto) return a._temAberto ? -1 : 1; // em aberto primeiro
                     return (a._ord || "").localeCompare(b._ord || "");
                   });
+                const searchTerm = supplierSearch.trim().toLowerCase();
+                const doAno = !searchTerm ? doAnoAll : doAnoAll.filter((o) =>
+                  (o.notes || "").toLowerCase().includes(searchTerm) || (o.model || "").toLowerCase().includes(searchTerm)
+                );
                 const anos = [...new Set(supplierOrders.filter((o) => o.order_date).map((o) => new Date(o.order_date + "T00:00:00").getFullYear()))].sort((a, b) => b - a);
                 if (anos.length === 0) anos.push(new Date().getFullYear());
                 const somaQtd = doAno.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
@@ -7505,14 +7583,19 @@ function App() {
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                    <div className="flex flex-col sm:flex-row gap-2 mb-3 sm:items-center">
+                      <input value={supplierSearch} onChange={(e) => setSupplierSearch(e.target.value)} placeholder="🔍 Buscar por obs ou modelo..." className="rounded-lg border px-3 py-2 text-sm outline-none max-w-xs w-full" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
                       <div className="flex gap-1.5">
                         {anos.map((a) => (
                           <button key={a} onClick={() => setSupplierYear(a)} className="px-3 py-1.5 rounded-lg text-sm font-semibold border" style={{ borderColor: supplierYear === a ? COLORS.brandLight : COLORS.cardBorder, color: supplierYear === a ? COLORS.brandLight : COLORS.inkMuted, background: supplierYear === a ? "rgba(124,92,255,0.1)" : "transparent" }}>{a}</button>
                         ))}
                       </div>
-                      <div className="flex gap-2">
-                        {doAno.length > 0 && <button onClick={() => exportSupplierOrdersExcel(doAno)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>}
+                    </div>
+
+                    <div className="rounded-xl border p-2.5 flex items-center gap-2 flex-wrap mb-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.015)" }}>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1 shrink-0" style={{ color: COLORS.inkFaint }}>Ferramentas</span>
+                      {doAno.length > 0 && <button onClick={() => exportSupplierOrdersExcel(doAno)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>}
+                      <div className="ml-auto">
                         <button onClick={() => { setEditingSupplier(null); setShowSupplierForm(true); }} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo pedido</button>
                       </div>
                     </div>
@@ -7520,91 +7603,100 @@ function App() {
                     {showSupplierForm && <div className="mb-4"><SupplierOrderForm initial={editingSupplier} onSave={handleSaveSupplierOrder} onCancel={() => { setShowSupplierForm(false); setEditingSupplier(null); }} /></div>}
 
                     {!showSupplierForm && (
-                      <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      <div className="rounded-2xl border divide-y overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        <div className="flex items-center gap-3 px-4 py-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted, background: "rgba(255,255,255,0.02)" }}>
+                          <span className="w-9 shrink-0"></span>
+                          <span>Pedido</span>
+                        </div>
                         {doAno.length === 0 ? (
-                          <div className="p-10 text-center"><div className="text-3xl mb-2">🏷️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pedido em {supplierYear}.</div></div>
-                        ) : (
-                          <table className="w-full text-xs" style={{ color: COLORS.ink }}>
-                            <thead>
-                              <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                                <th className="text-left p-3 font-bold uppercase">Data</th>
-                                <th className="text-left p-3 font-bold uppercase">Obs</th>
-                                <th className="text-left p-3 font-bold uppercase">Modelo</th>
-                                <th className="text-left p-3 font-bold uppercase">Entrada</th>
-                                <th className="text-left p-3 font-bold uppercase">Qtd</th>
-                                <th className="text-left p-3 font-bold uppercase">Vr. Unit.</th>
-                                <th className="text-left p-3 font-bold uppercase">Vencimentos / parcelas</th>
-                                <th className="text-left p-3 font-bold uppercase">Aberto</th>
-                                <th className="text-left p-3 font-bold uppercase">Pago</th>
-                                <th className="text-left p-3 font-bold uppercase">Boleto</th>
-                                <th className="text-left p-3 font-bold uppercase"></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {doAno.map((o, i) => {
-                                const pago = (o.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                                const aberto = (o.installments || []).filter((it) => !it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                                const tudoPago = (o.installments || []).length > 0 && (o.installments || []).every((it) => it.paid);
-                                return (
-                                  <tr key={o.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", background: tudoPago ? "rgba(34,197,94,0.05)" : "transparent" }}>
-                                    <td className="p-3">{fmtDate(o.order_date)}</td>
-                                    <td className="p-3 font-semibold">{o.notes || "-"}</td>
-                                    <td className="p-3">{o.model || "-"}</td>
-                                    <td className="p-3">{fmtDate(o.arrival_date)}</td>
-                                    <td className="p-3">{o.quantity}</td>
-                                    <td className="p-3">{money(o.unit_value)}</td>
-                                    <td className="p-3">
-                                      <div className="flex flex-wrap gap-1">
-                                        {(o.installments || []).map((it, idx) => {
-                                          const venceu = !it.paid && it.due_date && it.due_date < hoje;
-                                          return (
-                                            <button key={idx} onClick={() => handleToggleSupplierInst(o, idx)}
-                                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap"
-                                              style={{ borderColor: it.paid ? COLORS.success : venceu ? COLORS.danger : COLORS.cardBorder, color: it.paid ? COLORS.success : venceu ? COLORS.danger : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.1)" : venceu ? "rgba(239,68,68,0.1)" : "transparent" }}>
-                                              {it.paid ? "✓" : venceu ? "⚠" : "○"} {fmtDate(it.due_date)} · {money(it.value)}
-                                            </button>
-                                          );
-                                        })}
+                          <div className="p-10 text-center"><div className="text-3xl mb-2">🏷️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>{supplierSearch ? "Nenhum pedido encontrado para essa busca." : `Nenhum pedido em ${supplierYear}.`}</div></div>
+                        ) : doAno.map((o) => {
+                          const pago = (o.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                          const aberto = (o.installments || []).filter((it) => !it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+                          const tudoPago = (o.installments || []).length > 0 && (o.installments || []).every((it) => it.paid);
+                          return (
+                            <div key={o.id} className="p-4 transition-colors" style={{
+                                background: tudoPago ? "rgba(34,197,94,0.07)" : "transparent",
+                                borderLeft: tudoPago ? `4px solid ${COLORS.success}` : `4px solid transparent`,
+                              }}>
+                              {/* LINHA 1: identificação do pedido */}
+                              <div className="flex items-center gap-3 mb-3">
+                                <span className="flex items-center justify-center rounded-full shrink-0" style={{ width: 34, height: 34, background: "rgba(124,92,255,0.15)", fontSize: 16 }}>🏷️</span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-bold text-sm" style={{ color: COLORS.ink }}>{o.notes || o.model || "Pedido de etiqueta"}</span>
+                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: tudoPago ? COLORS.success : aberto > 0 ? COLORS.warn : COLORS.inkFaint, background: tudoPago ? "rgba(34,197,94,0.15)" : aberto > 0 ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.05)" }}>
+                                      {tudoPago ? "✓ Pago" : aberto > 0 ? "○ Em aberto" : "-"}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs" style={{ color: COLORS.inkMuted }}>Pedido em {fmtDate(o.order_date)} · {o.model || "-"} · entrada {fmtDate(o.arrival_date)} · total {money(o.total_value)}</div>
+                                </div>
+                              </div>
+
+                              {/* LINHA 2: valores em grade alinhada */}
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 pl-[46px]">
+                                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+                                  <div className="text-[10px] font-bold uppercase" style={{ color: COLORS.inkFaint }}>Qtd</div>
+                                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>{o.quantity}</div>
+                                </div>
+                                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+                                  <div className="text-[10px] font-bold uppercase" style={{ color: COLORS.inkFaint }}>Vr. Unit.</div>
+                                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>{money(o.unit_value)}</div>
+                                </div>
+                                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+                                  <div className="text-[10px] font-bold uppercase" style={{ color: COLORS.warn }}>Aberto</div>
+                                  <div className="text-sm font-bold" style={{ color: aberto > 0 ? COLORS.warn : COLORS.inkFaint }}>{aberto > 0 ? money(aberto) : "-"}</div>
+                                </div>
+                                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.03)" }}>
+                                  <div className="text-[10px] font-bold uppercase" style={{ color: COLORS.success }}>Pago</div>
+                                  <div className="text-sm font-bold" style={{ color: COLORS.success }}>{pago > 0 ? money(pago) : "-"}</div>
+                                </div>
+                              </div>
+
+                              {/* LINHA 3: bloco de parcelas / anexo / ações */}
+                              <div className="rounded-lg p-2.5 mb-1 ml-[46px]" style={{ background: tudoPago ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.03)" }}>
+                                <div className="flex items-center gap-3 flex-wrap">
+                                  <div className="flex flex-wrap gap-1">
+                                    {(o.installments || []).map((it, idx) => {
+                                      const venceu = !it.paid && it.due_date && it.due_date < hoje;
+                                      return (
+                                        <button key={idx} onClick={() => handleToggleSupplierInst(o, idx)}
+                                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full border whitespace-nowrap"
+                                          style={{ borderColor: it.paid ? COLORS.success : venceu ? COLORS.danger : COLORS.cardBorder, color: it.paid ? COLORS.success : venceu ? COLORS.danger : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.1)" : venceu ? "rgba(239,68,68,0.1)" : "transparent" }}>
+                                          {it.paid ? "✓" : venceu ? "⚠" : "○"} {fmtDate(it.due_date)} · {money(it.value)}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="ml-auto flex items-center gap-2 flex-wrap">
+                                    {o.file_url ? (
+                                      <div className="flex items-center gap-1">
+                                        <a href={o.file_url_watermarked || o.file_url} target="_blank" className="text-[11px] font-bold px-2 py-1 rounded-full border whitespace-nowrap" style={{ borderColor: tudoPago ? COLORS.success : o.file_url_watermarked ? COLORS.warn : COLORS.brandLight, color: tudoPago ? COLORS.success : o.file_url_watermarked ? COLORS.warn : COLORS.brandLight }}>
+                                          {tudoPago ? "✓📎 Pago" : o.file_url_watermarked ? "📎 Parcial" : "📎 Ver"}
+                                        </a>
+                                        <button onClick={() => handleRemoveSupplierFile(o)} className="text-[11px] px-1" style={{ color: COLORS.danger }} title="Remover anexo">✕</button>
                                       </div>
-                                    </td>
-                                    <td className="p-3 font-bold" style={{ color: aberto > 0 ? COLORS.warn : COLORS.inkFaint }}>{aberto > 0 ? money(aberto) : "-"}</td>
-                                    <td className="p-3 font-bold" style={{ color: COLORS.success }}>{pago > 0 ? money(pago) : "-"}</td>
-                                    <td className="p-3">
-                                      {o.file_url ? (
-                                        <div className="flex items-center gap-1">
-                                          <a href={o.file_url_watermarked || o.file_url} target="_blank" className="text-[11px] font-bold px-2 py-1 rounded-full border whitespace-nowrap" style={{ borderColor: tudoPago ? COLORS.success : o.file_url_watermarked ? COLORS.warn : COLORS.brandLight, color: tudoPago ? COLORS.success : o.file_url_watermarked ? COLORS.warn : COLORS.brandLight }}>
-                                            {tudoPago ? "✓📎 Pago" : o.file_url_watermarked ? "📎 Parcial" : "📎 Ver"}
-                                          </a>
-                                          <button onClick={() => handleRemoveSupplierFile(o)} className="text-[11px] px-1" style={{ color: COLORS.danger }} title="Remover anexo">✕</button>
-                                        </div>
-                                      ) : (
-                                        <label className="text-[11px] font-bold px-2 py-1 rounded-full border cursor-pointer whitespace-nowrap" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
-                                          📎 Anexar
-                                          <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => handleUploadSupplierFile(o, e.target.files?.[0])} />
-                                        </label>
-                                      )}
-                                    </td>
-                                    <td className="p-3">
-                                      <button onClick={() => { setEditingSupplier(o); setShowSupplierForm(true); }} className="mr-1.5">✏️</button>
-                                      <button onClick={() => handleDeleteSupplierOrder(o.id)} style={{ color: COLORS.danger }}>🗑️</button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                            <tfoot>
-                              <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
-                                <td className="p-3 font-bold" colSpan={4}>TOTAL {supplierYear}</td>
-                                <td className="p-3 font-bold">{somaQtd}</td>
-                                <td className="p-3"></td>
-                                <td className="p-3"></td>
-                                <td className="p-3 font-bold" style={{ color: COLORS.warn }}>{money(somaAberto)}</td>
-                                <td className="p-3 font-bold" style={{ color: COLORS.success }}>{money(somaPago)}</td>
-                                <td className="p-3"></td>
-                                <td className="p-3"></td>
-                              </tr>
-                            </tfoot>
-                          </table>
+                                    ) : (
+                                      <label className="text-[11px] font-bold px-2 py-1 rounded-full border cursor-pointer whitespace-nowrap" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
+                                        📎 Anexar
+                                        <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => handleUploadSupplierFile(o, e.target.files?.[0])} />
+                                      </label>
+                                    )}
+                                    <button onClick={() => { setEditingSupplier(o); setShowSupplierForm(true); }} className="text-sm">✏️</button>
+                                    <button onClick={() => handleDeleteSupplierOrder(o.id)} className="text-sm" style={{ color: COLORS.danger }}>🗑️</button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {doAno.length > 0 && (
+                          <div className="flex items-center gap-4 px-4 py-3 flex-wrap" style={{ background: "rgba(255,255,255,0.02)" }}>
+                            <span className="text-xs font-bold uppercase" style={{ color: COLORS.inkMuted }}>TOTAL {supplierYear}</span>
+                            <span className="text-xs" style={{ color: COLORS.ink }}>{somaQtd} unid.</span>
+                            <span className="text-xs font-bold" style={{ color: COLORS.warn }}>Aberto: {money(somaAberto)}</span>
+                            <span className="text-xs font-bold" style={{ color: COLORS.success }}>Pago: {money(somaPago)}</span>
+                          </div>
                         )}
                       </div>
                     )}

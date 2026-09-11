@@ -1351,7 +1351,7 @@ function quintoDiaUtil(year, month) {
 function ExpenseForm({ initial, onSave, onCancel }) {
   const [category, setCategory] = useState(initial?.category || EXPENSE_CATEGORIES[0]);
   const [description, setDescription] = useState(initial?.description || "");
-  const [clientInvoiceNumber, setClientInvoiceNumber] = useState(initial?.client_invoice_number || "");
+  const [expenseNotes, setExpenseNotes] = useState(initial?.notes || "");
   const [value, setValue] = useState(initial?.value ?? "");
   const [dueDate, setDueDate] = useState(initial?.due_date || "");
   const [recurring, setRecurring] = useState(initial?.recurring || false);
@@ -1369,7 +1369,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
           </select>
         </label>
         <TextField label="Descrição" value={description} onChange={setDescription} placeholder="Ex: Conta de luz - loja" />
-        <TextField label="Nº da nota" value={clientInvoiceNumber} onChange={setClientInvoiceNumber} placeholder="Nº da nota fiscal" />
+        <TextField label="Obs." value={expenseNotes} onChange={setExpenseNotes} placeholder="Observação (opcional)" />
         <TextField label="Valor" value={value} onChange={setValue} type="number" placeholder="0" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento</span>
@@ -1389,7 +1389,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
       <div className="flex gap-2">
         <button
           disabled={!canSave}
-          onClick={() => onSave({ id: initial?.id || uid(), category, description: description.trim() || null, client_invoice_number: clientInvoiceNumber.trim() || null, value: Number(value) || 0, due_date: dueDate || null, recurring, paid: initial?.paid || false, paid_date: initial?.paid_date || null, paid_value: initial?.paid_value || null })}
+          onClick={() => onSave({ id: initial?.id || uid(), category, description: description.trim() || null, notes: expenseNotes.trim() || null, value: Number(value) || 0, due_date: dueDate || null, recurring, paid: initial?.paid || false, paid_date: initial?.paid_date || null, paid_value: initial?.paid_value || null })}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
           Salvar despesa
         </button>
@@ -1725,7 +1725,6 @@ const SUPPLIER_MODELS = ["MODELO 03", "MODELO 04", "MODELO 03 + MODELO 04"];
 
 function SupplierOrderForm({ initial, onSave, onCancel }) {
   const [orderDate, setOrderDate] = useState(initial?.order_date || new Date().toISOString().slice(0, 10));
-  const [invoiceNumber, setInvoiceNumber] = useState(initial?.invoice_number || "");
   const [model, setModel] = useState(initial?.model || SUPPLIER_MODELS[0]);
   const [arrivalDate, setArrivalDate] = useState(initial?.arrival_date || "");
   const [quantity, setQuantity] = useState(initial?.quantity ?? "");
@@ -1763,7 +1762,7 @@ function SupplierOrderForm({ initial, onSave, onCancel }) {
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pedido</span>
           <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
         </label>
-        <TextField label="Nota fiscal" value={invoiceNumber} onChange={setInvoiceNumber} placeholder="53533" />
+        <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Opcional" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Modelo</span>
           <select value={model} onChange={(e) => setModel(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
@@ -1819,12 +1818,10 @@ function SupplierOrderForm({ initial, onSave, onCancel }) {
         </div>
       </div>
 
-      <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
-
       <div className="flex gap-2">
         <button disabled={!canSave}
           onClick={() => onSave({
-            id: initial?.id || uid(), order_date: orderDate, invoice_number: invoiceNumber.trim() || null,
+            id: initial?.id || uid(), order_date: orderDate,
             model, arrival_date: arrivalDate || null, quantity: Number(quantity) || 0, unit_value: Number(unitValue) || 0,
             total_value: total,
             installments: installments.filter((it) => it.due_date || Number(it.value) > 0).map((it) => ({ due_date: it.due_date || null, value: Number(it.value) || 0, paid: !!it.paid })),
@@ -2921,6 +2918,9 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
   const [deliveryAddress, setDeliveryAddress] = useState(initial?.delivery_address || "");
   const [paymentProofUrl, setPaymentProofUrl] = useState(initial?.payment_proof_url || "");
   const [uploadingProof, setUploadingProof] = useState(false);
+  const [notes, setNotes] = useState(initial?.notes || "");
+  const [paid, setPaid] = useState(initial?.paid || false);
+  const [paymentDate, setPaymentDate] = useState(initial?.payment_date || "");
 
   const prospect = romaneioClients.find((p) => p.id === clientId);
 
@@ -2958,6 +2958,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
       items: validItems.map((it) => ({ codigo: it.codigo.trim(), descricao: it.descricao.trim(), quantidade: Number(it.quantidade) || 0, valorUnit: Number(it.valorUnit) || 0 })),
       payment_method: paymentMethod.trim(), payment_term: paymentTerm.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(), freight: freight.trim(),
       delivery_address: deliveryAddress.trim() || null, payment_proof_url: paymentProofUrl || null,
+      notes: notes.trim() || null, paid, payment_date: paid ? (paymentDate || null) : null,
       commission_percent: Number(commissionPercent) || 0, purchase_cost: Number(purchaseCost) || 0,
       commission_value: Math.max(0, total - custoTotal) * ((Number(commissionPercent) || 0) / 100), commission_paid: initial?.commission_paid || false,
     };
@@ -3025,6 +3026,24 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
           </label>
           {paymentProofUrl && <a href={paymentProofUrl} target="_blank" className="text-sm underline" style={{ color: COLORS.success }}>✓ Ver comprovante anexado</a>}
         </div>
+      </div>
+
+      <div className="rounded-lg border p-3 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.cardBorder }}>
+        <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer" style={{ color: paid ? COLORS.success : COLORS.ink }}>
+          <input type="checkbox" checked={paid} onChange={(e) => { setPaid(e.target.checked); if (e.target.checked && !paymentDate) setPaymentDate(new Date().toISOString().slice(0, 10)); }} />
+          ✓ Pago
+        </label>
+        {paid && (
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pagamento</span>
+            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          </label>
+        )}
+      </div>
+
+      <div>
+        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Observações</span>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Aparece impresso no romaneio, no lugar da linha em branco de OBS." className="w-full rounded-lg border px-3 py-2 text-sm outline-none resize-y" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
       </div>
 
       <div>
@@ -3815,7 +3834,7 @@ function App() {
   }
   function exportExpensesExcel(list) {
     const rows = list.map((e) => ({
-      "Categoria": e.category, "Descrição": e.description || "-", "Nº da Nota": e.client_invoice_number || "-",
+      "Categoria": e.category, "Descrição": e.description || "-", "Obs.": e.notes || "-",
       "Valor": e.value, "Vencimento": e.due_date ? new Date(e.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
       "Situação": e.paid ? "Pago" : "Em aberto", "Recorrente": e.recurring ? "Sim" : "Não",
     }));
@@ -3831,8 +3850,8 @@ function App() {
     doc.text("Contas a Pagar", 14, 15);
     doc.autoTable({
       startY: 22,
-      head: [["Categoria", "Descrição", "Nº Nota", "Valor", "Vencimento", "Situação"]],
-      body: list.map((e) => [e.category, e.description || "-", e.client_invoice_number || "-", fmtMoney(e.value), e.due_date ? new Date(e.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", e.paid ? "Pago" : "Em aberto"]),
+      head: [["Categoria", "Descrição", "Obs.", "Valor", "Vencimento", "Situação"]],
+      body: list.map((e) => [e.category, e.description || "-", e.notes || "-", fmtMoney(e.value), e.due_date ? new Date(e.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", e.paid ? "Pago" : "Em aberto"]),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [124, 92, 255] },
       margin: { left: 14, right: 14 },
@@ -4232,7 +4251,7 @@ function App() {
       const pago = (o.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
       const aberto = (o.installments || []).filter((it) => !it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
       return {
-        "Data Pedido": fmtDate(o.order_date), "Nota Fiscal": o.invoice_number || "-", "Modelo": o.model || "-",
+        "Data Pedido": fmtDate(o.order_date), "Obs": o.notes || "-", "Modelo": o.model || "-",
         "Entrada": fmtDate(o.arrival_date), "Quantidade": o.quantity, "Valor Unitário": o.unit_value,
         "Total": o.total_value,
         "Vencimentos": (o.installments || []).map((it) => fmtDate(it.due_date)).join("  "),
@@ -5046,7 +5065,14 @@ function App() {
     doc.text("CARIMBO DA EMPRESA", 14, y);
     y += 22;
     if (y > 270) { doc.addPage(); y = 20; }
-    doc.text("OBS.: ________________________________________________________________________", 14, y);
+    if (r.notes && r.notes.trim()) {
+      doc.text("OBS.:", 14, y);
+      const obsLines = doc.splitTextToSize(r.notes.trim(), 175);
+      doc.text(obsLines, 30, y);
+      y += obsLines.length * 5.5;
+    } else {
+      doc.text("OBS.: ________________________________________________________________________", 14, y);
+    }
 
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
@@ -5103,6 +5129,11 @@ function App() {
   }
   async function handleToggleCommissionPaid(r) {
     await supa.from("romaneios").update({ commission_paid: !r.commission_paid }).eq("id", r.id);
+    await loadRomaneios();
+  }
+  async function handleToggleRomaneioPaid(r) {
+    const nowPaid = !r.paid;
+    await supa.from("romaneios").update({ paid: nowPaid, payment_date: nowPaid ? (r.payment_date || new Date().toISOString().slice(0, 10)) : null }).eq("id", r.id);
     await loadRomaneios();
   }
   async function handleUpdateCommissionPercent(r, newPercent) {
@@ -5178,6 +5209,8 @@ function App() {
       ["Chave PIX", r.pix_key || "-"],
       ["Favorecido PIX", r.pix_favorecido || "-"],
       ["Frete", r.freight || "-"],
+      ["Pago", r.paid ? `Sim (${r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"})` : "Não"],
+      ["Observações", r.notes || "-"],
       [],
     ];
     const wsInfo = XLSX.utils.aoa_to_sheet(infoRows);
@@ -5202,6 +5235,9 @@ function App() {
         "Forma de Pagamento": r.payment_method || "-",
         "Prazo de Pagamento": r.payment_term || "-",
         "Frete": r.freight || "-",
+        "Pago": r.paid ? "Sim" : "Não",
+        "Data Pagamento": r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+        "Observações": r.notes || "-",
       };
     });
     const wb = XLSX.utils.book_new();
@@ -5224,6 +5260,9 @@ function App() {
         "Forma de Pagamento": r.payment_method || "-",
         "Prazo de Pagamento": r.payment_term || "-",
         "Frete": r.freight || "-",
+        "Pago": r.paid ? "Sim" : "Não",
+        "Data Pagamento": r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+        "Observações": r.notes || "-",
       };
     });
     const wb = XLSX.utils.book_new();
@@ -6174,7 +6213,7 @@ function App() {
                             )}
                             {daySupplier.length > 0 && (
                               <div>
-                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }} title={daySupplier.map((it) => `NF ${it._order.invoice_number || "-"} · parcela ${it._parcela}/${it._totalParcelas}`).join("\n")}>🏷️ {daySupplier.length} etiqueta{daySupplier.length > 1 ? "s" : ""}</div>
+                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }} title={daySupplier.map((it) => `${it._order.notes ? it._order.notes + " · " : ""}parcela ${it._parcela}/${it._totalParcelas}`).join("\n")}>🏷️ {daySupplier.length} etiqueta{daySupplier.length > 1 ? "s" : ""}</div>
                                 <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{money(totalSupplier)}</div>
                               </div>
                             )}
@@ -6647,6 +6686,7 @@ function App() {
                             <div className="text-xs" style={{ color: COLORS.inkMuted }}>
                               {r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {(r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0)} peça(s) · Total {money(total)} · {r.payment_method || "-"}
                             </div>
+                            {r.notes && <div className="text-xs mt-0.5" style={{ color: COLORS.inkFaint }}>📝 {r.notes}</div>}
                           </div>
                         </div>
                       </div>
@@ -6658,6 +6698,9 @@ function App() {
                           </>
                         )}
                         <button onClick={() => exportRomaneioExcel(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
+                        <button onClick={() => handleToggleRomaneioPaid(r)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: r.paid ? COLORS.success : COLORS.cardBorder, color: r.paid ? COLORS.success : COLORS.inkMuted, background: r.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
+                          {r.paid ? `✓ Pago${r.payment_date ? ` em ${new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR")}` : ""}` : "○ Pendente"}
+                        </button>
                         {r.payment_proof_url ? (
                           <>
                             <a href={r.payment_proof_url} target="_blank" className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>✓ Comprovante</a>
@@ -7308,7 +7351,7 @@ function App() {
                 const somaPago = doAno.reduce((s, o) => s + (o.installments || []).filter((it) => it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0);
                 const somaAberto = doAno.reduce((s, o) => s + (o.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0);
                 const hoje = new Date().toISOString().slice(0, 10);
-                const atrasadas = doAno.flatMap((o) => (o.installments || []).filter((it) => !it.paid && it.due_date && it.due_date < hoje).map((it) => ({ ...it, nf: o.invoice_number })));
+                const atrasadas = doAno.flatMap((o) => (o.installments || []).filter((it) => !it.paid && it.due_date && it.due_date < hoje).map((it) => ({ ...it, obs: o.notes })));
                 return (
                   <>
                     {atrasadas.length > 0 && (
@@ -7363,7 +7406,7 @@ function App() {
                             <thead>
                               <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
                                 <th className="text-left p-3 font-bold uppercase">Data</th>
-                                <th className="text-left p-3 font-bold uppercase">NF</th>
+                                <th className="text-left p-3 font-bold uppercase">Obs</th>
                                 <th className="text-left p-3 font-bold uppercase">Modelo</th>
                                 <th className="text-left p-3 font-bold uppercase">Entrada</th>
                                 <th className="text-left p-3 font-bold uppercase">Qtd</th>
@@ -7383,7 +7426,7 @@ function App() {
                                 return (
                                   <tr key={o.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", background: tudoPago ? "rgba(34,197,94,0.05)" : "transparent" }}>
                                     <td className="p-3">{fmtDate(o.order_date)}</td>
-                                    <td className="p-3 font-semibold">{o.invoice_number || "-"}</td>
+                                    <td className="p-3 font-semibold">{o.notes || "-"}</td>
                                     <td className="p-3">{o.model || "-"}</td>
                                     <td className="p-3">{fmtDate(o.arrival_date)}</td>
                                     <td className="p-3">{o.quantity}</td>
@@ -7802,7 +7845,7 @@ function App() {
                                     {e.recurring && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.15)" }}>🔁 recorrente</span>}
                                   </div>
                                   <div className="text-xs" style={{ color: isLate ? COLORS.danger : COLORS.inkMuted }}>
-                                    {money(e.value)} · vence {fmtDate(e.due_date)}{isLate ? " · ATRASADA" : ""}{e.client_invoice_number ? ` · Nota: ${e.client_invoice_number}` : ""}
+                                    {money(e.value)} · vence {fmtDate(e.due_date)}{isLate ? " · ATRASADA" : ""}{e.notes ? ` · Obs.: ${e.notes}` : ""}
                                   </div>
                                 </div>
                               </div>
@@ -8632,7 +8675,7 @@ function App() {
                       <div key={e.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border" style={{ borderColor: COLORS.cardBorder }}>
                         <div className="min-w-0">
                           <div className="text-sm truncate" style={{ color: COLORS.ink }}>{e.category}{e.description ? ` — ${e.description}` : ""}</div>
-                          {e.client_invoice_number && <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>Nota: {e.client_invoice_number}</div>}
+                          {e.notes && <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>Obs.: {e.notes}</div>}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-sm font-bold" style={{ color: COLORS.ink }}>{money(e.value)}</span>
@@ -8650,7 +8693,7 @@ function App() {
                     {selectedCalendarDay.supplier.map((it, idx) => (
                       <div key={idx} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border" style={{ borderColor: COLORS.cardBorder }}>
                         <div className="min-w-0">
-                          <div className="text-sm truncate" style={{ color: COLORS.ink }}>NF {it._order.invoice_number || "-"} · {it._order.model || "-"}</div>
+                          <div className="text-sm truncate" style={{ color: COLORS.ink }}>{it._order.model || "-"}{it._order.notes ? ` · ${it._order.notes}` : ""}</div>
                           <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>Parcela {it._parcela} de {it._totalParcelas} · {it._order.quantity} caixas</div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">

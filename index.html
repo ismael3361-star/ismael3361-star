@@ -3446,7 +3446,10 @@ function App() {
   }, []);
   const loadSettings = useCallback(async () => {
     const { data } = await supa.from("settings").select("*").eq("id", "default").single();
-    setSettings(data ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS);
+    if (!data) { setSettings(DEFAULT_SETTINGS); return; }
+    const merged = { ...DEFAULT_SETTINGS };
+    Object.keys(data).forEach((k) => { if (data[k] !== null && data[k] !== undefined) merged[k] = data[k]; });
+    setSettings(merged);
   }, []);
   const loadBoletos = useCallback(async (mk) => {
     const { data } = await supa.from("boletos").select("*").eq("month_key", mk);

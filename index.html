@@ -468,6 +468,9 @@ const DEFAULT_SETTINGS = {
   wa_template: "Olá {nome}! Tudo bem? Segue o boleto da sua mensalidade ({plano}) no valor de {valor}, com vencimento {vencimento}. Acesse aqui: {link}",
   email_subject: "Boleto - mensalidade de {mesnome}",
   email_body: "Olá {nome},\n\nSegue o boleto referente à sua mensalidade no valor de {valor}, com vencimento {vencimento}.\n\nLink do boleto: {link}\n\nQualquer dúvida, estou à disposição.",
+  overdue_wa_template: "Olá {nome}! Identificamos que a mensalidade referente a {mesnome}, no valor de {valor}, encontra-se em aberto. Caso o pagamento já tenha sido efetuado, por favor nos envie o comprovante para que possamos dar baixa. Pedimos que mantenha a mensalidade em dia para evitar bloqueios no sistema. Qualquer dúvida, estamos à disposição!",
+  overdue_email_subject: "Mensalidade em aberto - {mesnome}",
+  overdue_email_body: "Olá {nome},\n\nIdentificamos que a mensalidade referente a {mesnome}, no valor de {valor}, encontra-se em aberto.\n\nCaso o pagamento já tenha sido efetuado, por favor nos envie o comprovante para que possamos dar baixa.\n\nPedimos que mantenha a mensalidade em dia para evitar bloqueios no sistema.\n\nQualquer dúvida, estamos à disposição!",
   company_pix_city: "SAO PAULO", last_backup_at: null,
   mensalidade_pix_key: "", mensalidade_pix_favorecido: "",
   implantacao_pix_key: "", implantacao_pix_favorecido: "",
@@ -3443,7 +3446,7 @@ function App() {
   }, []);
   const loadSettings = useCallback(async () => {
     const { data } = await supa.from("settings").select("*").eq("id", "default").single();
-    setSettings(data || DEFAULT_SETTINGS);
+    setSettings(data ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS);
   }, []);
   const loadBoletos = useCallback(async (mk) => {
     const { data } = await supa.from("boletos").select("*").eq("month_key", mk);
@@ -5305,6 +5308,7 @@ function App() {
     setSettings(next);
     await supa.from("settings").upsert({
       id: "default", wa_template: next.wa_template, email_subject: next.email_subject, email_body: next.email_body,
+      overdue_wa_template: next.overdue_wa_template || null, overdue_email_subject: next.overdue_email_subject || null, overdue_email_body: next.overdue_email_body || null,
       company_pix_city: next.company_pix_city || null, last_backup_at: next.last_backup_at || null,
       mensalidade_pix_key: next.mensalidade_pix_key || null, mensalidade_pix_favorecido: next.mensalidade_pix_favorecido || null,
       implantacao_pix_key: next.implantacao_pix_key || null, implantacao_pix_favorecido: next.implantacao_pix_favorecido || null,
@@ -5423,6 +5427,19 @@ function App() {
     await upsertBoleto(client.id, { extra_files: extra });
   }
 
+  async function sendOverdueWhatsApp(client) {
+    if (!client.phone) { showToast("Cliente sem WhatsApp cadastrado."); return; }
+    const msg = applyTemplate(settings.overdue_wa_template, client, monthDate);
+    window.open(`https://web.whatsapp.com/send?phone=${waNumber(client.phone)}&text=${encodeURIComponent(msg)}`, "_blank");
+    await upsertBoleto(client.id, { sent_whatsapp: true });
+  }
+  async function sendOverdueEmail(client) {
+    if (!client.email) { showToast("Cliente sem e-mail cadastrado."); return; }
+    const subject = applyTemplate(settings.overdue_email_subject, client, monthDate);
+    const body = applyTemplate(settings.overdue_email_body, client, monthDate);
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(client.email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, "_blank");
+    await upsertBoleto(client.id, { sent_email: true });
+  }
   async function sendWhatsApp(client) {
     if (!client.phone) { showToast("Cliente sem WhatsApp cadastrado."); return; }
     const b = boletos[client.id];
@@ -8005,8 +8022,8 @@ function App() {
                           </div>
                         </div>
                         <div className="flex gap-1.5">
-                          <button onClick={() => sendWhatsApp(c)} disabled={!c.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.wa }}>💬 Cobrar</button>
-                          <button onClick={() => sendEmail(c)} disabled={!c.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.brand }}>📧 Cobrar</button>
+                          <button onClick={() => sendOverdueWhatsApp(c)} disabled={!c.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.wa }}>💬 Cobrar</button>
+                          <button onClick={() => sendOverdueEmail(c)} disabled={!c.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30" style={{ background: COLORS.brand }}>📧 Cobrar</button>
                         </div>
                       </div>
                     ))}
@@ -8558,6 +8575,23 @@ function App() {
                 <label className="block">
                   <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Corpo do e-mail</span>
                   <textarea value={settings.email_body} onChange={(e) => saveSettings({ ...settings, email_body: e.target.value })} rows={5} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                </label>
+              </div>
+
+              <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <p className="text-xs font-bold" style={{ color: COLORS.danger }}>⚠️ Mensagens de cobrança (usadas nos botões "Cobrar" do Relatório de Inadimplência)</p>
+                <p className="text-xs" style={{ color: COLORS.inkMuted }}>Use {"{nome}"}, {"{valor}"}, {"{vencimento}"}, {"{plano}"}, {"{mesnome}"}.</p>
+                <label className="block">
+                  <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mensagem do WhatsApp (cobrança)</span>
+                  <textarea value={settings.overdue_wa_template} onChange={(e) => saveSettings({ ...settings, overdue_wa_template: e.target.value })} rows={4} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Assunto do e-mail (cobrança)</span>
+                  <input value={settings.overdue_email_subject} onChange={(e) => saveSettings({ ...settings, overdue_email_subject: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Corpo do e-mail (cobrança)</span>
+                  <textarea value={settings.overdue_email_body} onChange={(e) => saveSettings({ ...settings, overdue_email_body: e.target.value })} rows={6} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
                 </label>
               </div>
             </div>

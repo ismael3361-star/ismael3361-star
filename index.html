@@ -474,6 +474,16 @@ function SystemFooter({ userRole, session }) {
     </div>
   );
 }
+function sortByBankNumber(a, b) {
+  const na = a.bank_number ? Number(String(a.bank_number).replace(/\D/g, "")) : NaN;
+  const nb = b.bank_number ? Number(String(b.bank_number).replace(/\D/g, "")) : NaN;
+  const aEmpty = !a.bank_number || isNaN(na);
+  const bEmpty = !b.bank_number || isNaN(nb);
+  if (aEmpty && bEmpty) return (a.name || "").localeCompare(b.name || "", "pt-BR");
+  if (aEmpty) return 1;
+  if (bEmpty) return -1;
+  return na - nb;
+}
 function addressLine(c) {
   const parts = [c.street, c.number, c.neighborhood, c.city && c.state ? `${c.city}/${c.state}` : c.city || c.state].filter(Boolean);
   return parts.join(", ");
@@ -7154,7 +7164,7 @@ function App() {
                     representative_name: cc.representative_name, percentage: cc.percentage, notes: cc.notes,
                     commission: effectiveValue * (Number(cc.percentage) || 0) / 100,
                   };
-                }).filter(Boolean).sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
+                }).filter(Boolean).sort(sortByBankNumber);
 
                 const historyRows = commissionHistory
                   .filter((h) => h.reference_month === commissionViewMonth)
@@ -7164,7 +7174,7 @@ function App() {
                     representative_name: h.representative_name, percentage: h.percentage, notes: h.notes,
                     commission: h.commission_value, payment_date: h.payment_date,
                   }))
-                  .sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
+                  .sort(sortByBankNumber);
 
                 const rows = isHistory ? historyRows : liveRows.filter((r) => {
                   const cli = clients.find((c) => c.id === r.client_id);

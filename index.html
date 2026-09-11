@@ -428,6 +428,41 @@ function Avatar({ name, size = 40 }) {
     </div>
   );
 }
+function SystemFooter({ userRole, session }) {
+  const [now, setNow] = useState(new Date());
+  const [online, setOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => { window.removeEventListener("online", goOnline); window.removeEventListener("offline", goOffline); };
+  }, []);
+  const dataStr = now.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" });
+  const horaStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return (
+    <div className="shrink-0 border-t flex items-center justify-between gap-3 px-5 sm:px-8 py-2 text-[11px] flex-wrap" style={{ borderColor: COLORS.cardBorder, background: COLORS.sidebar, color: COLORS.inkMuted }}>
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="font-semibold" style={{ color: COLORS.ink }}>📅 {dataStr}</span>
+        <span className="font-semibold" style={{ color: COLORS.ink }}>🕒 {horaStr}</span>
+        <span className="flex items-center gap-1" title={online ? "Conectado" : "Sem conexão"}>
+          <span className="inline-block rounded-full" style={{ width: 7, height: 7, background: online ? COLORS.success : COLORS.danger }}></span>
+          {online ? "Online" : "Offline"}
+        </span>
+      </div>
+      <div className="flex items-center gap-2 truncate">
+        <span>👤 Logado como:</span>
+        <span className="font-semibold truncate" style={{ color: COLORS.brandLight }}>{session?.user?.email || "-"}</span>
+        <span className="hidden sm:inline px-2 py-0.5 rounded-full font-bold" style={{ background: "rgba(124,92,255,0.15)", color: COLORS.brandLight }}>{ROLE_LABELS[userRole] || userRole || "-"}</span>
+      </div>
+      <div className="hidden sm:block" style={{ color: COLORS.inkFaint }}>ADM/MIRE · MireData</div>
+    </div>
+  );
+}
 function addressLine(c) {
   const parts = [c.street, c.number, c.neighborhood, c.city && c.state ? `${c.city}/${c.state}` : c.city || c.state].filter(Boolean);
   return parts.join(", ");
@@ -5930,7 +5965,8 @@ function App() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0 overflow-y-auto">
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 py-7">
 
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
@@ -8651,6 +8687,8 @@ function App() {
           )}
 
         </div>
+        </div>
+        <SystemFooter userRole={userRole} session={session} />
       </main>
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-lg" style={{ background: COLORS.card, border: `1px solid ${COLORS.cardBorder}` }}>{toast}</div>}

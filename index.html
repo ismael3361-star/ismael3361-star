@@ -605,7 +605,7 @@ function TextField({ label, value, onChange, type = "text", placeholder, require
   );
 }
 
-function ClientForm({ initial, onSave, onCancel }) {
+function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || "");
   const [phone, setPhone] = useState(initial?.phone || "");
   const [email, setEmail] = useState(initial?.email || "");
@@ -629,6 +629,7 @@ function ClientForm({ initial, onSave, onCancel }) {
   const [cloud, setCloud] = useState(initial?.cloud || false);
   const [marketplace, setMarketplace] = useState(initial?.marketplace || "");
   const [groupName, setGroupName] = useState(initial?.group_name || "");
+  const [representativeName, setRepresentativeName] = useState(initial?.representative_name || "");
   const [additionalStores, setAdditionalStores] = useState(initial?.additional_stores?.length ? initial.additional_stores : []);
   const canSave = name.trim();
 
@@ -704,6 +705,13 @@ function ClientForm({ initial, onSave, onCancel }) {
         <TextField label="Integração" value={integration} onChange={setIntegration} placeholder="Ex: API própria, ERP..." />
         <TextField label="Marketplace integrado" value={marketplace} onChange={setMarketplace} placeholder="Ex: Mercado Livre, Amazon (se houver)" />
         <TextField label="Observações" value={notes} onChange={setNotes} placeholder="opcional" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Representante</span>
+          <input value={representativeName} onChange={(e) => setRepresentativeName(e.target.value)} list="client-rep-options" placeholder="Nome do representante (opcional)"
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <datalist id="client-rep-options">{existingReps.map((r) => <option key={r} value={r} />)}</datalist>
+          <span className="text-[10px]" style={{ color: COLORS.inkFaint }}>Ao preencher, o cliente aparece automaticamente em "Comissão Representantes".</span>
+        </label>
       </div>
 
       <div className="flex flex-wrap items-center gap-5 mb-5">
@@ -762,6 +770,7 @@ function ClientForm({ initial, onSave, onCancel }) {
             complement: complement.trim(), neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
             bank_number: bankNumber.trim(), integration: integration.trim(), annual, cloud, marketplace: marketplace.trim(),
             group_name: groupName.trim() || null, additional_stores: additionalStores.filter((s) => s.name.trim()),
+            representative_name: representativeName.trim() || null,
           })}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 shadow-sm hover:opacity-90 transition"
           style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}
@@ -1408,13 +1417,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
         <TextField label="Valor" value={value} onChange={setValue} type="number" placeholder="0" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento</span>
-          <div className="flex gap-2">
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-            <button type="button" onClick={() => { const n = new Date(); setDueDate(quintoDiaUtil(n.getFullYear(), n.getMonth())); }}
-              className="px-2.5 py-2 rounded-lg text-[11px] font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }} title="Preenche com o 5º dia útil deste mês">
-              5º dia útil
-            </button>
-          </div>
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
         </label>
       </div>
       <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: COLORS.ink }}>
@@ -2005,16 +2008,20 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
   const [vtValue, setVtValue] = useState(initial?.vt_value ?? "");
   const [vrDaily, setVrDaily] = useState("35");
   const [vrValue, setVrValue] = useState(initial?.vr_value ?? "");
+  const [homeOfficeDays, setHomeOfficeDays] = useState(initial?.home_office_days ? String(initial.home_office_days) : "");
+  const [notes, setNotes] = useState(initial?.notes || "");
   const [paid, setPaid] = useState(initial?.paid || false);
   const [paidDate, setPaidDate] = useState(initial?.paid_date || "");
 
   const employee = employees.find((e) => e.id === employeeId);
   const dias = Number(numDays) || 0;
-  const vtCalculado = dias * (VT_RATES[numConducoes] || 0) * 2;
+  const homeOffice = Number(homeOfficeDays) || 0;
+  const diasComVtVr = Math.max(dias - homeOffice, 0);
+  const vtCalculado = diasComVtVr * (VT_RATES[numConducoes] || 0) * 2;
 
-  useEffect(() => { if (!vtManual) setVtValue(vtCalculado ? vtCalculado.toFixed(2) : ""); }, [dias, numConducoes, vtManual]);
+  useEffect(() => { if (!vtManual) setVtValue(vtCalculado ? vtCalculado.toFixed(2) : ""); }, [dias, homeOfficeDays, numConducoes, vtManual]);
 
-  function calcularVR() { setVrValue((dias * (Number(vrDaily) || 0)).toFixed(2)); }
+  function calcularVR() { setVrValue((diasComVtVr * (Number(vrDaily) || 0)).toFixed(2)); }
 
   const total = (Number(vrValue) || 0) + (Number(vtValue) || 0);
   const canSave = employeeId && paymentDate;
@@ -2053,7 +2060,17 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
             <button type="button" onClick={calcularVR} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Calcular: dias × valor diário">🧮</button>
           </div>
         </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>🏠 Dias de home office</span>
+          <input value={homeOfficeDays} onChange={(e) => setHomeOfficeDays(e.target.value)} type="number" placeholder="0" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} title="Dias em home office não recebem VT e VR — serão descontados automaticamente do cálculo" />
+        </label>
+        <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Ex: faltou 1 dia" />
       </div>
+      {homeOffice > 0 && (
+        <div className="text-xs font-semibold rounded-lg px-3 py-2" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.10)" }}>
+          🏠 {homeOffice} dia{homeOffice > 1 ? "s" : ""} de home office descontado{homeOffice > 1 ? "s" : ""} do VT e VR — cálculo considerando {diasComVtVr} dia{diasComVtVr === 1 ? "" : "s"}.
+        </div>
+      )}
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-bold" style={{ color: COLORS.success }}>Total a receber: {fmtMoney(total)}</span>
         <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-2.5 py-1 rounded-lg" style={{ color: paid ? COLORS.success : COLORS.inkMuted, background: paid ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)" }}>
@@ -2068,6 +2085,7 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
             id: initial?.id || uid(), employee_id: employeeId, employee_name: employee?.name || "", payment_date: paymentDate,
             days_worked: numDays ? `${numDays} dias` : "", vr_value: Number(vrValue) || 0, vt_value: Number(vtValue) || 0,
             transport_desc: transportDesc, total_value: total, paid, paid_date: paid ? (paidDate || null) : null,
+            home_office_days: homeOffice, notes: notes.trim() || null,
           })}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
           Salvar lançamento
@@ -3422,6 +3440,7 @@ function App() {
   const [showClientCommissionForm, setShowClientCommissionForm] = useState(false);
   const [editingClientCommission, setEditingClientCommission] = useState(null);
   const [commissionRepFilter, setCommissionRepFilter] = useState("");
+  const [commissionSearch, setCommissionSearch] = useState("");
   const [commissionHistory, setCommissionHistory] = useState([]);
   const [commissionViewMonth, setCommissionViewMonth] = useState("");
   const [closeMonthKey, setCloseMonthKey] = useState(new Date().toISOString().slice(0, 7));
@@ -4478,14 +4497,15 @@ function App() {
     const rows = visibleVtVrRecords.map((r) => [
       r.employee_name || "-", r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
       r.days_worked || "-", fmtMoney(r.vr_value), fmtMoney(r.vt_value), r.transport_desc || "-", fmtMoney(r.total_value), r.paid ? "Pago" : "Pendente",
+      Number(r.home_office_days) > 0 ? `${r.home_office_days}d` : "-", r.notes || "-",
     ]);
     const totalGeral = visibleVtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0);
 
     doc.autoTable({
       startY: 44,
-      head: [["Funcionário", "Data", "Dias", "VR", "VT", "Transporte", "Total", "Situação"]],
+      head: [["Funcionário", "Data", "Dias", "VR", "VT", "Transporte", "Total", "Situação", "Home Office", "Obs"]],
       body: rows,
-      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalGeral), ""]],
+      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalGeral), "", "", ""]],
       styles: { fontSize: 8.5 },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
@@ -4599,6 +4619,53 @@ function App() {
       margin: { left: 14, right: 14 },
     });
     doc.save(`comissao-representantes-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
+  function exportSellerCommissionsPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "landscape" });
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text("Comissão Etiquetas", 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+
+    const bySeller = {};
+    romaneios.forEach((r) => {
+      const s = r.seller || "Sem vendedor";
+      if (!bySeller[s]) bySeller[s] = [];
+      bySeller[s].push(r);
+    });
+    const sellers = Object.keys(bySeller).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    let y = 44;
+    sellers.forEach((s) => {
+      const rows = bySeller[s];
+      const body = rows.map((r) => {
+        const venda = romaneioVenda(r);
+        const qtd = romaneioQtd(r);
+        const custoTotal = romaneioCustoTotal(r);
+        const lucro = romaneioLucro(r);
+        const comissao = romaneioComissao(r);
+        return [r.number || "-", r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", qtd, fmtMoney(venda), fmtMoney(custoTotal), fmtMoney(lucro), `${r.commission_percent || 0}%`, fmtMoney(comissao), r.commission_paid ? "Pago" : "Pendente"];
+      });
+      const sellerTotal = rows.reduce((sum, r) => sum + romaneioComissao(r), 0);
+      if (y > 180) { doc.addPage(); y = 20; }
+      doc.setFontSize(10);
+      doc.setTextColor(30);
+      doc.text(`${s} — Total: ${fmtMoney(sellerTotal)}`, 14, y);
+      doc.autoTable({
+        startY: y + 4,
+        head: [["Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão", "Situação"]],
+        body,
+        styles: { fontSize: 8 },
+        headStyles: { fillColor: [124, 92, 255] },
+        margin: { left: 14, right: 14 },
+      });
+      y = doc.lastAutoTable.finalY + 12;
+    });
+    doc.save(`comissao-etiquetas-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
   function exportItagEntriesPDF() {
@@ -4715,6 +4782,17 @@ function App() {
 
   async function handleSaveClient(c) {
     await supa.from("clients").upsert(c);
+    if (c.representative_name) {
+      const existing = clientCommissions.find((cc) => cc.client_id === c.id);
+      if (existing) {
+        if (existing.representative_name !== c.representative_name) {
+          await supa.from("client_commissions").update({ representative_name: c.representative_name }).eq("id", existing.id);
+        }
+      } else {
+        await supa.from("client_commissions").upsert({ id: uid(), client_id: c.id, representative_name: c.representative_name, percentage: 0, notes: null, monthly_value_override: null });
+      }
+      await loadClientCommissions();
+    }
     setShowForm(false); setEditing(null);
     await loadClients();
     logActivity(`Cliente salvo: ${c.name}`);
@@ -6301,7 +6379,7 @@ function App() {
                 <span className="text-[11px] ml-auto" style={{ color: COLORS.inkFaint }}>💾 O backup completo salva clientes, boletos e anotações.</span>
               </div>
 
-              {showForm && <div className="mb-4" ref={clientFormRef}><ClientForm initial={editing} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></div>}
+              {showForm && <div className="mb-4" ref={clientFormRef}><ClientForm initial={editing} existingReps={[...new Set(clientCommissions.map((cc) => cc.representative_name).filter(Boolean))]} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></div>}
 
               {!showForm && (
               <>
@@ -7024,7 +7102,11 @@ function App() {
                 const closedMonths = [...new Set(commissionHistory.map((h) => h.reference_month))].sort().reverse();
 
                 const existingReps = [...new Set(liveRows.map((r) => r.representative_name).filter(Boolean))];
-                const visibleRows = commissionRepFilter ? rows.filter((r) => r.representative_name === commissionRepFilter) : rows;
+                const repFilteredRows = commissionRepFilter ? rows.filter((r) => r.representative_name === commissionRepFilter) : rows;
+                const searchTerm = commissionSearch.trim().toLowerCase();
+                const visibleRows = !searchTerm ? repFilteredRows : repFilteredRows.filter((r) =>
+                  (r.name || "").toLowerCase().includes(searchTerm) || (r.bank_number || "").toLowerCase().includes(searchTerm)
+                );
 
                 const byRep = {};
                 rows.forEach((r) => { byRep[r.representative_name] = (byRep[r.representative_name] || 0) + r.commission; });
@@ -7054,6 +7136,10 @@ function App() {
                             <option value="">Todos os representantes</option>
                             {repNames.map((r) => <option key={r} value={r}>{r}</option>)}
                           </select>
+                        </label>
+                        <label className="block">
+                          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Buscar (nome ou banco)</span>
+                          <input value={commissionSearch} onChange={(e) => setCommissionSearch(e.target.value)} placeholder="Nome ou nº do banco" className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
                         </label>
                       </div>
                       <div className="flex flex-wrap gap-2 items-end">
@@ -7105,7 +7191,7 @@ function App() {
 
                     {visibleRows.length === 0 ? (
                       <div className="rounded-2xl border p-8 text-center text-sm" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.inkMuted }}>Nenhum cliente com representante atribuído {commissionRepFilter ? `para ${commissionRepFilter}` : ""}.</div>
-                    ) : repNames.filter((r) => !commissionRepFilter || r === commissionRepFilter).map((repName) => {
+                    ) : repNames.filter((r) => (!commissionRepFilter || r === commissionRepFilter) && visibleRows.some((row) => row.representative_name === r)).map((repName) => {
                       const repRows = visibleRows.filter((r) => r.representative_name === repName);
                       const repTotalMensalidade = repRows.reduce((s, r) => s + (Number(r.value) || 0), 0);
                       const repTotalComissao = repRows.reduce((s, r) => s + r.commission, 0);
@@ -7760,9 +7846,9 @@ function App() {
                     <tbody>
                       {visibleVtVrRecords.map((r, i) => (
                         <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                          <td className="p-3 font-semibold">{r.employee_name}</td>
+                          <td className="p-3 font-semibold">{r.employee_name}{r.notes && <span className="ml-1" title={r.notes}>📝</span>}</td>
                           <td className="p-3">{r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                          <td className="p-3">{r.days_worked || "-"}</td>
+                          <td className="p-3">{r.days_worked || "-"}{Number(r.home_office_days) > 0 && <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }} title="Dias de home office (descontados do VT/VR)">🏠 {r.home_office_days}d</span>}</td>
                           <td className="p-3">{money(r.vr_value)}</td>
                           <td className="p-3">{money(r.vt_value)}</td>
                           <td className="p-3">{r.transport_desc || "-"}</td>
@@ -7936,6 +8022,9 @@ function App() {
                 const totalAberto = totalComissao - totalPago;
                 return (
                   <>
+                    <div className="flex justify-end mb-3">
+                      <button onClick={exportSellerCommissionsPDF} disabled={sellers.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                    </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                       <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total em comissões</div>

@@ -2246,7 +2246,8 @@ function SignatureCanvas({ value, onChange }) {
 }
 
 function ChecklistSection({ title, items, onChange, withObs }) {
-  function toggle(i) { onChange(items.map((it, idx) => idx === i ? { ...it, done: !it.done } : it)); }
+  function toggle(i) { onChange(items.map((it, idx) => idx === i ? { ...it, done: !it.done, na: false } : it)); }
+  function toggleNA(i) { onChange(items.map((it, idx) => idx === i ? { ...it, na: !it.na, done: false } : it)); }
   function setObs(i, val) { onChange(items.map((it, idx) => idx === i ? { ...it, obs: val } : it)); }
   return (
     <div>
@@ -2254,10 +2255,13 @@ function ChecklistSection({ title, items, onChange, withObs }) {
       <div className="space-y-1.5">
         {items.map((it, i) => (
           <div key={i} className="flex items-center gap-2 flex-wrap">
-            <label className="flex items-center gap-2 text-sm cursor-pointer px-3 py-1.5 rounded-lg border shrink-0" style={{ borderColor: it.done ? COLORS.success : COLORS.cardBorder, background: it.done ? "rgba(34,197,94,0.08)" : "transparent", color: it.done ? COLORS.success : COLORS.ink, minWidth: "260px" }}>
-              <input type="checkbox" checked={!!it.done} onChange={() => toggle(i)} />
+            <label className="flex items-center gap-2 text-sm cursor-pointer px-3 py-1.5 rounded-lg border shrink-0" style={{ borderColor: it.done ? COLORS.success : COLORS.cardBorder, background: it.done ? "rgba(34,197,94,0.08)" : "transparent", color: it.na ? COLORS.inkFaint : it.done ? COLORS.success : COLORS.ink, minWidth: "260px", opacity: it.na ? 0.5 : 1, textDecoration: it.na ? "line-through" : "none" }}>
+              <input type="checkbox" checked={!!it.done} disabled={!!it.na} onChange={() => toggle(i)} />
               {it.label}
             </label>
+            <button type="button" onClick={() => toggleNA(i)} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border shrink-0" style={{ borderColor: it.na ? COLORS.warn : COLORS.cardBorder, background: it.na ? "rgba(245,158,11,0.15)" : "transparent", color: it.na ? COLORS.warn : COLORS.inkMuted }}>
+              {it.na ? "✓ Não se aplica" : "Não se aplica"}
+            </button>
             {withObs && (
               <input value={it.obs || ""} onChange={(e) => setObs(i, e.target.value)} placeholder="Observação (opcional)" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
             )}
@@ -2341,8 +2345,8 @@ function ViewChecklist({ items }) {
   return (
     <div className="flex flex-wrap gap-1.5 mb-2">
       {items.map((it, i) => (
-        <span key={i} className="text-[11px] font-semibold px-2 py-1 rounded-full" style={{ color: it.done ? COLORS.success : COLORS.inkFaint, background: it.done ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.04)" }}>
-          {it.done ? "✓" : "○"} {it.label}{it.obs ? ` — ${it.obs}` : ""}
+        <span key={i} className="text-[11px] font-semibold px-2 py-1 rounded-full" style={{ color: it.na ? COLORS.inkFaint : it.done ? COLORS.success : COLORS.inkFaint, background: it.na ? "rgba(245,158,11,0.08)" : it.done ? "rgba(34,197,94,0.1)" : "rgba(255,255,255,0.04)", textDecoration: it.na ? "line-through" : "none" }}>
+          {it.na ? "N/A" : it.done ? "✓" : "○"} {it.label}{it.obs ? ` — ${it.obs}` : ""}
         </span>
       ))}
     </div>
@@ -2354,8 +2358,8 @@ function TechImplementationViewer({ t, onClose }) {
     ...(t.checklist_instalacao || []), ...(t.checklist_migracao_dados || []), ...(t.checklist_equipamentos || []),
     ...(t.checklist_etiqueta || []), ...(t.checklist_configuracoes || []), ...(t.checklist_testes || []), ...(t.checklist_treinamento_modulos || []),
   ];
-  const doneCount = allChecklists.filter((it) => it.done).length;
-  const total = allChecklists.length || 1;
+  const doneCount = allChecklists.filter((it) => it.done && !it.na).length;
+  const total = allChecklists.filter((it) => !it.na).length || 1;
   const pct = Math.round((doneCount / total) * 100);
 
   return (
@@ -3878,7 +3882,10 @@ function App() {
       y += 5.5;
     }
     function checklistTable(items, withObs) {
-      const body = items.map((it) => withObs ? [it.done ? "X" : "", it.label, it.obs || ""] : [it.done ? "X" : "", it.label]);
+      const body = items.map((it) => {
+        const mark = it.na ? "N/A" : it.done ? "X" : "";
+        return withObs ? [mark, it.label, it.obs || ""] : [mark, it.label];
+      });
       doc.autoTable({
         startY: y,
         head: withObs ? [["OK", "Item", "Observação"]] : [["OK", "Item"]],
@@ -7221,8 +7228,8 @@ function App() {
                             ...(t.checklist_instalacao || []), ...(t.checklist_migracao_dados || []), ...(t.checklist_equipamentos || []),
                             ...(t.checklist_etiqueta || []), ...(t.checklist_configuracoes || []), ...(t.checklist_testes || []), ...(t.checklist_treinamento_modulos || []),
                           ];
-                          const doneCount = allChecklists.filter((it) => it.done).length;
-                          const total = allChecklists.length || 1;
+                          const doneCount = allChecklists.filter((it) => it.done && !it.na).length;
+                          const total = allChecklists.filter((it) => !it.na).length || 1;
                           const pct = Math.round((doneCount / total) * 100);
                           const statusColor = t.status_final === "concluida" ? COLORS.success : t.status_final === "nao_concluida" ? COLORS.danger : pct > 0 ? COLORS.warn : COLORS.inkMuted;
                           const pendAbertas = (t.pendencias || []).filter((p) => p.status !== "concluida").length;

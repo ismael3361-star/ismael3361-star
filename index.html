@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>ADM / MIRE</title>
 <link rel="icon" id="favicon-link" />
-<meta name="theme-color" content="#0B1220" />
+<meta name="theme-color" content="#111A2E" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -114,7 +114,7 @@ const supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const LOGO_DATA_URI = "data:image/png;base64,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";
 
 const COLORS = {
-  bg: "#0B1220", sidebar: "#0E1729", card: "#131E33", cardBorder: "#22304A",
+  bg: "#111A2E", sidebar: "#16233D", card: "#1C2942", cardBorder: "#2C3D5C",
   ink: "#F1F5F9", inkMuted: "#8A97AC", inkFaint: "#5B6B85",
   brand: "#7C5CFF", brandLight: "#9B82FF",
   success: "#22C55E", warn: "#F59E0B", danger: "#EF4444", info: "#3B82F6",
@@ -154,7 +154,7 @@ function displayNameFromEmail(email) {
   try {
     const manifest = {
       name: "ADM / MIRE", short_name: "ADM MIRE", start_url: ".", display: "standalone",
-      background_color: "#0B1220", theme_color: "#0B1220",
+      background_color: "#111A2E", theme_color: "#111A2E",
       icons: [{ src: LOGO_DATA_URI, sizes: "192x192", type: "image/png" }, { src: LOGO_DATA_URI, sizes: "512x512", type: "image/png" }],
     };
     const manifestBlob = new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" });
@@ -606,7 +606,7 @@ function MiniMoneyField({ label, value, onSave, fieldKey, title }) {
   return (
     <label className="block" style={{ color: COLORS.inkMuted }} title={title}>
       <span className="block text-[10px] font-semibold mb-0.5 truncate">{label}</span>
-      <span className="flex items-center rounded-lg border overflow-hidden w-full" style={{ borderColor: COLORS.cardBorder, background: "#0E1729" }}>
+      <span className="flex items-center rounded-lg border overflow-hidden w-full" style={{ borderColor: COLORS.cardBorder, background: "#16233D" }}>
         <span className="pl-2 text-[11px] shrink-0" style={{ color: COLORS.inkFaint }}>R$</span>
         <input type="number" step="0.01" key={fieldKey} defaultValue={value || ""} placeholder="0,00"
           onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(value) || 0)) onSave(v); }}
@@ -621,7 +621,7 @@ function TextField({ label, value, onChange, type = "text", placeholder, require
     <label className="block">
       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>{label}{required && " *"}</span>
       <input type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink, background: "#0E1729" }} />
+        className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink, background: "#16233D" }} />
     </label>
   );
 }
@@ -709,7 +709,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>CNPJ / CPF {cnpjLoading && <span className="font-normal normal-case">(buscando...)</span>}</span>
           <div className="flex gap-2">
             <input value={cnpj} onChange={(e) => setCnpj(maskCNPJ(e.target.value))} placeholder="00.000.000/0000-00"
-              className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: cnpjError ? COLORS.danger : COLORS.cardBorder, color: COLORS.ink, background: "#0E1729" }} />
+              className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: cnpjError ? COLORS.danger : COLORS.cardBorder, color: COLORS.ink, background: "#16233D" }} />
             <button type="button" onClick={lookupCNPJ} className="px-3 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>🔍 Buscar</button>
           </div>
           {cnpjError && <span className="text-[11px]" style={{ color: COLORS.danger }}>{cnpjError}</span>}
@@ -719,7 +719,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
         <TextField label={annual ? "Valor da mensalidade anual" : "Valor da mensalidade"} value={value} onChange={setValue} type="number" placeholder="150" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento (dia/mês/ano)</span>
-          <input type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Plano / serviço" value={plan} onChange={setPlan} placeholder="Ex: Plano Premium" />
         <TextField label="Código do banco" value={bankNumber} onChange={setBankNumber} placeholder="Ex: 341 (Itaú)" />
@@ -729,7 +729,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Representante</span>
           <input value={representativeName} onChange={(e) => setRepresentativeName(e.target.value)} list="client-rep-options" placeholder="Nome do representante (opcional)"
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           <datalist id="client-rep-options">{existingReps.map((r) => <option key={r} value={r} />)}</datalist>
           <span className="text-[10px]" style={{ color: COLORS.inkFaint }}>Ao preencher, o cliente aparece automaticamente em "Comissão Representantes".</span>
         </label>
@@ -751,7 +751,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
         <label className="block sm:col-span-1">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>CEP</span>
           <input value={cep} placeholder="00000-000" onChange={(e) => setCep(maskCEP(e.target.value))} onBlur={(e) => lookupCEP(e.target.value)}
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: cepError ? COLORS.danger : COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: cepError ? COLORS.danger : COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           {cepError && <span className="text-[11px]" style={{ color: COLORS.danger }}>{cepError}</span>}
         </label>
         <div className="sm:col-span-2"><TextField label="Rua / Logradouro" value={street} onChange={setStreet} placeholder="preenchido automaticamente" /></div>
@@ -771,8 +771,8 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
           <div className="space-y-1.5">
             {additionalStores.map((s, i) => (
               <div key={i} className="flex gap-2 items-center flex-wrap">
-                <input value={s.name} onChange={(e) => updateStore(i, "name", e.target.value)} placeholder="Nome da loja" className="flex-1 min-w-[140px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-                <input value={s.address} onChange={(e) => updateStore(i, "address", e.target.value)} placeholder="Endereço (opcional)" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                <input value={s.name} onChange={(e) => updateStore(i, "name", e.target.value)} placeholder="Nome da loja" className="flex-1 min-w-[140px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+                <input value={s.address} onChange={(e) => updateStore(i, "address", e.target.value)} placeholder="Endereço (opcional)" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 <button type="button" onClick={() => removeStore(i)} className="px-2 py-1.5 text-sm" style={{ color: COLORS.danger }}>🗑️</button>
               </div>
             ))}
@@ -867,7 +867,7 @@ function ProspectForm({ initial, onSave, onCancel }) {
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>CNPJ / CPF {cnpjLoading && <span className="font-normal normal-case">(buscando...)</span>}</span>
           <div className="flex gap-2">
             <input value={cnpj} onChange={(e) => setCnpj(maskCNPJ(e.target.value))} placeholder="00.000.000/0000-00"
-              className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: cnpjError ? COLORS.danger : COLORS.cardBorder, color: COLORS.ink, background: "#0E1729" }} />
+              className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: cnpjError ? COLORS.danger : COLORS.cardBorder, color: COLORS.ink, background: "#16233D" }} />
             <button type="button" onClick={lookupCNPJ} className="px-3 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>🔍 Buscar</button>
           </div>
           {cnpjError && <span className="text-[11px]" style={{ color: COLORS.danger }}>{cnpjError}</span>}
@@ -925,7 +925,7 @@ function ClientPicker({ prospects, clients, value, onSelect, onCreateNew }) {
       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente *</span>
       {selected ? (
         <div className="flex items-center gap-2">
-          <div className="flex-1 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>{selected.name}</div>
+          <div className="flex-1 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>{selected.name}</div>
           <button onClick={() => { onSelect(""); setSearch(""); }} className="px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>Trocar</button>
         </div>
       ) : (
@@ -936,7 +936,7 @@ function ClientPicker({ prospects, clients, value, onSelect, onCreateNew }) {
             onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); e.target.blur(); } }}
             placeholder="Digite para buscar o cliente por nome..."
             className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-            style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}
+            style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}
           />
           {open && (
             <button type="button" onMouseDown={(e) => { e.preventDefault(); setOpen(false); }} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.inkMuted }} title="Fechar busca">✕</button>
@@ -985,7 +985,7 @@ function RomaneioClientPicker({ romaneioClients, value, onSelect }) {
       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente *</span>
       {selected ? (
         <div className="flex items-center gap-2">
-          <div className="flex-1 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>{selected.name}</div>
+          <div className="flex-1 rounded-lg border px-3 py-2 text-sm" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>{selected.name}</div>
           <button onClick={() => { onSelect(""); setSearch(""); }} className="px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>Trocar</button>
         </div>
       ) : (
@@ -996,7 +996,7 @@ function RomaneioClientPicker({ romaneioClients, value, onSelect }) {
             onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); e.target.blur(); } }}
             placeholder="Digite para buscar o cliente do romaneio..."
             className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
-            style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}
+            style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}
           />
           {open && (
             <button type="button" onMouseDown={(e) => { e.preventDefault(); setOpen(false); }} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.inkMuted }} title="Fechar busca">✕</button>
@@ -1126,7 +1126,7 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
         <TextField label="Número da proposta" value={number} onChange={setNumber} required />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Validade da proposta</span>
-          <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Valor de implantação" value={installationValue} onChange={setInstallationValue} type="number" placeholder="2000" />
         <TextField label="Valor de treinamento" value={trainingValue} onChange={setTrainingValue} type="number" placeholder="0" />
@@ -1148,8 +1148,8 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
           <div className="space-y-2">
             {stores.map((it, i) => (
               <div key={i} className="flex gap-2 items-center">
-                <input value={it.desc} onChange={(e) => updateStore(i, "desc", e.target.value)} placeholder="Ex: Loja 1" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-                <input value={it.value} onChange={(e) => updateStore(i, "value", e.target.value)} type="number" placeholder="Valor" className="w-28 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                <input value={it.desc} onChange={(e) => updateStore(i, "desc", e.target.value)} placeholder="Ex: Loja 1" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+                <input value={it.value} onChange={(e) => updateStore(i, "value", e.target.value)} type="number" placeholder="Valor" className="w-28 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 {stores.length > 1 && <button onClick={() => removeStore(i)} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.danger }}>🗑️</button>}
               </div>
             ))}
@@ -1162,7 +1162,7 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
           <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer w-40 shrink-0" style={{ color: COLORS.ink }}>
             <input type="checkbox" checked={hasFactory} onChange={(e) => setHasFactory(e.target.checked)} /> Fábrica
           </label>
-          {hasFactory && <input value={factoryValue} onChange={(e) => setFactoryValue(e.target.value)} type="number" placeholder="Valor" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />}
+          {hasFactory && <input value={factoryValue} onChange={(e) => setFactoryValue(e.target.value)} type="number" placeholder="Valor" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />}
         </div>
 
         {/* Produção */}
@@ -1170,7 +1170,7 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
           <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer w-40 shrink-0" style={{ color: COLORS.ink }}>
             <input type="checkbox" checked={hasProduction} onChange={(e) => setHasProduction(e.target.checked)} /> Produção
           </label>
-          {hasProduction && <input value={productionValue} onChange={(e) => setProductionValue(e.target.value)} type="number" placeholder="Valor" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />}
+          {hasProduction && <input value={productionValue} onChange={(e) => setProductionValue(e.target.value)} type="number" placeholder="Valor" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />}
         </div>
 
         {/* Cloud */}
@@ -1179,11 +1179,11 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
             <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer w-40 shrink-0" style={{ color: COLORS.ink }}>
               <input type="checkbox" checked={hasCloud} onChange={(e) => setHasCloud(e.target.checked)} /> Cloud
             </label>
-            {hasCloud && <input value={cloudValue} onChange={(e) => setCloudValue(e.target.value)} type="number" placeholder="Valor" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />}
+            {hasCloud && <input value={cloudValue} onChange={(e) => setCloudValue(e.target.value)} type="number" placeholder="Valor" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />}
           </div>
           {hasCloud && (
             <input value={cloudDescription} onChange={(e) => setCloudDescription(e.target.value)} placeholder="Descrição do serviço de Cloud"
-              className="mt-2 w-full sm:ml-[168px] sm:w-[calc(100%-168px)] rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              className="mt-2 w-full sm:ml-[168px] sm:w-[calc(100%-168px)] rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           )}
         </div>
 
@@ -1197,11 +1197,11 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
               <>
                 <div>
                   <span className="block text-[10px] font-semibold mb-0.5" style={{ color: COLORS.inkMuted }}>Valor único (setup)</span>
-                  <input value={integrationSetupValue} onChange={(e) => setIntegrationSetupValue(e.target.value)} type="number" placeholder="Ex: 1000" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  <input value={integrationSetupValue} onChange={(e) => setIntegrationSetupValue(e.target.value)} type="number" placeholder="Ex: 1000" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 </div>
                 <div>
                   <span className="block text-[10px] font-semibold mb-0.5" style={{ color: COLORS.inkMuted }}>Valor mensal</span>
-                  <input value={integrationMonthlyValue} onChange={(e) => setIntegrationMonthlyValue(e.target.value)} type="number" placeholder="Ex: 100" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  <input value={integrationMonthlyValue} onChange={(e) => setIntegrationMonthlyValue(e.target.value)} type="number" placeholder="Ex: 100" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 </div>
               </>
             )}
@@ -1229,8 +1229,8 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
           <div className="space-y-2">
             {customizations.map((it, i) => (
               <div key={i} className="flex gap-2 items-center">
-                <input value={it.desc} onChange={(e) => updateCustom(i, "desc", e.target.value)} placeholder="Descrição da customização" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-                <input value={it.value} onChange={(e) => updateCustom(i, "value", e.target.value)} type="number" placeholder="Valor" className="w-28 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                <input value={it.desc} onChange={(e) => updateCustom(i, "desc", e.target.value)} placeholder="Descrição da customização" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+                <input value={it.value} onChange={(e) => updateCustom(i, "value", e.target.value)} type="number" placeholder="Valor" className="w-28 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 <button onClick={() => removeCustom(i)} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.danger }}>🗑️</button>
               </div>
             ))}
@@ -1241,7 +1241,7 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
         {/* Desconto */}
         <div className="flex items-center gap-3 pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
           <label className="text-sm font-semibold w-40 shrink-0" style={{ color: COLORS.warn }}>Desconto (R$)</label>
-          <input value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} type="number" placeholder="0" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} type="number" placeholder="0" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </div>
 
         {/* Resumo: duas colunas principais + detalhes */}
@@ -1271,7 +1271,7 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
 
       <label className="block">
         <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Conteúdo da proposta (editável)</span>
-        <textarea value={bodyText} onChange={(e) => setBodyText(e.target.value)} rows={14} className="w-full rounded-lg border px-3 py-2 text-xs outline-none font-mono" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        <textarea value={bodyText} onChange={(e) => setBodyText(e.target.value)} rows={14} className="w-full rounded-lg border px-3 py-2 text-xs outline-none font-mono" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
       </label>
 
       <div className="flex gap-2">
@@ -1429,7 +1429,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Categoria</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
             {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
@@ -1438,7 +1438,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
         <TextField label="Valor" value={value} onChange={setValue} type="number" placeholder="0" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento</span>
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
       </div>
       <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: COLORS.ink }}>
@@ -1533,7 +1533,7 @@ function CommissionClientPicker({ clients, value, onSelect, disabled }) {
     return (
       <label className="block">
         <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
-        <input disabled value={selected ? `${selected.bank_number ? selected.bank_number + " — " : ""}${selected.name}` : ""} className="w-full rounded-lg border px-3 py-2 text-sm outline-none opacity-60" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        <input disabled value={selected ? `${selected.bank_number ? selected.bank_number + " — " : ""}${selected.name}` : ""} className="w-full rounded-lg border px-3 py-2 text-sm outline-none opacity-60" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
       </label>
     );
   }
@@ -1548,9 +1548,9 @@ function CommissionClientPicker({ clients, value, onSelect, disabled }) {
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Digite o nome ou o nº do banco..."
         className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
-        style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
       {open && (
-        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border shadow-lg" style={{ borderColor: COLORS.cardBorder, background: "#0E1729" }}>
+        <div className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border shadow-lg" style={{ borderColor: COLORS.cardBorder, background: "#16233D" }}>
           {filtered.length === 0 ? (
             <div className="px-3 py-2 text-xs" style={{ color: COLORS.inkMuted }}>Nenhum cliente encontrado.</div>
           ) : filtered.map((c) => (
@@ -1575,7 +1575,7 @@ function RepresentativePicker({ existingReps, value, onChange }) {
       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Representante</span>
       {!showNew ? (
         <div className="flex gap-2">
-          <select value={value} onChange={(e) => onChange(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+          <select value={value} onChange={(e) => onChange(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
             <option value="">Selecione...</option>
             {existingReps.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
@@ -1583,7 +1583,7 @@ function RepresentativePicker({ existingReps, value, onChange }) {
         </div>
       ) : (
         <div className="flex gap-2">
-          <input value={newName} onChange={(e) => { setNewName(e.target.value); onChange(e.target.value); }} placeholder="Nome do novo representante" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input value={newName} onChange={(e) => { setNewName(e.target.value); onChange(e.target.value); }} placeholder="Nome do novo representante" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           {existingReps.length > 0 && <button type="button" onClick={() => { setShowNew(false); setNewName(""); onChange(""); }} className="px-3 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>Cancelar</button>}
         </div>
       )}
@@ -1696,12 +1696,12 @@ function DbMigrationForm({ initial, onSave, onCancel }) {
         <TextField label="Solicitado por" value={requestedBy} onChange={setRequestedBy} placeholder="Quem pediu a migração" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da solicitação</span>
-          <input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Banco migrado" value={migratedBank} onChange={setMigratedBank} placeholder="Ex: Bling, Tiny, Consinco..." required />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Status</span>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
             <option value="pendente">Pendente</option>
             <option value="andamento">Em andamento</option>
             <option value="concluida">Concluída</option>
@@ -1709,12 +1709,12 @@ function DbMigrationForm({ initial, onSave, onCancel }) {
         </label>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de conclusão</span>
-          <input type="date" value={completionDate} onChange={(e) => setCompletionDate(e.target.value)} disabled={status !== "concluida"} className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={completionDate} onChange={(e) => setCompletionDate(e.target.value)} disabled={status !== "concluida"} className="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
       </div>
       <div>
         <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Observações</span>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Pendências, problemas encontrados, detalhes úteis..." className="w-full rounded-lg border px-3 py-2 text-sm outline-none resize-y" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Pendências, problemas encontrados, detalhes úteis..." className="w-full rounded-lg border px-3 py-2 text-sm outline-none resize-y" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
       </div>
       <div>
         <span className="block text-xs font-semibold mb-1.5" style={{ color: COLORS.inkMuted }}>O que foi migrado</span>
@@ -1775,24 +1775,24 @@ function ItagEntryForm({ initial, onSave, onCancel }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pedido</span>
-          <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Nota fiscal (Nº NF)" value={invoiceNumber} onChange={setInvoiceNumber} placeholder="21884" />
         <TextField label="Modelo" value={model} onChange={setModel} placeholder="Ex: Etiqueta RFID 40x25" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de entrada</span>
-          <input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Quantidade" value={quantity} onChange={setQuantity} type="number" placeholder="3500" />
         <TextField label="Valor unitário" value={unitValue} onChange={setUnitValue} type="number" placeholder="0.2999" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Vencimento 1</span>
-          <input type="date" value={due1Date} onChange={(e) => setDue1Date(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={due1Date} onChange={(e) => setDue1Date(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Valor parcela 1" value={due1Value} onChange={setDue1Value} type="number" placeholder="0" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Vencimento 2</span>
-          <input type="date" value={due2Date} onChange={(e) => setDue2Date(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={due2Date} onChange={(e) => setDue2Date(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Valor parcela 2" value={due2Value} onChange={setDue2Value} type="number" placeholder="0" />
       </div>
@@ -1831,7 +1831,7 @@ function EmployeePicker({ employees, value, onSelect, onCreateNew }) {
     <div>
       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Funcionário *</span>
       <div className="flex gap-2">
-        <select value={value} onChange={(e) => onSelect(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+        <select value={value} onChange={(e) => onSelect(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
           <option value="">Selecione...</option>
           {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
@@ -1841,7 +1841,7 @@ function EmployeePicker({ employees, value, onSelect, onCreateNew }) {
       </div>
       {showNew && (
         <div className="flex gap-2 mt-2">
-          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nome do funcionário" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nome do funcionário" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           <button type="button" onClick={async () => { if (!newName.trim()) return; const emp = await onCreateNew(newName.trim()); onSelect(emp.id); setNewName(""); setShowNew(false); }} className="px-3 py-2 rounded-lg text-xs font-semibold text-white" style={{ background: COLORS.brand }}>Salvar</button>
         </div>
       )}
@@ -1890,18 +1890,18 @@ function SupplierOrderForm({ initial, onSave, onCancel }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pedido</span>
-          <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Opcional" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Modelo</span>
-          <select value={model} onChange={(e) => setModel(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+          <select value={model} onChange={(e) => setModel(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
             {SUPPLIER_MODELS.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </label>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de entrada</span>
-          <input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={arrivalDate} onChange={(e) => setArrivalDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Quantidade (caixas)" value={quantity} onChange={setQuantity} type="number" placeholder="16" />
         <TextField label="Valor unitário" value={unitValue} onChange={setUnitValue} type="number" placeholder="172" />
@@ -1925,8 +1925,8 @@ function SupplierOrderForm({ initial, onSave, onCancel }) {
           {installments.map((it, i) => (
             <div key={i} className="flex gap-2 items-center flex-wrap">
               <span className="text-xs font-bold w-6 shrink-0" style={{ color: COLORS.inkFaint }}>{i + 1}ª</span>
-              <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="flex-1 min-w-[130px] rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor" className="w-28 rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="flex-1 min-w-[130px] rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+              <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor" className="w-28 rounded-lg border px-2 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
               <button type="button" onClick={() => updateInst(i, "paid", !it.paid)} className="text-xs font-bold px-2.5 py-1.5 rounded-lg border shrink-0" style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.12)" : "transparent" }}>
                 {it.paid ? "✓ Pago" : "○ Em aberto"}
               </button>
@@ -1986,7 +1986,7 @@ function EmployeeForm({ initial, onSave, onCancel }) {
         <TextField label="CPF" value={cpf} onChange={setCpf} placeholder="000.000.000-00" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de admissão</span>
-          <input type="date" value={admissionDate} onChange={(e) => setAdmissionDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={admissionDate} onChange={(e) => setAdmissionDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Salário base" value={baseSalary} onChange={setBaseSalary} type="number" placeholder="0" />
         <TextField label="Chave PIX (pagamento)" value={pixKey} onChange={setPixKey} placeholder="CPF, e-mail ou telefone" />
@@ -2040,7 +2040,7 @@ function PayrollForm({ initial, employees, onSave, onCancel }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Funcionário *</span>
-          <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+          <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
             <option value="">Selecione...</option>
             {employees.filter((e) => e.active !== false).map((e) => <option key={e.id} value={e.id}>{e.name}{e.cargo ? ` — ${e.cargo}` : ""}</option>)}
           </select>
@@ -2049,7 +2049,7 @@ function PayrollForm({ initial, employees, onSave, onCancel }) {
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pagamento</span>
           <div className="flex gap-2">
-            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             <button type="button" onClick={() => { const n = new Date(); setPaymentDate(quintoDiaUtil(n.getFullYear(), n.getMonth())); }} className="px-2.5 py-2 rounded-lg text-[11px] font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>5º dia útil</button>
           </div>
         </label>
@@ -2126,12 +2126,12 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
         <EmployeePicker employees={employees} value={employeeId} onSelect={setEmployeeId} onCreateNew={onCreateEmployee} />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data</span>
-          <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Dias trabalhados" value={numDays} onChange={setNumDays} type="number" placeholder="Ex: 21" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Conduções (para calcular o VT)</span>
-          <select value={numConducoes} onChange={(e) => setNumConducoes(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+          <select value={numConducoes} onChange={(e) => setNumConducoes(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
             <option value="0">Nenhuma (sem VT)</option>
             <option value="1">1 condução — R$ 5,40 ida/volta</option>
             <option value="2">2 conduções — R$ 9,38 ida/volta</option>
@@ -2140,21 +2140,21 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor vale transporte (calculado)</span>
           <div className="flex gap-2">
-            <input value={vtValue} onChange={(e) => { setVtValue(e.target.value); setVtManual(true); }} type="number" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input value={vtValue} onChange={(e) => { setVtValue(e.target.value); setVtManual(true); }} type="number" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             {vtManual && <button type="button" onClick={() => setVtManual(false)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Voltar a calcular automático">↺</button>}
           </div>
         </label>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor vale refeição</span>
           <div className="flex gap-2">
-            <input value={vrValue} onChange={(e) => setVrValue(e.target.value)} type="number" placeholder="735" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-            <input value={vrDaily} onChange={(e) => setVrDaily(e.target.value)} type="number" title="Valor diário do VR" className="w-16 rounded-lg border px-2 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input value={vrValue} onChange={(e) => setVrValue(e.target.value)} type="number" placeholder="735" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+            <input value={vrDaily} onChange={(e) => setVrDaily(e.target.value)} type="number" title="Valor diário do VR" className="w-16 rounded-lg border px-2 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             <button type="button" onClick={calcularVR} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Calcular: dias × valor diário">🧮</button>
           </div>
         </label>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>🏠 Dias de home office</span>
-          <input value={homeOfficeDays} onChange={(e) => setHomeOfficeDays(e.target.value)} type="number" placeholder="0" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} title="Dias em home office não recebem VT e VR — serão descontados automaticamente do cálculo" />
+          <input value={homeOfficeDays} onChange={(e) => setHomeOfficeDays(e.target.value)} type="number" placeholder="0" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} title="Dias em home office não recebem VT e VR — serão descontados automaticamente do cálculo" />
         </label>
         <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Ex: faltou 1 dia" />
       </div>
@@ -2168,7 +2168,7 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
         <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-2.5 py-1 rounded-lg" style={{ color: paid ? COLORS.success : COLORS.inkMuted, background: paid ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)" }}>
           <input type="checkbox" checked={paid} onChange={(e) => { setPaid(e.target.checked); if (e.target.checked && !paidDate) setPaidDate(new Date().toISOString().slice(0, 10)); }} /> Pago
         </label>
-        {paid && <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />}
+        {paid && <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />}
       </div>
       <div className="flex gap-2">
         <button
@@ -2212,7 +2212,7 @@ function ScheduleForm({ initial, employees, onCreateEmployee, onSave, onCancel }
       <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Nova escala de sábado (08:00 às 12:00)</div>
       <label className="block max-w-xs">
         <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data (precisa ser um sábado)</span>
-        <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: isSaturday ? COLORS.cardBorder : COLORS.danger, background: "#0E1729", color: COLORS.ink }} />
+        <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: isSaturday ? COLORS.cardBorder : COLORS.danger, background: "#16233D", color: COLORS.ink }} />
         {!isSaturday && <span className="text-[11px]" style={{ color: COLORS.danger }}>Essa data não é um sábado.</span>}
       </label>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2293,12 +2293,12 @@ function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect
         <div className="space-y-2">
           {installments.map((it, i) => (
             <div key={i} className="flex gap-2 items-center flex-wrap">
-              <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor da parcela" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+              <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor da parcela" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
               <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-2 py-1.5 rounded-lg" style={{ color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.04)" }}>
                 <input type="checkbox" checked={it.paid} onChange={(e) => updateInst(i, "paid", e.target.checked)} /> Paga
               </label>
-              {it.paid && <input type="date" value={it.paid_date} onChange={(e) => updateInst(i, "paid_date", e.target.value)} placeholder="Data pgto" className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />}
+              {it.paid && <input type="date" value={it.paid_date} onChange={(e) => updateInst(i, "paid_date", e.target.value)} placeholder="Data pgto" className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />}
               {installments.length > 1 && <button type="button" onClick={() => removeInst(i)} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.danger }}>🗑️</button>}
             </div>
           ))}
@@ -2405,7 +2405,7 @@ function ChecklistSection({ title, items, onChange, withObs }) {
               {it.na ? "✓ Não se aplica" : "Não se aplica"}
             </button>
             {withObs && (
-              <input value={it.obs || ""} onChange={(e) => setObs(i, e.target.value)} placeholder="Observação (opcional)" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <input value={it.obs || ""} onChange={(e) => setObs(i, e.target.value)} placeholder="Observação (opcional)" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             )}
           </div>
         ))}
@@ -2727,7 +2727,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
         <TextField label="Nº da implantação" value={numero} onChange={setNumero} placeholder="Ex: 001/2026" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da ficha</span>
-          <input type="date" value={dataFicha} onChange={(e) => setDataFicha(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={dataFicha} onChange={(e) => setDataFicha(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Técnico/consultor responsável" value={technicianName} onChange={setTechnicianName} placeholder="Nome" />
         <TextField label="Versão do sistema" value={versaoSistema} onChange={setVersaoSistema} placeholder="Ex: 2026.3" />
@@ -2764,11 +2764,11 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <label className="block">
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de início</span>
-            <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           </label>
           <label className="block">
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de conclusão</span>
-            <input type="date" value={dataConclusao} onChange={(e) => setDataConclusao(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input type="date" value={dataConclusao} onChange={(e) => setDataConclusao(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           </label>
           <TextField label="Usuários envolvidos" value={usuariosEnvolvidos} onChange={setUsuariosEnvolvidos} placeholder="Nomes" />
           <TextField label="Qtd. de computadores" value={computersCount} onChange={setComputersCount} type="number" placeholder="0" />
@@ -2788,7 +2788,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
           <TextField label="Número/ID AnyDesk / NDesk" value={anydeskId} onChange={setAnydeskId} placeholder="ID de acesso remoto" />
           <label className="block">
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da instalação</span>
-            <input type="date" value={dataInstalacaoPc} onChange={(e) => setDataInstalacaoPc(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input type="date" value={dataInstalacaoPc} onChange={(e) => setDataInstalacaoPc(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           </label>
         </div>
       </div>
@@ -2807,7 +2807,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <label className="block">
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da migração</span>
-            <input type="date" value={dataMigracao} onChange={(e) => setDataMigracao(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input type="date" value={dataMigracao} onChange={(e) => setDataMigracao(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           </label>
           <div>
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Conferência realizada</span>
@@ -2858,7 +2858,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
           <TextField label="Carga horária" value={cargaHoraria} onChange={setCargaHoraria} placeholder="Ex: 4 horas" />
           <label className="block">
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do treinamento</span>
-            <input type="date" value={trainingDate} onChange={(e) => setTrainingDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input type="date" value={trainingDate} onChange={(e) => setTrainingDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           </label>
         </div>
       </div>
@@ -2871,10 +2871,10 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
         {pendencias.length === 0 && <div className="text-xs" style={{ color: COLORS.inkFaint }}>Nenhuma pendência registrada.</div>}
         {pendencias.map((p, i) => (
           <div key={i} className="flex gap-2 items-center flex-wrap">
-            <input value={p.pendencia} onChange={(e) => updatePendencia(i, "pendencia", e.target.value)} placeholder="Pendência" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-            <input value={p.responsavel} onChange={(e) => updatePendencia(i, "responsavel", e.target.value)} placeholder="Responsável" className="w-32 rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-            <input value={p.prazo} onChange={(e) => updatePendencia(i, "prazo", e.target.value)} placeholder="Prazo" className="w-24 rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-            <select value={p.status} onChange={(e) => updatePendencia(i, "status", e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+            <input value={p.pendencia} onChange={(e) => updatePendencia(i, "pendencia", e.target.value)} placeholder="Pendência" className="flex-1 min-w-[160px] rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+            <input value={p.responsavel} onChange={(e) => updatePendencia(i, "responsavel", e.target.value)} placeholder="Responsável" className="w-32 rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+            <input value={p.prazo} onChange={(e) => updatePendencia(i, "prazo", e.target.value)} placeholder="Prazo" className="w-24 rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+            <select value={p.status} onChange={(e) => updatePendencia(i, "status", e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
               <option value="aberta">Aberta</option>
               <option value="concluida">Concluída</option>
             </select>
@@ -2905,7 +2905,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
           <TextField label="Cargo" value={clienteRespCargo} onChange={setClienteRespCargo} placeholder="Cargo" />
           <label className="block">
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do aceite</span>
-            <input type="date" value={aceiteData} onChange={(e) => setAceiteData(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input type="date" value={aceiteData} onChange={(e) => setAceiteData(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           </label>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2973,11 +2973,11 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
         <TextField label="Valor pago (soma das parcelas marcadas)" value={paidValue} onChange={setPaidValue} type="number" placeholder="0" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pagamento</span>
-          <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Situação</span>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
             {ITAG_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </label>
@@ -2991,8 +2991,8 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
 
         {!showExtraInstallments ? (
           <div className="flex gap-2 items-center flex-wrap">
-            <input type="date" value={installments[0]?.due_date || ""} onChange={(e) => updateInst(0, "due_date", e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-            <input value={installments[0]?.value || ""} onChange={(e) => updateInst(0, "value", e.target.value)} type="number" placeholder="Valor" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input type="date" value={installments[0]?.due_date || ""} onChange={(e) => updateInst(0, "due_date", e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+            <input value={installments[0]?.value || ""} onChange={(e) => updateInst(0, "value", e.target.value)} type="number" placeholder="Valor" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             <button type="button" onClick={() => toggleInstPaid(0)} className="text-xs font-bold px-3 py-2 rounded-lg border shrink-0" style={{ borderColor: installments[0]?.paid ? COLORS.success : COLORS.cardBorder, color: installments[0]?.paid ? COLORS.success : COLORS.inkMuted, background: installments[0]?.paid ? "rgba(34,197,94,0.12)" : "transparent" }}>
               {installments[0]?.paid ? "✓ Pago" : "○ Marcar como pago"}
             </button>
@@ -3001,8 +3001,8 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
           <div className="space-y-2">
             {installments.map((it, i) => (
               <div key={i} className="flex gap-2 items-center flex-wrap">
-                <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-                <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor da parcela" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+                <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor da parcela" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 <button type="button" onClick={() => toggleInstPaid(i)} className="text-xs font-bold px-3 py-2 rounded-lg border shrink-0" style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.12)" : "transparent" }}>
                   {it.paid ? "✓ Pago" : "○ Marcar como pago"}
                 </button>
@@ -3137,7 +3137,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
         <TextField label="Número do pedido" value={number} onChange={setNumber} required />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pedido</span>
-          <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+          <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
         </label>
         <TextField label="Vendedor" value={seller} onChange={setSeller} placeholder="Nome do vendedor" />
         <TextField label="Custo unitário de compra" value={purchaseCost} onChange={setPurchaseCost} type="number" placeholder="Ex: 172,00 (por caixa)" />
@@ -3181,14 +3181,14 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
         {paid && (
           <label className="block">
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pagamento</span>
-            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           </label>
         )}
       </div>
 
       <div>
         <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Observações</span>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Aparece impresso no romaneio, no lugar da linha em branco de OBS." className="w-full rounded-lg border px-3 py-2 text-sm outline-none resize-y" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Aparece impresso no romaneio, no lugar da linha em branco de OBS." className="w-full rounded-lg border px-3 py-2 text-sm outline-none resize-y" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
       </div>
 
       <div>
@@ -3214,10 +3214,10 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
         <div className="space-y-2">
           {items.map((it, i) => (
             <div key={i} className="grid grid-cols-12 gap-2 items-center">
-              <input value={it.codigo} onChange={(e) => updateItem(i, "codigo", e.target.value)} placeholder="Código" className="col-span-2 rounded-lg border px-2 py-2 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              <input value={it.descricao} onChange={(e) => updateItem(i, "descricao", e.target.value)} placeholder="Descrição" className="col-span-5 rounded-lg border px-2 py-2 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              <input value={it.quantidade} onChange={(e) => updateItem(i, "quantidade", e.target.value)} type="number" placeholder="Qtd" className="col-span-2 rounded-lg border px-2 py-2 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
-              <input value={it.valorUnit} onChange={(e) => updateItem(i, "valorUnit", e.target.value)} type="number" placeholder="Vr. Unit." className="col-span-2 rounded-lg border px-2 py-2 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              <input value={it.codigo} onChange={(e) => updateItem(i, "codigo", e.target.value)} placeholder="Código" className="col-span-2 rounded-lg border px-2 py-2 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+              <input value={it.descricao} onChange={(e) => updateItem(i, "descricao", e.target.value)} placeholder="Descrição" className="col-span-5 rounded-lg border px-2 py-2 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+              <input value={it.quantidade} onChange={(e) => updateItem(i, "quantidade", e.target.value)} type="number" placeholder="Qtd" className="col-span-2 rounded-lg border px-2 py-2 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+              <input value={it.valorUnit} onChange={(e) => updateItem(i, "valorUnit", e.target.value)} type="number" placeholder="Vr. Unit." className="col-span-2 rounded-lg border px-2 py-2 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
               <button onClick={() => removeItem(i)} className="col-span-1 text-sm" style={{ color: COLORS.danger }}>🗑️</button>
             </div>
           ))}
@@ -3352,7 +3352,7 @@ function ClientHistoryModal({ client, onClose }) {
           <div className="text-xs font-bold mb-2" style={{ color: COLORS.ink }}>Anotações</div>
           <div className="flex gap-2 mb-3">
             <input value={newNote} onChange={(e) => setNewNote(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addNote()}
-              placeholder="Ex: ligou dizendo que paga sexta..." className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              placeholder="Ex: ligou dizendo que paga sexta..." className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             <button onClick={addNote} className="px-3 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: COLORS.brand }}>+</button>
           </div>
           {notes === null ? (
@@ -3406,7 +3406,7 @@ function ChangePasswordModal({ onClose, showToast }) {
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Nova senha</span>
             <div className="relative">
               <input type={showPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 pr-10 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                className="w-full rounded-lg border px-3 py-2 pr-10 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
               <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs px-1" style={{ color: COLORS.inkMuted }} tabIndex={-1}>{showPassword ? "🙈" : "👁️"}</button>
             </div>
           </label>
@@ -3414,7 +3414,7 @@ function ChangePasswordModal({ onClose, showToast }) {
             <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Confirmar nova senha</span>
             <input type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSave()}
-              className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           </label>
         </div>
         {err && <div className="text-xs mb-2" style={{ color: COLORS.danger }}>{err}</div>}
@@ -3454,11 +3454,11 @@ function Login() {
         </div>
         <div className="space-y-2 mb-2">
           <input type="text" value={email} placeholder="Usuário ou e-mail" onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
           <div className="relative">
             <input type={showPassword ? "text" : "password"} value={password} placeholder="Senha" onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              className="w-full rounded-lg border px-3 py-2 pr-10 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+              className="w-full rounded-lg border px-3 py-2 pr-10 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             <button type="button" onClick={() => setShowPassword((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-xs px-1" style={{ color: COLORS.inkMuted }} tabIndex={-1}>
               {showPassword ? "🙈" : "👁️"}
@@ -6627,7 +6627,7 @@ function App() {
                                 onBlur={(e) => handleRenameClient(c.id, e.target.value)}
                                 onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setEditingNameId(null); }}
                                 className="rounded-lg border px-2 py-1 text-sm font-bold outline-none"
-                                style={{ borderColor: COLORS.brandLight, background: "#0E1729", color: COLORS.ink }} />
+                                style={{ borderColor: COLORS.brandLight, background: "#16233D", color: COLORS.ink }} />
                             ) : (
                               <span className="font-bold text-sm cursor-pointer hover:underline" style={{ color: COLORS.ink }} onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
                             )}
@@ -6666,11 +6666,11 @@ function App() {
                                 Data
                                 <input type="date" key={`paiddate-${c.id}-${mKey}`} defaultValue={b?.paid_date || ""}
                                   onBlur={(e) => { if (e.target.value !== (b?.paid_date || "")) upsertBoleto(c.id, { paid_date: e.target.value || null }); }}
-                                  className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                                  className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                               </label>
                               <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
                                 Forma
-                                <select value={b?.payment_method || ""} onChange={(e) => upsertBoleto(c.id, { payment_method: e.target.value })} className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }}>
+                                <select value={b?.payment_method || ""} onChange={(e) => upsertBoleto(c.id, { payment_method: e.target.value })} className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
                                   <option value="">-</option>
                                   <option value="boleto">Boleto</option>
                                   <option value="pix">PIX</option>
@@ -6733,7 +6733,7 @@ function App() {
                                   {editingNameId === c.id ? (
                                     <input autoFocus defaultValue={c.name} onBlur={(e) => handleRenameClient(c.id, e.target.value)}
                                       onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); if (e.key === "Escape") setEditingNameId(null); }}
-                                      className="rounded-lg border px-2 py-1 text-sm font-bold outline-none" style={{ borderColor: COLORS.brandLight, background: "#0E1729", color: COLORS.ink }} />
+                                      className="rounded-lg border px-2 py-1 text-sm font-bold outline-none" style={{ borderColor: COLORS.brandLight, background: "#16233D", color: COLORS.ink }} />
                                   ) : (
                                     <span className="font-bold text-sm cursor-pointer hover:underline" style={{ color: COLORS.ink }} onClick={() => setEditingNameId(c.id)} title="Clique para editar o nome">{c.name} <span style={{ color: COLORS.inkFaint }}>✏️</span></span>
                                   )}
@@ -6745,7 +6745,7 @@ function App() {
                                     Valor/ano:
                                     <input type="number" key={`val-annual-${c.id}`} defaultValue={c.value || ""} placeholder="0"
                                       onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(c.value) || 0)) handleUpdateClientValue(c.id, v); }}
-                                      className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                                      className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                                   </span>
                                   · vence em {clientDueDisplay(c, monthDate)}
                                 </div>
@@ -7241,7 +7241,7 @@ function App() {
                               <td className="p-3 font-bold" style={{ color: Number(r.commission) < 0 ? COLORS.danger : COLORS.ink }}>{money(r.commission)}</td>
                               {isHistory && (
                                 <td className="p-3">
-                                  <input type="date" value={r.payment_date || ""} onChange={(e) => handleUpdateCommissionPaymentDate(r.commId, e.target.value)} className="rounded border px-1.5 py-1 text-[11px] outline-none" style={{ borderColor: r.payment_date ? COLORS.success : COLORS.warn, background: "#0E1729", color: COLORS.ink }} />
+                                  <input type="date" value={r.payment_date || ""} onChange={(e) => handleUpdateCommissionPaymentDate(r.commId, e.target.value)} className="rounded border px-1.5 py-1 text-[11px] outline-none" style={{ borderColor: r.payment_date ? COLORS.success : COLORS.warn, background: "#16233D", color: COLORS.ink }} />
                                 </td>
                               )}
                               <td className="p-3">{r.notes || "-"}</td>
@@ -8229,7 +8229,7 @@ function App() {
                                   <td className="p-3">
                                     <input type="number" key={`cost-${r.id}`} defaultValue={r.purchase_cost || 0}
                                       onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(r.purchase_cost) || 0)) handleUpdateCommissionCost(r, v); }}
-                                      className="w-20 rounded-lg border px-1.5 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} title="Custo de UMA unidade — o sistema multiplica pela quantidade" />
+                                      className="w-20 rounded-lg border px-1.5 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} title="Custo de UMA unidade — o sistema multiplica pela quantidade" />
                                   </td>
                                   <td className="p-3" style={{ color: COLORS.inkMuted }}>{money(custoTotal)}</td>
                                   <td className="p-3" style={{ color: COLORS.brandLight }}>{money(lucro)}</td>
@@ -8237,7 +8237,7 @@ function App() {
                                     <div className="flex items-center gap-1">
                                       <input type="number" key={`comm-${r.id}`} defaultValue={r.commission_percent || 0}
                                         onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(r.commission_percent) || 0)) handleUpdateCommissionPercent(r, v); }}
-                                        className="w-14 rounded-lg border px-1.5 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                                        className="w-14 rounded-lg border px-1.5 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                                       <span style={{ color: COLORS.inkMuted }}>%</span>
                                     </div>
                                   </td>
@@ -8558,15 +8558,15 @@ function App() {
                 <div className="flex flex-wrap items-end gap-2 px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
                   <label className="block">
                     <span className="block text-[11px] font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
-                    <input value={romaneioReportClient} onChange={(e) => setRomaneioReportClient(e.target.value)} placeholder="Buscar por nome..." className="rounded-lg border px-3 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    <input value={romaneioReportClient} onChange={(e) => setRomaneioReportClient(e.target.value)} placeholder="Buscar por nome..." className="rounded-lg border px-3 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                   </label>
                   <label className="block">
                     <span className="block text-[11px] font-semibold mb-1" style={{ color: COLORS.inkMuted }}>De</span>
-                    <input type="date" value={romaneioReportFrom} onChange={(e) => setRomaneioReportFrom(e.target.value)} className="rounded-lg border px-3 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    <input type="date" value={romaneioReportFrom} onChange={(e) => setRomaneioReportFrom(e.target.value)} className="rounded-lg border px-3 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                   </label>
                   <label className="block">
                     <span className="block text-[11px] font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Até</span>
-                    <input type="date" value={romaneioReportTo} onChange={(e) => setRomaneioReportTo(e.target.value)} className="rounded-lg border px-3 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    <input type="date" value={romaneioReportTo} onChange={(e) => setRomaneioReportTo(e.target.value)} className="rounded-lg border px-3 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                   </label>
                   {(romaneioReportClient || romaneioReportFrom || romaneioReportTo) && (
                     <button onClick={() => { setRomaneioReportClient(""); setRomaneioReportFrom(""); setRomaneioReportTo(""); }} className="text-xs underline" style={{ color: COLORS.inkFaint }}>limpar filtros</button>
@@ -8823,11 +8823,11 @@ function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="block">
                       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX</span>
-                      <input value={settings.mensalidade_pix_key || ""} onChange={(e) => saveSettings({ ...settings, mensalidade_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                      <input value={settings.mensalidade_pix_key || ""} onChange={(e) => saveSettings({ ...settings, mensalidade_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                     </label>
                     <label className="block">
                       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Favorecido</span>
-                      <input value={settings.mensalidade_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, mensalidade_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                      <input value={settings.mensalidade_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, mensalidade_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                     </label>
                   </div>
                 </div>
@@ -8837,11 +8837,11 @@ function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="block">
                       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX</span>
-                      <input value={settings.implantacao_pix_key || ""} onChange={(e) => saveSettings({ ...settings, implantacao_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                      <input value={settings.implantacao_pix_key || ""} onChange={(e) => saveSettings({ ...settings, implantacao_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                     </label>
                     <label className="block">
                       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Favorecido</span>
-                      <input value={settings.implantacao_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, implantacao_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                      <input value={settings.implantacao_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, implantacao_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                     </label>
                   </div>
                 </div>
@@ -8851,11 +8851,11 @@ function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <label className="block">
                       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX</span>
-                      <input value={settings.romaneio_pix_key || ""} onChange={(e) => saveSettings({ ...settings, romaneio_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                      <input value={settings.romaneio_pix_key || ""} onChange={(e) => saveSettings({ ...settings, romaneio_pix_key: e.target.value })} placeholder="CNPJ, e-mail ou telefone" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                     </label>
                     <label className="block">
                       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Favorecido</span>
-                      <input value={settings.romaneio_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, romaneio_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                      <input value={settings.romaneio_pix_favorecido || ""} onChange={(e) => saveSettings({ ...settings, romaneio_pix_favorecido: e.target.value })} placeholder="Nome de quem recebe" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                     </label>
                   </div>
                 </div>
@@ -8863,7 +8863,7 @@ function App() {
                 <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
                   <label className="block max-w-xs">
                     <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cidade (usada em todos os QR Codes)</span>
-                    <input value={settings.company_pix_city || ""} onChange={(e) => saveSettings({ ...settings, company_pix_city: e.target.value })} placeholder="Ex: SAO PAULO" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                    <input value={settings.company_pix_city || ""} onChange={(e) => saveSettings({ ...settings, company_pix_city: e.target.value })} placeholder="Ex: SAO PAULO" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                   </label>
                 </div>
               </div>
@@ -8872,15 +8872,15 @@ function App() {
                 <p className="text-xs" style={{ color: COLORS.inkMuted }}>Use {"{nome}"}, {"{valor}"}, {"{vencimento}"}, {"{plano}"}, {"{link}"}, {"{mesnome}"}.</p>
                 <label className="block">
                   <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mensagem do WhatsApp</span>
-                  <textarea value={settings.wa_template} onChange={(e) => saveSettings({ ...settings, wa_template: e.target.value })} rows={3} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  <textarea value={settings.wa_template} onChange={(e) => saveSettings({ ...settings, wa_template: e.target.value })} rows={3} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 </label>
                 <label className="block">
                   <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Assunto do e-mail</span>
-                  <input value={settings.email_subject} onChange={(e) => saveSettings({ ...settings, email_subject: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  <input value={settings.email_subject} onChange={(e) => saveSettings({ ...settings, email_subject: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 </label>
                 <label className="block">
                   <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Corpo do e-mail</span>
-                  <textarea value={settings.email_body} onChange={(e) => saveSettings({ ...settings, email_body: e.target.value })} rows={5} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  <textarea value={settings.email_body} onChange={(e) => saveSettings({ ...settings, email_body: e.target.value })} rows={5} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 </label>
               </div>
 
@@ -8889,15 +8889,15 @@ function App() {
                 <p className="text-xs" style={{ color: COLORS.inkMuted }}>Use {"{nome}"}, {"{valor}"}, {"{vencimento}"}, {"{plano}"}, {"{mesnome}"}.</p>
                 <label className="block">
                   <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mensagem do WhatsApp (cobrança)</span>
-                  <textarea value={settings.overdue_wa_template} onChange={(e) => saveSettings({ ...settings, overdue_wa_template: e.target.value })} rows={4} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  <textarea value={settings.overdue_wa_template} onChange={(e) => saveSettings({ ...settings, overdue_wa_template: e.target.value })} rows={4} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 </label>
                 <label className="block">
                   <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Assunto do e-mail (cobrança)</span>
-                  <input value={settings.overdue_email_subject} onChange={(e) => saveSettings({ ...settings, overdue_email_subject: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  <input value={settings.overdue_email_subject} onChange={(e) => saveSettings({ ...settings, overdue_email_subject: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 </label>
                 <label className="block">
                   <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Corpo do e-mail (cobrança)</span>
-                  <textarea value={settings.overdue_email_body} onChange={(e) => saveSettings({ ...settings, overdue_email_body: e.target.value })} rows={6} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#0E1729", color: COLORS.ink }} />
+                  <textarea value={settings.overdue_email_body} onChange={(e) => saveSettings({ ...settings, overdue_email_body: e.target.value })} rows={6} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
                 </label>
               </div>
             </div>

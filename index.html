@@ -4876,14 +4876,15 @@ function App() {
   async function handleSaveClient(c) {
     await supa.from("clients").upsert(c);
     if (c.representative_name) {
-      const existing = clientCommissions.find((cc) => cc.client_id === c.id);
-      if (existing) {
-        if (existing.representative_name !== c.representative_name) {
-          await supa.from("client_commissions").update({ representative_name: c.representative_name }).eq("id", existing.id);
+      const existingMatches = clientCommissions.filter((cc) => cc.client_id === c.id);
+      if (existingMatches.length === 1) {
+        if (existingMatches[0].representative_name !== c.representative_name) {
+          await supa.from("client_commissions").update({ representative_name: c.representative_name }).eq("id", existingMatches[0].id);
         }
-      } else {
+      } else if (existingMatches.length === 0) {
         await supa.from("client_commissions").upsert({ id: uid(), client_id: c.id, representative_name: c.representative_name, percentage: 0, notes: null, monthly_value_override: null });
       }
+      // se já houver mais de uma atribuição (comissão dividida entre representantes), não mexe — evita sobrescrever o split
       await loadClientCommissions();
     }
     setShowForm(false); setEditing(null);
@@ -7208,8 +7209,7 @@ function App() {
                 const totalMensalidade = visibleRows.reduce((s, r) => s + (Number(r.value) || 0), 0);
                 const totalComissao = visibleRows.reduce((s, r) => s + r.commission, 0);
 
-                const assignedIds = new Set(clientCommissions.map((cc) => cc.client_id));
-                const availableClients = clients.filter((c) => !c.cancelled && !assignedIds.has(c.id) && (!editingClientCommission || c.id === editingClientCommission.client_id));
+                const availableClients = clients.filter((c) => !c.cancelled);
 
                 function monthLabel(k) { const [y, mo] = k.split("-"); return `${MONTHS_PT[Number(mo) - 1]}/${y}`; }
                 function renderRepTable(repName, repRows) {

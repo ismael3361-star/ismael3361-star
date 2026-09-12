@@ -1599,6 +1599,8 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
   const selectedClient = clients.find((x) => x.id === clientId);
   const [useCustomValue, setUseCustomValue] = useState(initial?.monthly_value_override != null);
   const [customValue, setCustomValue] = useState(initial?.monthly_value_override ?? selectedClient?.value ?? "");
+  const [useManualCommission, setUseManualCommission] = useState(initial?.commission_override != null);
+  const [manualCommission, setManualCommission] = useState(initial?.commission_override ?? "");
 
   function handleClientChange(id) {
     setClientId(id);
@@ -1609,8 +1611,8 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
   }
 
   const effectiveValue = useCustomValue ? (Number(customValue) || 0) : (Number(selectedClient?.value) || 0);
-  const commissionPreview = effectiveValue * (Number(percentage) || 0) / 100;
-  const canSave = clientId && representativeName.trim() && Number(percentage) > 0;
+  const commissionPreview = useManualCommission ? (Number(manualCommission) || 0) : effectiveValue * (Number(percentage) || 0) / 100;
+  const canSave = clientId && representativeName.trim() && (useManualCommission ? manualCommission !== "" : Number(percentage) > 0);
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
@@ -1618,8 +1620,15 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <CommissionClientPicker clients={clients} value={clientId} onSelect={handleClientChange} disabled={!!initial} />
         <RepresentativePicker existingReps={existingReps} value={representativeName} onChange={setRepresentativeName} />
-        <TextField label="% de comissão" value={percentage} onChange={setPercentage} type="number" placeholder="Ex: 30" />
+        {!useManualCommission && <TextField label="% de comissão" value={percentage} onChange={setPercentage} type="number" placeholder="Ex: 30" />}
         <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Ex: Anual" />
+      </div>
+      <div className="rounded-lg border p-3" style={{ borderColor: COLORS.cardBorder }}>
+        <label className="flex items-center gap-2 text-xs font-semibold mb-2" style={{ color: COLORS.inkMuted }}>
+          <input type="checkbox" checked={useManualCommission} onChange={(e) => { setUseManualCommission(e.target.checked); if (!e.target.checked) setManualCommission(""); }} />
+          Lançar um valor de comissão manual (use negativo, ex: -100, para descontar)
+        </label>
+        {useManualCommission && <TextField label="Valor da comissão (pode ser negativo)" value={manualCommission} onChange={setManualCommission} type="number" placeholder="Ex: -100" />}
       </div>
       <div className="rounded-lg border p-3" style={{ borderColor: COLORS.cardBorder }}>
         <label className="flex items-center gap-2 text-xs font-semibold mb-2" style={{ color: COLORS.inkMuted }}>
@@ -1632,15 +1641,16 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
           <div className="text-xs" style={{ color: COLORS.inkMuted }}>Usando o valor atual do cliente: <strong style={{ color: COLORS.ink }}>{fmtMoney(selectedClient?.value)}</strong> (acompanha automaticamente se a mensalidade mudar)</div>
         )}
       </div>
-      {selectedClient && <div className="text-sm font-bold" style={{ color: COLORS.success }}>Comissão sobre {fmtMoney(effectiveValue)}: {fmtMoney(commissionPreview)}</div>}
+      {selectedClient && <div className="text-sm font-bold" style={{ color: commissionPreview < 0 ? COLORS.danger : COLORS.success }}>{useManualCommission ? "Comissão (valor manual)" : `Comissão sobre ${fmtMoney(effectiveValue)}`}: {fmtMoney(commissionPreview)}</div>}
       <div className="flex gap-2">
         <button
           disabled={!canSave}
           onClick={() => onSave({
             id: initial?.id || uid(), client_id: clientId,
-            representative_name: representativeName.trim(), percentage: Number(percentage) || 0,
+            representative_name: representativeName.trim(), percentage: useManualCommission ? 0 : (Number(percentage) || 0),
             notes: notes.trim() || null,
             monthly_value_override: useCustomValue ? (Number(customValue) || 0) : null,
+            commission_override: useManualCommission ? (Number(manualCommission) || 0) : null,
           })}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
           Salvar
@@ -7157,12 +7167,14 @@ function App() {
                   const cli = clients.find((c) => c.id === cc.client_id);
                   if (!cli) return null;
                   const effectiveValue = cc.monthly_value_override != null ? Number(cc.monthly_value_override) : Number(cli.value) || 0;
+                  const commission = cc.commission_override != null ? Number(cc.commission_override) : effectiveValue * (Number(cc.percentage) || 0) / 100;
                   return {
                     commId: cc.id, client_id: cc.client_id,
                     bank_number: cli.bank_number, name: cli.name, cnpj: cli.cnpj, due_day: cli.due_day, value: effectiveValue,
                     isCustomValue: cc.monthly_value_override != null, monthly_value_override: cc.monthly_value_override,
+                    commission_override: cc.commission_override,
                     representative_name: cc.representative_name, percentage: cc.percentage, notes: cc.notes,
-                    commission: effectiveValue * (Number(cc.percentage) || 0) / 100,
+                    commission,
                   };
                 }).filter(Boolean).sort(sortByBankNumber);
 
@@ -7203,6 +7215,61 @@ function App() {
                 const availableClients = clients.filter((c) => !c.cancelled && !assignedIds.has(c.id) && (!editingClientCommission || c.id === editingClientCommission.client_id));
 
                 function monthLabel(k) { const [y, mo] = k.split("-"); return `${MONTHS_PT[Number(mo) - 1]}/${y}`; }
+                function renderRepTable(repName, repRows) {
+                  const repTotalMensalidade = repRows.reduce((s, r) => s + (Number(r.value) || 0), 0);
+                  const repTotalComissao = repRows.reduce((s, r) => s + r.commission, 0);
+                  return (
+                    <div key={repName} className="rounded-2xl border overflow-x-auto mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}`, background: "rgba(124,92,255,0.08)" }}>
+                        <div className="text-sm font-bold" style={{ color: COLORS.brandLight }}>👤 {repName}</div>
+                        <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Total: {money(repTotalComissao)}</div>
+                      </div>
+                      <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                        <thead>
+                          <tr style={{ color: COLORS.inkMuted }}>
+                            <th className="text-left p-3">Banco</th><th className="text-left p-3">Loja</th><th className="text-left p-3">CNPJ</th>
+                            <th className="text-left p-3">Venc.</th><th className="text-left p-3">Mensalidade</th><th className="text-left p-3">%</th>
+                            <th className="text-left p-3">Comissão</th>{isHistory && <th className="text-left p-3">Pagamento</th>}<th className="text-left p-3">Obs.</th>{!isHistory && <th className="text-left p-3"></th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {repRows.map((r, i) => (
+                            <tr key={r.commId} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                              <td className="p-3">{r.bank_number || "-"}</td>
+                              <td className="p-3 font-semibold">{r.name}</td>
+                              <td className="p-3">{r.cnpj || "-"}</td>
+                              <td className="p-3">{r.due_day || "-"}</td>
+                              <td className="p-3">{money(r.value)}{r.isCustomValue && <span title="Valor customizado para a comissão" className="ml-1 cursor-help">✏️</span>}</td>
+                              <td className="p-3">{r.percentage}%</td>
+                              <td className="p-3 font-bold" style={{ color: Number(r.commission) < 0 ? COLORS.danger : COLORS.ink }}>{money(r.commission)}</td>
+                              {isHistory && (
+                                <td className="p-3">
+                                  <input type="date" value={r.payment_date || ""} onChange={(e) => handleUpdateCommissionPaymentDate(r.commId, e.target.value)} className="rounded border px-1.5 py-1 text-[11px] outline-none" style={{ borderColor: r.payment_date ? COLORS.success : COLORS.warn, background: "#0E1729", color: COLORS.ink }} />
+                                </td>
+                              )}
+                              <td className="p-3">{r.notes || "-"}</td>
+                              {!isHistory && (
+                                <td className="p-3">
+                                  <button onClick={() => { setEditingClientCommission({ id: r.commId, client_id: r.client_id, representative_name: r.representative_name, percentage: r.percentage, notes: r.notes, monthly_value_override: r.monthly_value_override }); setShowClientCommissionForm(true); }} className="mr-2">✏️</button>
+                                  <button onClick={() => handleDeleteClientCommission(r.commId)} style={{ color: COLORS.danger }}>🗑️</button>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}`, fontWeight: 700 }}>
+                            <td className="p-3" colSpan={4}>TOTAL</td>
+                            <td className="p-3">{money(repTotalMensalidade)}</td>
+                            <td className="p-3"></td>
+                            <td className="p-3">{money(repTotalComissao)}</td>
+                            <td className="p-3" colSpan={2}></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  );
+                }
 
                 return (
                   <>
@@ -7275,59 +7342,20 @@ function App() {
 
                     {visibleRows.length === 0 ? (
                       <div className="rounded-2xl border p-8 text-center text-sm" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.inkMuted }}>Nenhum cliente com representante atribuído {commissionRepFilter ? `para ${commissionRepFilter}` : ""}.</div>
-                    ) : repNames.filter((r) => (!commissionRepFilter || r === commissionRepFilter) && visibleRows.some((row) => row.representative_name === r)).map((repName) => {
-                      const repRows = visibleRows.filter((r) => r.representative_name === repName);
-                      const repTotalMensalidade = repRows.reduce((s, r) => s + (Number(r.value) || 0), 0);
-                      const repTotalComissao = repRows.reduce((s, r) => s + r.commission, 0);
+                    ) : [
+                      { key: "d15", label: "📅 Vencimento até dia 15 — comissão paga dia 15", rowsSubset: visibleRows.filter((r) => (Number(r.due_day) || 0) <= 15) },
+                      { key: "d30", label: "📅 Vencimento após dia 15 — comissão paga dia 30", rowsSubset: visibleRows.filter((r) => (Number(r.due_day) || 0) > 15) },
+                    ].map(({ key, label, rowsSubset }) => {
+                      if (rowsSubset.length === 0) return null;
+                      const bucketNames = [...new Set(rowsSubset.map((r) => r.representative_name))].filter(Boolean).sort((a, b) => a.localeCompare(b, "pt-BR"));
+                      const bucketTotal = rowsSubset.reduce((s, r) => s + r.commission, 0);
                       return (
-                        <div key={repName} className="rounded-2xl border overflow-x-auto mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}`, background: "rgba(124,92,255,0.08)" }}>
-                            <div className="text-sm font-bold" style={{ color: COLORS.brandLight }}>👤 {repName}</div>
-                            <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Total: {money(repTotalComissao)}</div>
+                        <div key={key} className="mb-6">
+                          <div className="flex items-center justify-between mb-2 px-1 flex-wrap gap-1">
+                            <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{label}</div>
+                            <div className="text-xs font-bold" style={{ color: COLORS.ink }}>Subtotal: {money(bucketTotal)}</div>
                           </div>
-                          <table className="w-full text-xs" style={{ color: COLORS.ink }}>
-                            <thead>
-                              <tr style={{ color: COLORS.inkMuted }}>
-                                <th className="text-left p-3">Banco</th><th className="text-left p-3">Loja</th><th className="text-left p-3">CNPJ</th>
-                                <th className="text-left p-3">Venc.</th><th className="text-left p-3">Mensalidade</th><th className="text-left p-3">%</th>
-                                <th className="text-left p-3">Comissão</th>{isHistory && <th className="text-left p-3">Pagamento</th>}<th className="text-left p-3">Obs.</th>{!isHistory && <th className="text-left p-3"></th>}
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {repRows.map((r, i) => (
-                                <tr key={r.commId} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                                  <td className="p-3">{r.bank_number || "-"}</td>
-                                  <td className="p-3 font-semibold">{r.name}</td>
-                                  <td className="p-3">{r.cnpj || "-"}</td>
-                                  <td className="p-3">{r.due_day || "-"}</td>
-                                  <td className="p-3">{money(r.value)}{r.isCustomValue && <span title="Valor customizado para a comissão" className="ml-1 cursor-help">✏️</span>}</td>
-                                  <td className="p-3">{r.percentage}%</td>
-                                  <td className="p-3 font-bold">{money(r.commission)}</td>
-                                  {isHistory && (
-                                    <td className="p-3">
-                                      <input type="date" value={r.payment_date || ""} onChange={(e) => handleUpdateCommissionPaymentDate(r.commId, e.target.value)} className="rounded border px-1.5 py-1 text-[11px] outline-none" style={{ borderColor: r.payment_date ? COLORS.success : COLORS.warn, background: "#0E1729", color: COLORS.ink }} />
-                                    </td>
-                                  )}
-                                  <td className="p-3">{r.notes || "-"}</td>
-                                  {!isHistory && (
-                                    <td className="p-3">
-                                      <button onClick={() => { setEditingClientCommission({ id: r.commId, client_id: r.client_id, representative_name: r.representative_name, percentage: r.percentage, notes: r.notes, monthly_value_override: r.monthly_value_override }); setShowClientCommissionForm(true); }} className="mr-2">✏️</button>
-                                      <button onClick={() => handleDeleteClientCommission(r.commId)} style={{ color: COLORS.danger }}>🗑️</button>
-                                    </td>
-                                  )}
-                                </tr>
-                              ))}
-                            </tbody>
-                            <tfoot>
-                              <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}`, fontWeight: 700 }}>
-                                <td className="p-3" colSpan={4}>TOTAL</td>
-                                <td className="p-3">{money(repTotalMensalidade)}</td>
-                                <td className="p-3"></td>
-                                <td className="p-3">{money(repTotalComissao)}</td>
-                                <td className="p-3" colSpan={2}></td>
-                              </tr>
-                            </tfoot>
-                          </table>
+                          {bucketNames.map((repName) => renderRepTable(repName, rowsSubset.filter((r) => r.representative_name === repName)))}
                         </div>
                       );
                     })}
@@ -7989,7 +8017,7 @@ function App() {
                   if (expenseFilter === "pago") return e.paid;
                   if (expenseFilter === "atrasado") return !e.paid && e.due_date && e.due_date < today;
                   return e.category === expenseFilter;
-                });
+                }).sort((a, b) => (a.paid === b.paid ? 0 : a.paid ? 1 : -1));
                 return (
                   <>
                     {venceEmBreve.length > 0 && (

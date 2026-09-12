@@ -7311,7 +7311,8 @@ function App() {
                       )}
                       <div className="ml-auto flex gap-2">
                         <button onClick={() => exportClientCommissionsExcel(rows, isHistory ? `comissao-${commissionViewMonth}` : "comissao-representantes")} disabled={rows.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
-                        <button onClick={() => exportClientCommissionsPDF(visibleRows, isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes")} disabled={visibleRows.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                        <button onClick={() => exportClientCommissionsPDF(visibleRows.filter((r) => (Number(r.due_day) || 0) <= 15), `${isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes"} — Vencimento dia 15`)} disabled={visibleRows.filter((r) => (Number(r.due_day) || 0) <= 15).length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 PDF Venc. 15</button>
+                        <button onClick={() => exportClientCommissionsPDF(visibleRows.filter((r) => (Number(r.due_day) || 0) > 15), `${isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes"} — Vencimento dia 30`)} disabled={visibleRows.filter((r) => (Number(r.due_day) || 0) > 15).length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 PDF Venc. 30</button>
                       </div>
                     </div>
 

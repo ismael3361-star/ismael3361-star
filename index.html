@@ -125,7 +125,7 @@ const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
   comercial: ["clientes", "propostas", "romaneio"],
   financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes"],
-  operacional: ["itag", "implantacao_tecnica", "escala"],
+  operacional: ["compra_tag_rfid", "venda_tag_rfid", "implantacao_tecnica", "escala"],
   migracao: ["migracoes"],
 };
 const ROLE_LABELS = {
@@ -6048,8 +6048,11 @@ function App() {
                 { id: "folha", label: "Folha de Pagamento", icon: "👥" },
                 { id: "comissao_representantes", label: "Comissão Representantes", icon: "🤝" },
               ]},
+              { group: "RFID", items: [
+                { id: "compra_tag_rfid", label: "Compra Tag RFID", icon: "🏷️" },
+                { id: "venda_tag_rfid", label: "Venda Tag RFID", icon: "🏷️" },
+              ]},
               { group: "Operacional", items: [
-                { id: "itag", label: "Pedidos RFID", icon: "🏷️" },
                 { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
                 { id: "escala", label: "Escala de Sábado", icon: "🗓️" },
                 { id: "migracoes", label: "Migração de Banco", icon: "🗄️" },
@@ -6150,7 +6153,8 @@ function App() {
                 {effectiveTab === "boletos" && "Mensalidades do mês"}
                 {effectiveTab === "propostas" && "Propostas comerciais"}
                 {effectiveTab === "romaneio" && "Pedido de Etiqueta"}
-                {effectiveTab === "itag" && "RFID"}
+                {effectiveTab === "compra_tag_rfid" && "Compra Tag RFID"}
+                {effectiveTab === "venda_tag_rfid" && "Venda Tag RFID"}
                 {effectiveTab === "implantacoes" && "Controle de Implantações"}
                 {effectiveTab === "implantacao_tecnica" && "Implantação Técnica"}
                 {effectiveTab === "calendario" && "Calendário de Vencimentos"}
@@ -6932,14 +6936,83 @@ function App() {
             </div>
           )}
 
-          {effectiveTab === "itag" && (
+          {effectiveTab === "compra_tag_rfid" && (
             <div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total comprado</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0)} un.</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{money(itagEntries.reduce((s, e) => s + (Number(e.total_value) || 0), 0))} gastos</div>
                 </div>
+                <div className="rounded-2xl p-4 border-2" style={{ background: COLORS.card, borderColor: "#D4AF37" }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: "#D4AF37" }}>📦 Saldo em estoque</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0) - itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un.</div>
+                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>comprado − faturado</div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 mb-3">
+                <button onClick={exportItagEntriesPDF} disabled={itagEntries.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                <button onClick={() => { setEditingItagEntry(null); setShowItagEntryForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova entrada</button>
+              </div>
+              {showItagEntryForm && <div className="mb-4"><ItagEntryForm initial={editingItagEntry} onSave={handleSaveItagEntry} onCancel={() => { setShowItagEntryForm(false); setEditingItagEntry(null); }} /></div>}
+              <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                {itagEntries.length === 0 ? (
+                  <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma entrada registrada ainda.</div>
+                ) : (
+                  <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted }}>
+                        <th className="text-left p-3">Data</th><th className="text-left p-3">NF</th><th className="text-left p-3">Modelo</th><th className="text-left p-3">Entrada</th><th className="text-left p-3">Qtd</th><th className="text-left p-3">Vr. Unit.</th>
+                        <th className="text-left p-3">Venc. 1</th><th className="text-left p-3">Valor 1</th><th className="text-left p-3">Situação 1</th>
+                        <th className="text-left p-3">Venc. 2</th><th className="text-left p-3">Valor 2</th><th className="text-left p-3">Situação 2</th>
+                        <th className="text-left p-3">Total</th><th className="text-left p-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itagEntries.map((e, i) => (
+                        <tr key={e.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                          <td className="p-3">{e.purchase_date ? new Date(e.purchase_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                          <td className="p-3">{e.invoice_number || "-"}</td>
+                          <td className="p-3">{e.model || "-"}</td>
+                          <td className="p-3">{e.arrival_date ? new Date(e.arrival_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                          <td className="p-3">{e.quantity}</td>
+                          <td className="p-3">{money(e.unit_value)}</td>
+                          <td className="p-3">{e.due1_date ? new Date(e.due1_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                          <td className="p-3">{money(e.due1_value)}</td>
+                          <td className="p-3">
+                            {e.due1_value > 0 && (
+                              <button onClick={() => handleToggleEntryPaid(e, 1)} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: e.due1_paid ? COLORS.success : COLORS.warn, background: e.due1_paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>
+                                {e.due1_paid ? "✓ Pago" : "○ Em aberto"}
+                              </button>
+                            )}
+                          </td>
+                          <td className="p-3">{e.due2_date ? new Date(e.due2_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                          <td className="p-3">{money(e.due2_value)}</td>
+                          <td className="p-3">
+                            {e.due2_value > 0 && (
+                              <button onClick={() => handleToggleEntryPaid(e, 2)} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: e.due2_paid ? COLORS.success : COLORS.warn, background: e.due2_paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>
+                                {e.due2_paid ? "✓ Pago" : "○ Em aberto"}
+                              </button>
+                            )}
+                          </td>
+                          <td className="p-3 font-bold">{money(e.total_value)}</td>
+                          <td className="p-3">
+                            <button onClick={() => { setEditingItagEntry(e); setShowItagEntryForm(true); }} className="mr-2">✏️</button>
+                            <button onClick={() => handleDeleteItagEntry(e.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+
+          {effectiveTab === "venda_tag_rfid" && (
+            <div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Total faturado</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un.</div>
@@ -6960,136 +7033,60 @@ function App() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 mb-4">
-                <button onClick={() => setItagSubTab("entrada")} className="px-4 py-2 rounded-lg text-sm font-semibold"
-                  style={{ background: itagSubTab === "entrada" ? COLORS.brand : "transparent", color: itagSubTab === "entrada" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>
-                  Entrada de compra
-                </button>
-                <button onClick={() => setItagSubTab("faturado")} className="px-4 py-2 rounded-lg text-sm font-semibold"
-                  style={{ background: itagSubTab === "faturado" ? COLORS.brand : "transparent", color: itagSubTab === "faturado" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>
-                  Faturado ao cliente
-                </button>
+              <div className="flex justify-end gap-2 mb-3">
+                <button onClick={exportItagBillingsPDF} disabled={itagBillings.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                <button onClick={() => { setEditingItagBilling(null); setShowItagBillingForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo faturamento</button>
               </div>
-
-              {itagSubTab === "entrada" && (
-                <div>
-                  <div className="flex justify-end gap-2 mb-3">
-                    <button onClick={exportItagEntriesPDF} disabled={itagEntries.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
-                    <button onClick={() => { setEditingItagEntry(null); setShowItagEntryForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova entrada</button>
-                  </div>
-                  {showItagEntryForm && <div className="mb-4"><ItagEntryForm initial={editingItagEntry} onSave={handleSaveItagEntry} onCancel={() => { setShowItagEntryForm(false); setEditingItagEntry(null); }} /></div>}
-                  <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                    {itagEntries.length === 0 ? (
-                      <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma entrada registrada ainda.</div>
-                    ) : (
-                      <table className="w-full text-xs" style={{ color: COLORS.ink }}>
-                        <thead>
-                          <tr style={{ color: COLORS.inkMuted }}>
-                            <th className="text-left p-3">Data</th><th className="text-left p-3">NF</th><th className="text-left p-3">Modelo</th><th className="text-left p-3">Entrada</th><th className="text-left p-3">Qtd</th><th className="text-left p-3">Vr. Unit.</th>
-                            <th className="text-left p-3">Venc. 1</th><th className="text-left p-3">Valor 1</th><th className="text-left p-3">Situação 1</th>
-                            <th className="text-left p-3">Venc. 2</th><th className="text-left p-3">Valor 2</th><th className="text-left p-3">Situação 2</th>
-                            <th className="text-left p-3">Total</th><th className="text-left p-3"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {itagEntries.map((e, i) => (
-                            <tr key={e.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                              <td className="p-3">{e.purchase_date ? new Date(e.purchase_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                              <td className="p-3">{e.invoice_number || "-"}</td>
-                              <td className="p-3">{e.model || "-"}</td>
-                              <td className="p-3">{e.arrival_date ? new Date(e.arrival_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                              <td className="p-3">{e.quantity}</td>
-                              <td className="p-3">{money(e.unit_value)}</td>
-                              <td className="p-3">{e.due1_date ? new Date(e.due1_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                              <td className="p-3">{money(e.due1_value)}</td>
-                              <td className="p-3">
-                                {e.due1_value > 0 && (
-                                  <button onClick={() => handleToggleEntryPaid(e, 1)} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: e.due1_paid ? COLORS.success : COLORS.warn, background: e.due1_paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>
-                                    {e.due1_paid ? "✓ Pago" : "○ Em aberto"}
+              {showItagBillingForm && <div className="mb-4"><ItagBillingForm initial={editingItagBilling} onSave={handleSaveItagBilling} onCancel={() => { setShowItagBillingForm(false); setEditingItagBilling(null); }} /></div>}
+              <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                {itagBillings.length === 0 ? (
+                  <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum faturamento registrado ainda.</div>
+                ) : (
+                  <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                    <thead>
+                      <tr style={{ color: COLORS.inkMuted }}>
+                        <th className="text-left p-3">Cliente</th><th className="text-left p-3">Vencimento</th><th className="text-left p-3">Vr. Unit.</th><th className="text-left p-3">Qtd</th>
+                        <th className="text-left p-3">Boleto</th><th className="text-left p-3">Pago</th><th className="text-left p-3">Em aberto</th><th className="text-left p-3">Situação</th><th className="text-left p-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itagBillings.map((b, i) => (
+                        <React.Fragment key={b.id}>
+                        <tr style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                          <td className="p-3 font-semibold">{b.client_name}</td>
+                          <td className="p-3">{b.due_date ? new Date(b.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                          <td className="p-3">{money(b.unit_value)}</td>
+                          <td className="p-3">{b.quantity}</td>
+                          <td className="p-3">{money(b.boleto_value)}</td>
+                          <td className="p-3">{money(b.paid_value)}</td>
+                          <td className="p-3">{money(b.open_value)}</td>
+                          <td className="p-3"><StatusBadge status={b.status === "PAGO" ? "pago" : b.status === "ATRASADO" ? "atrasado" : "pendente"} /></td>
+                          <td className="p-3">
+                            <button onClick={() => { setEditingItagBilling(b); setShowItagBillingForm(true); }} className="mr-2">✏️</button>
+                            <button onClick={() => handleDeleteItagBilling(b.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                          </td>
+                        </tr>
+                        {(b.installments || []).length > 0 && (
+                          <tr style={{ borderTop: `1px solid ${COLORS.cardBorder}` }}>
+                            <td colSpan={9} className="px-3 pb-3 pt-1">
+                              <div className="flex flex-wrap gap-1.5">
+                                {b.installments.map((it, idx) => (
+                                  <button key={idx} onClick={() => handleToggleBillingInstPaid(b, idx)}
+                                    className="text-[11px] font-semibold px-2 py-1 rounded-full border"
+                                    style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
+                                    {it.paid ? "✓" : "○"} {it.due_date ? new Date(it.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {money(it.value)}
                                   </button>
-                                )}
-                              </td>
-                              <td className="p-3">{e.due2_date ? new Date(e.due2_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                              <td className="p-3">{money(e.due2_value)}</td>
-                              <td className="p-3">
-                                {e.due2_value > 0 && (
-                                  <button onClick={() => handleToggleEntryPaid(e, 2)} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: e.due2_paid ? COLORS.success : COLORS.warn, background: e.due2_paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>
-                                    {e.due2_paid ? "✓ Pago" : "○ Em aberto"}
-                                  </button>
-                                )}
-                              </td>
-                              <td className="p-3 font-bold">{money(e.total_value)}</td>
-                              <td className="p-3">
-                                <button onClick={() => { setEditingItagEntry(e); setShowItagEntryForm(true); }} className="mr-2">✏️</button>
-                                <button onClick={() => handleDeleteItagEntry(e.id)} style={{ color: COLORS.danger }}>🗑️</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {itagSubTab === "faturado" && (
-                <div>
-                  <div className="flex justify-end gap-2 mb-3">
-                    <button onClick={exportItagBillingsPDF} disabled={itagBillings.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
-                    <button onClick={() => { setEditingItagBilling(null); setShowItagBillingForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo faturamento</button>
-                  </div>
-                  {showItagBillingForm && <div className="mb-4"><ItagBillingForm initial={editingItagBilling} onSave={handleSaveItagBilling} onCancel={() => { setShowItagBillingForm(false); setEditingItagBilling(null); }} /></div>}
-                  <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                    {itagBillings.length === 0 ? (
-                      <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum faturamento registrado ainda.</div>
-                    ) : (
-                      <table className="w-full text-xs" style={{ color: COLORS.ink }}>
-                        <thead>
-                          <tr style={{ color: COLORS.inkMuted }}>
-                            <th className="text-left p-3">Cliente</th><th className="text-left p-3">Vencimento</th><th className="text-left p-3">Vr. Unit.</th><th className="text-left p-3">Qtd</th>
-                            <th className="text-left p-3">Boleto</th><th className="text-left p-3">Pago</th><th className="text-left p-3">Em aberto</th><th className="text-left p-3">Situação</th><th className="text-left p-3"></th>
+                                ))}
+                              </div>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {itagBillings.map((b, i) => (
-                            <React.Fragment key={b.id}>
-                            <tr style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                              <td className="p-3 font-semibold">{b.client_name}</td>
-                              <td className="p-3">{b.due_date ? new Date(b.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                              <td className="p-3">{money(b.unit_value)}</td>
-                              <td className="p-3">{b.quantity}</td>
-                              <td className="p-3">{money(b.boleto_value)}</td>
-                              <td className="p-3">{money(b.paid_value)}</td>
-                              <td className="p-3">{money(b.open_value)}</td>
-                              <td className="p-3"><StatusBadge status={b.status === "PAGO" ? "pago" : b.status === "ATRASADO" ? "atrasado" : "pendente"} /></td>
-                              <td className="p-3">
-                                <button onClick={() => { setEditingItagBilling(b); setShowItagBillingForm(true); }} className="mr-2">✏️</button>
-                                <button onClick={() => handleDeleteItagBilling(b.id)} style={{ color: COLORS.danger }}>🗑️</button>
-                              </td>
-                            </tr>
-                            {(b.installments || []).length > 0 && (
-                              <tr style={{ borderTop: `1px solid ${COLORS.cardBorder}` }}>
-                                <td colSpan={9} className="px-3 pb-3 pt-1">
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {b.installments.map((it, idx) => (
-                                      <button key={idx} onClick={() => handleToggleBillingInstPaid(b, idx)}
-                                        className="text-[11px] font-semibold px-2 py-1 rounded-full border"
-                                        style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
-                                        {it.paid ? "✓" : "○"} {it.due_date ? new Date(it.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {money(it.value)}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                            </React.Fragment>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                </div>
-              )}
+                        )}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
 

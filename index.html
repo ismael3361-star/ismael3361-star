@@ -306,6 +306,10 @@ const MIGRATION_STATUS_META = {
 
 function monthKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
 function fmtMoney(v) { return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+function stripEmojiForPDF(str) {
+  // jsPDF com fonte padrão não renderiza emojis (vira texto corrompido tipo "Ø=ÜÅ") — remove antes de imprimir no PDF.
+  return String(str ?? "").replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE0F}]/gu, "").replace(/\s{2,}/g, " ").trim();
+}
 function fmtDate(d) { return d ? new Date(d + "T00:00:00").toLocaleDateString("pt-BR") : "-"; }
 // Vencimento do cliente: usa a data completa se existir; se só tiver o dia
 // (clientes antigos/importados), monta a data com o mês/ano de referência.
@@ -4681,7 +4685,7 @@ function App() {
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
-    doc.text(title, 14, 32);
+    doc.text(stripEmojiForPDF(title), 14, 32);
     doc.setFontSize(9);
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
@@ -5272,13 +5276,14 @@ function App() {
     doc.text("NOME: ______________________________________     Data: ___/___/_____", 14, y); y += 16;
     doc.text("CARIMBO DA EMPRESA", 14, y);
     y += 22;
-    if (y > 270) { doc.addPage(); y = 20; }
     if (r.notes && r.notes.trim()) {
-      doc.text("OBS.:", 14, y);
       const obsLines = doc.splitTextToSize(r.notes.trim(), 175);
+      if (y + obsLines.length * 5.5 > 275) { doc.addPage(); y = 20; }
+      doc.text("OBS.:", 14, y);
       doc.text(obsLines, 30, y);
       y += obsLines.length * 5.5;
     } else {
+      if (y > 270) { doc.addPage(); y = 20; }
       doc.text("OBS.: ________________________________________________________________________", 14, y);
     }
 
@@ -8347,6 +8352,7 @@ function App() {
                           <Avatar name={c.name} size={32} />
                           <div>
                             <div className="font-semibold text-sm flex items-center gap-2" style={{ color: COLORS.ink }}>
+                              {c.bank_number && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.info, background: "rgba(59,130,246,0.15)" }}>{c.bank_number}</span>}
                               {c.name}
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>{c._diasAtraso} dia{c._diasAtraso !== 1 ? "s" : ""} atrasado</span>
                             </div>

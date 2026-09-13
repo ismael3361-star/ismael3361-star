@@ -5124,6 +5124,61 @@ function App() {
     doc.save(`fechamento-${stripEmojiForPDF(clientName).toLowerCase().replace(/\s+/g, "-")}-${monthLabelStr.replace("/", "-")}.pdf`);
   }
 
+  function exportPettyCashPDF(rows, monthLabelStr, orcamentoMes, totalSaidas, saldoCaixa) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text(`Caixa mensal — ${monthLabelStr}`, 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Orçamento: ${fmtMoney(orcamentoMes)}  ·  Gasto: ${fmtMoney(totalSaidas)}  ·  Saldo: ${fmtMoney(saldoCaixa)}`, 14, 38);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 43);
+
+    const body = [...rows].sort((a, b) => (a.entry_date || "").localeCompare(b.entry_date || "")).map((e) => [
+      fmtDate(e.entry_date), e.description || "-", e.type === "entrada" ? "Entrada" : "Saída", fmtMoney(e.amount),
+    ]);
+
+    doc.autoTable({
+      startY: 49,
+      head: [["Data", "Descrição", "Tipo", "Valor"]],
+      body,
+      foot: [["", "", "SALDO", fmtMoney(saldoCaixa)]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`caixa-${monthLabelStr.replace("/", "-")}.pdf`);
+  }
+
+  function exportLunchPDF(rows, monthLabelStr, totalLunch) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text(`Almoço de quinta — ${monthLabelStr}`, 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Total no mês: ${fmtMoney(totalLunch)}  ·  Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+
+    const body = rows.map((e) => [fmtDate(e.entry_date), fmtMoney(e.amount), e.employee_count, e.notes || "-"]);
+
+    doc.autoTable({
+      startY: 44,
+      head: [["Data", "Valor", "Funcionários", "Obs."]],
+      body,
+      foot: [["TOTAL", fmtMoney(totalLunch), "", ""]],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`almoco-quinta-${monthLabelStr.replace("/", "-")}.pdf`);
+  }
+
   useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadPettyCashEntries(); loadLunchEntries(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
@@ -7832,6 +7887,7 @@ function App() {
             <div>
               {(() => {
                 const [cy, cm] = caixaMonth.split("-").map(Number);
+                const monthLabelStr = `${MONTHS_PT[cm - 1]}/${cy}`;
                 const thursdaysInMonth = (() => {
                   let count = 0;
                   const d = new Date(cy, cm - 1, 1);
@@ -7882,7 +7938,8 @@ function App() {
                           </div>
                         </div>
 
-                        <div className="flex justify-end mb-3">
+                        <div className="flex justify-end gap-2 mb-3">
+                          <button onClick={() => exportPettyCashPDF(cashOfMonth, monthLabelStr, orcamentoMes, totalSaidas, saldoCaixa)} disabled={cashOfMonth.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                           <button onClick={() => { setEditingPettyCash(null); setShowPettyCashForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo lançamento</button>
                         </div>
                         {showPettyCashForm && <div className="mb-4"><PettyCashForm initial={editingPettyCash} onSave={handleSavePettyCash} onCancel={() => { setShowPettyCashForm(false); setEditingPettyCash(null); }} /></div>}
@@ -7934,7 +7991,8 @@ function App() {
                           </div>
                         </div>
 
-                        <div className="flex justify-end mb-3">
+                        <div className="flex justify-end gap-2 mb-3">
+                          <button onClick={() => exportLunchPDF(lunchOfMonth, monthLabelStr, totalLunch)} disabled={lunchOfMonth.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                           <button onClick={() => { setEditingLunch(null); setShowLunchForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo almoço</button>
                         </div>
                         {showLunchForm && <div className="mb-4"><LunchForm initial={editingLunch} onSave={handleSaveLunch} onCancel={() => { setShowLunchForm(false); setEditingLunch(null); }} /></div>}

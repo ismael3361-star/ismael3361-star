@@ -12,6 +12,9 @@
 <meta name="apple-mobile-web-app-title" content="ADM MIRE" />
 <link rel="apple-touch-icon" id="apple-touch-icon-link" />
 <link rel="manifest" id="pwa-manifest-link" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -21,13 +24,16 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   * { -webkit-tap-highlight-color: transparent; }
+  html, body { font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; }
+  .font-display { font-family: 'Manrope', 'Inter', ui-sans-serif, system-ui, sans-serif; }
+  .tnum { font-variant-numeric: tabular-nums; }
   body {
     -webkit-font-smoothing: antialiased;
     background:
-      radial-gradient(ellipse 900px 500px at 8% -5%, rgba(124,92,255,0.16), transparent 60%),
-      radial-gradient(ellipse 700px 500px at 100% 0%, rgba(34,197,94,0.08), transparent 55%),
-      radial-gradient(ellipse 800px 600px at 50% 100%, rgba(124,92,255,0.07), transparent 60%),
-      #0B1220;
+      radial-gradient(ellipse 900px 500px at 8% -5%, rgba(124,92,255,0.18), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 100% 0%, rgba(34,197,94,0.09), transparent 55%),
+      radial-gradient(ellipse 800px 600px at 50% 100%, rgba(124,92,255,0.08), transparent 60%),
+      #111A2E;
     background-attachment: fixed;
   }
 
@@ -121,6 +127,18 @@ const COLORS = {
   wa: "#22C55E", email: "#A78BFA",
 };
 const PROPOSAL_STAGE_COLORS = { enviada: "#3B82F6", negociacao: "#F59E0B", fechada: "#22C55E", perdida: "#EF4444" };
+const GROUP_ACCENTS = {
+  Principal: "#7C5CFF", Comercial: "#3B82F6", Etiqueta: "#F59E0B", RFID: "#06B6D4",
+  Financeiro: "#22C55E", Operacional: "#EC4899", Sistema: "#8A97AC",
+};
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+function rgba(hex, alpha) {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
   comercial: ["clientes", "propostas", "romaneio"],
@@ -147,6 +165,12 @@ function displayNameFromEmail(email) {
   if (USER_DISPLAY_NAMES[email]) return USER_DISPLAY_NAMES[email];
   const prefix = email.split("@")[0].split(/[.\d_]/)[0];
   return prefix ? prefix.charAt(0).toUpperCase() + prefix.slice(1) : email;
+}
+function greetingByHour() {
+  const h = new Date().getHours();
+  if (h < 12) return "Bom dia";
+  if (h < 18) return "Boa tarde";
+  return "Boa noite";
 }
 
 // PWA: manifest e ícone dinâmicos a partir do logo (permite "instalar" o sistema como app)
@@ -5960,7 +5984,7 @@ function App() {
   const quickEmailTargets = clients.filter((c) => c.email && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
 
   return (
-    <div className="h-screen w-full flex overflow-hidden" style={{ background: "transparent", fontFamily: "ui-sans-serif, system-ui, sans-serif" }}>
+    <div className="h-screen w-full flex overflow-hidden" style={{ background: "transparent", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif" }}>
       <aside className="w-16 sm:w-52 shrink-0 border-r p-2 sm:p-3 flex flex-col gap-3 h-full overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.sidebar }}>
         <div className="hidden sm:flex justify-center">
           <img src={LOGO_DATA_URI} alt="Miré" className="w-28 h-auto object-contain" style={{ filter: "drop-shadow(0 0 14px rgba(124,92,255,0.35))" }} />
@@ -6080,14 +6104,15 @@ function App() {
               <div className="flex flex-col gap-0.5">
                 {g.items.map((t) => {
                   const active = tab === t.id;
+                  const accent = GROUP_ACCENTS[g.group] || COLORS.brand;
                   return (
                     <button key={t.id} onClick={() => setTab(t.id)}
                       className="group flex flex-col sm:flex-row items-center sm:gap-2.5 justify-center sm:justify-start w-full px-1.5 sm:px-2 py-1.5 rounded-xl font-semibold transition-all relative"
-                      style={{ background: active ? "rgba(124,92,255,0.14)" : "transparent", color: active ? "#fff" : COLORS.inkMuted }}
+                      style={{ background: active ? rgba(accent, 0.14) : "transparent", color: active ? "#fff" : COLORS.inkMuted }}
                       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
                       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
-                      {active && <span className="hidden sm:block absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-full" style={{ background: `linear-gradient(180deg, ${COLORS.brand}, ${COLORS.brandLight})` }} />}
-                      <span className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: active ? `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` : "rgba(255,255,255,0.05)", fontSize: 15, boxShadow: active ? "0 3px 10px rgba(124,92,255,0.4)" : "none" }}>{t.icon}</span>
+                      {active && <span className="hidden sm:block absolute left-0 top-1/2 -translate-y-1/2 w-1 h-5 rounded-full" style={{ background: accent }} />}
+                      <span className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: active ? accent : "rgba(255,255,255,0.05)", fontSize: 15, boxShadow: active ? `0 3px 10px ${rgba(accent, 0.4)}` : "none" }}>{t.icon}</span>
                       <span className="text-[9px] sm:text-[13px] leading-tight text-center sm:text-left mt-0.5 sm:mt-0" style={{ color: active ? COLORS.ink : COLORS.inkMuted }}>{t.label}</span>
                     </button>
                   );
@@ -6155,8 +6180,8 @@ function App() {
 
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
             <div>
-              <h2 className="text-2xl font-extrabold tracking-tight" style={{ color: COLORS.ink }}>
-                {effectiveTab === "dashboard" && <>Olá, Administrador! <span>👋</span></>}
+              <h2 className="text-2xl font-extrabold tracking-tight font-display" style={{ color: COLORS.ink }}>
+                {effectiveTab === "dashboard" && <>{greetingByHour()}, {displayNameFromEmail(session?.user?.email)}! <span>👋</span></>}
                 {effectiveTab === "clientes" && "Seus clientes"}
                 {effectiveTab === "boletos" && "Mensalidades do mês"}
                 {effectiveTab === "propostas" && "Propostas comerciais"}
@@ -6239,7 +6264,7 @@ function App() {
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Clientes cadastrados</span>
                     <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(124,92,255,0.15)" }}>👥</span>
                   </div>
-                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{stats.count}</div>
+                  <div className="text-2xl font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{stats.count}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Total de clientes</div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -6247,7 +6272,7 @@ function App() {
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.success }}>Total previsto (mês)</span>
                     <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(34,197,94,0.15)" }}>💲</span>
                   </div>
-                  <div className="text-lg sm:text-xl font-extrabold truncate" title={money(totalPrevisto)} style={{ color: COLORS.ink }}>{money(totalPrevisto)}</div>
+                  <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(totalPrevisto)} style={{ color: COLORS.ink }}>{money(totalPrevisto)}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Mensalidades + Consultas</div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
@@ -6255,7 +6280,7 @@ function App() {
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.info }}>Total pago (mês)</span>
                     <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(59,130,246,0.15)" }}>💳</span>
                   </div>
-                  <div className="text-lg sm:text-xl font-extrabold truncate" title={money(paidValue)} style={{ color: COLORS.ink }}>{money(paidValue)}</div>
+                  <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(paidValue)} style={{ color: COLORS.ink }}>{money(paidValue)}</div>
                   <div className="text-[11px] flex items-center gap-1.5 flex-wrap" style={{ color: COLORS.inkMuted }}>
                     <span>{totalPrevisto > 0 ? ((paidValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</span>
                     {prevMonthPaid > 0 && (
@@ -6270,7 +6295,7 @@ function App() {
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.warn }}>Em aberto</span>
                     <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(245,158,11,0.15)" }}>⚠️</span>
                   </div>
-                  <div className="text-lg sm:text-xl font-extrabold truncate" title={money(pendingValue)} style={{ color: COLORS.ink }}>{money(pendingValue)}</div>
+                  <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(pendingValue)} style={{ color: COLORS.ink }}>{money(pendingValue)}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{totalPrevisto > 0 ? ((pendingValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>

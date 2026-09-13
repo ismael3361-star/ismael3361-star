@@ -5873,7 +5873,7 @@ function App() {
     const today = new Date().getDate();
     const dueToday = monthly.filter((c) => c.due_day === today && !boletos[c.id]?.paid);
     return {
-      count: clients.length, sent, sentWa, sentEmail, paid, overdue, dueSoon,
+      count: clients.filter((c) => !c.cancelled && (c.bank_number || (Number(c.value) || 0) > 0 || c.annual)).length, sent, sentWa, sentEmail, paid, overdue, dueSoon,
       countMonthly: monthly.length, totalMonthly: monthly.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
       countAnnual: annualC.length, totalAnnual: annualC.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
       dueTodayCount: dueToday.length, dueTodayValue: dueToday.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),

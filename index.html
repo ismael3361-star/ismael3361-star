@@ -143,7 +143,7 @@ const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
   comercial: ["clientes", "propostas", "romaneio"],
   financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes"],
-  operacional: ["compra_tag_rfid", "venda_tag_rfid", "implantacao_tecnica", "escala"],
+  operacional: ["compra_tag_rfid", "venda_tag_rfid", "fechamento_rfid", "implantacao_tecnica", "escala"],
   migracao: ["migracoes"],
 };
 const ROLE_LABELS = {
@@ -2971,6 +2971,68 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
   );
 }
 
+function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabels, existingRibbons, onSave, onCancel }) {
+  const [clientName, setClientName] = useState(initial?.client_name || "");
+  const [orderNumber, setOrderNumber] = useState(initial?.order_number ?? nextOrderNumber);
+  const [orderDate, setOrderDate] = useState(initial?.order_date || new Date().toISOString().slice(0, 10));
+  const [quantity, setQuantity] = useState(initial?.quantity ?? "");
+  const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "0.31");
+  const [labelModel, setLabelModel] = useState(initial?.label_model || "");
+  const [ribbon, setRibbon] = useState(initial?.ribbon || "");
+
+  const totalValue = (Number(quantity) || 0) * (Number(unitValue) || 0);
+  const canSave = clientName.trim() && orderNumber !== "" && Number(quantity) > 0;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar pedido" : "Novo pedido de RFID"}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
+          <input value={clientName} onChange={(e) => setClientName(e.target.value)} list="itag-order-clients" placeholder="Ex: Melanina"
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+          <datalist id="itag-order-clients">{existingClients.map((c) => <option key={c} value={c} />)}</datalist>
+        </label>
+        <TextField label="Nº do pedido" value={orderNumber} onChange={setOrderNumber} type="number" placeholder="184" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pedido</span>
+          <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+        </label>
+        <TextField label="Quantidade" value={quantity} onChange={setQuantity} type="number" placeholder="1312" />
+        <TextField label="Valor unitário" value={unitValue} onChange={setUnitValue} type="number" placeholder="0.31" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor total (calculado)</span>
+          <input disabled value={fmtMoney(totalValue)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none opacity-70" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Etiqueta</span>
+          <input value={labelModel} onChange={(e) => setLabelModel(e.target.value)} list="itag-order-labels" placeholder="Ex: 95X26 COSTURA"
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+          <datalist id="itag-order-labels">{existingLabels.map((l) => <option key={l} value={l} />)}</datalist>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Ribbon</span>
+          <input value={ribbon} onChange={(e) => setRibbon(e.target.value)} list="itag-order-ribbons" placeholder="Ex: RESINA"
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+          <datalist id="itag-order-ribbons">{existingRibbons.map((r) => <option key={r} value={r} />)}</datalist>
+        </label>
+      </div>
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({
+            id: initial?.id || uid(), client_name: clientName.trim(), order_number: Number(orderNumber), order_date: orderDate,
+            quantity: Number(quantity) || 0, unit_value: Number(unitValue) || 0, total_value: totalValue,
+            label_model: labelModel.trim(), ribbon: ribbon.trim(),
+          })}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar pedido
+        </button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
+}
 function ItagBillingForm({ initial, onSave, onCancel }) {
   const [clientName, setClientName] = useState(initial?.client_name || "");
   const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "");
@@ -3568,6 +3630,11 @@ function App() {
   const [editingRomaneio, setEditingRomaneio] = useState(null);
   const [itagEntries, setItagEntries] = useState([]);
   const [itagBillings, setItagBillings] = useState([]);
+  const [itagOrders, setItagOrders] = useState([]);
+  const [showItagOrderForm, setShowItagOrderForm] = useState(false);
+  const [editingItagOrder, setEditingItagOrder] = useState(null);
+  const [fechamentoClientId, setFechamentoClientId] = useState("");
+  const [fechamentoMonth, setFechamentoMonth] = useState(new Date().toISOString().slice(0, 7));
   const [dbMigrations, setDbMigrations] = useState([]);
   const [showDbMigrationForm, setShowDbMigrationForm] = useState(false);
   const [editingDbMigration, setEditingDbMigration] = useState(null);
@@ -3717,6 +3784,23 @@ function App() {
     const { data } = await supa.from("itag_billings").select("*").order("due_date", { ascending: false });
     setItagBillings(data || []);
   }, []);
+  const loadItagOrders = useCallback(async () => {
+    const { data } = await supa.from("itag_orders").select("*").order("order_number", { ascending: false });
+    setItagOrders(data || []);
+  }, []);
+  async function handleSaveItagOrder(o) {
+    const { error } = await supa.from("itag_orders").upsert(o);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadItagOrders();
+    setShowItagOrderForm(false); setEditingItagOrder(null);
+    showToast("Pedido salvo.");
+  }
+  async function handleDeleteItagOrder(id) {
+    if (!confirm("Excluir esse pedido?")) return;
+    await supa.from("itag_orders").delete().eq("id", id);
+    await loadItagOrders();
+    showToast("Pedido excluído.");
+  }
   const loadDbMigrations = useCallback(async () => {
     const { data } = await supa.from("db_migrations").select("*").order("request_date", { ascending: false });
     setDbMigrations(data || []);
@@ -4871,7 +4955,40 @@ function App() {
     doc.save(`rfid-faturado-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
+  function exportItagOrderClosingPDF(rows, clientName, monthLabelStr) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 80, 10, 50, 15); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text(`Fechamento de pedidos — ${clientName}`, 14, 36);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Referente a ${monthLabelStr} · Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 42);
+
+    const body = rows.map((o) => [
+      o.order_number, o.order_date ? new Date(o.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+      o.quantity, fmtMoney(o.unit_value), fmtMoney(o.total_value), o.label_model || "-", o.ribbon || "-",
+    ]);
+    const somaQtd = rows.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+    const somaTotal = rows.reduce((s, o) => s + (Number(o.total_value) || 0), 0);
+    const unitMedio = somaQtd > 0 ? somaTotal / somaQtd : 0;
+
+    doc.autoTable({
+      startY: 50,
+      head: [["Pedido", "Data pedido", "Quantidade", "Valor unitário", "Valor total", "Etiqueta", "Ribbon"]],
+      body,
+      foot: [["TOTAL", "", somaQtd, fmtMoney(unitMedio), fmtMoney(somaTotal), "", ""]],
+      styles: { fontSize: 9, halign: "center" },
+      headStyles: { fillColor: [124, 92, 255], halign: "center" },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold", halign: "center" },
+      columnStyles: { 0: { halign: "center" }, 1: { halign: "center" } },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`fechamento-${stripEmojiForPDF(clientName).toLowerCase().replace(/\s+/g, "-")}-${monthLabelStr.replace("/", "-")}.pdf`);
+  }
+
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -6102,6 +6219,7 @@ function App() {
               { group: "RFID", items: [
                 { id: "compra_tag_rfid", label: "Compra Tag RFID", icon: "🏷️" },
                 { id: "venda_tag_rfid", label: "Venda Tag RFID", icon: "🏷️" },
+                { id: "fechamento_rfid", label: "Fechamento de Pedidos", icon: "📋" },
               ]},
               { group: "Operacional", items: [
                 { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
@@ -6207,6 +6325,7 @@ function App() {
                 {effectiveTab === "romaneio" && "Pedido de Etiqueta"}
                 {effectiveTab === "compra_tag_rfid" && "Compra Tag RFID"}
                 {effectiveTab === "venda_tag_rfid" && "Venda Tag RFID"}
+                {effectiveTab === "fechamento_rfid" && "Fechamento de Pedidos"}
                 {effectiveTab === "implantacoes" && "Controle de Implantações"}
                 {effectiveTab === "implantacao_tecnica" && "Implantação Técnica"}
                 {effectiveTab === "calendario" && "Calendário de Vencimentos"}
@@ -7139,6 +7258,116 @@ function App() {
                   </table>
                 )}
               </div>
+            </div>
+          )}
+
+          {effectiveTab === "fechamento_rfid" && (
+            <div>
+              {(() => {
+                const existingClients = [...new Set(itagOrders.map((o) => o.client_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+                const existingLabels = [...new Set(itagOrders.map((o) => o.label_model).filter(Boolean))];
+                const existingRibbons = [...new Set(itagOrders.map((o) => o.ribbon).filter(Boolean))];
+                const nextOrderNumber = itagOrders.length ? Math.max(...itagOrders.map((o) => Number(o.order_number) || 0)) + 1 : 184;
+
+                const filteredOrders = itagOrders
+                  .filter((o) => !fechamentoClientId || o.client_name === fechamentoClientId)
+                  .filter((o) => !fechamentoMonth || (o.order_date || "").slice(0, 7) === fechamentoMonth)
+                  .sort((a, b) => (Number(a.order_number) || 0) - (Number(b.order_number) || 0));
+
+                const somaQtd = filteredOrders.reduce((s, o) => s + (Number(o.quantity) || 0), 0);
+                const somaTotal = filteredOrders.reduce((s, o) => s + (Number(o.total_value) || 0), 0);
+                const unitMedio = somaQtd > 0 ? somaTotal / somaQtd : 0;
+                const [my, mm] = fechamentoMonth.split("-");
+                const monthLabelStr = `${MONTHS_PT[Number(mm) - 1]}/${my}`;
+
+                return (
+                  <>
+                    <div className="rounded-2xl p-4 border mb-4" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Próximo nº de pedido</div>
+                      <div className="text-2xl font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{nextOrderNumber}</div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2 mb-3 sm:items-end">
+                      <label className="block">
+                        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente</span>
+                        <select value={fechamentoClientId} onChange={(e) => setFechamentoClientId(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
+                          <option value="">Todos os clientes</option>
+                          {existingClients.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mês</span>
+                        <input type="month" value={fechamentoMonth} onChange={(e) => setFechamentoMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
+                      </label>
+                    </div>
+
+                    <div className="rounded-xl border p-2.5 flex items-center gap-2 flex-wrap mb-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.015)" }}>
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-1 shrink-0" style={{ color: COLORS.inkFaint }}>Ferramentas</span>
+                      <button onClick={() => exportItagOrderClosingPDF(filteredOrders, fechamentoClientId || "Todos os clientes", monthLabelStr)} disabled={filteredOrders.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF (enviar com boleto)</button>
+                      <div className="ml-auto">
+                        <button onClick={() => { setEditingItagOrder(null); setShowItagOrderForm(true); }} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo pedido</button>
+                      </div>
+                    </div>
+
+                    {showItagOrderForm && (
+                      <div className="mb-4">
+                        <ItagOrderForm initial={editingItagOrder} nextOrderNumber={nextOrderNumber} existingClients={existingClients} existingLabels={existingLabels} existingRibbons={existingRibbons}
+                          onSave={handleSaveItagOrder} onCancel={() => { setShowItagOrderForm(false); setEditingItagOrder(null); }} />
+                      </div>
+                    )}
+
+                    <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      {filteredOrders.length === 0 ? (
+                        <div className="p-10 text-center"><div className="text-3xl mb-2">📋</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pedido nesse período.</div></div>
+                      ) : (
+                        <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                          <thead>
+                            <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                              <th className="text-left p-3 font-bold uppercase">Pedido</th>
+                              <th className="text-left p-3 font-bold uppercase">Cliente</th>
+                              <th className="text-left p-3 font-bold uppercase">Data pedido</th>
+                              <th className="text-left p-3 font-bold uppercase">Quantidade</th>
+                              <th className="text-left p-3 font-bold uppercase">Vr. unitário</th>
+                              <th className="text-left p-3 font-bold uppercase">Vr. total</th>
+                              <th className="text-left p-3 font-bold uppercase">Etiqueta</th>
+                              <th className="text-left p-3 font-bold uppercase">Ribbon</th>
+                              <th className="text-left p-3 font-bold uppercase"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredOrders.map((o, i) => (
+                              <tr key={o.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                <td className="p-3 font-bold">{o.order_number}</td>
+                                <td className="p-3 font-semibold">{o.client_name}</td>
+                                <td className="p-3">{fmtDate(o.order_date)}</td>
+                                <td className="p-3">{o.quantity}</td>
+                                <td className="p-3">{money(o.unit_value)}</td>
+                                <td className="p-3 font-bold">{money(o.total_value)}</td>
+                                <td className="p-3">{o.label_model || "-"}</td>
+                                <td className="p-3">{o.ribbon || "-"}</td>
+                                <td className="p-3">
+                                  <button onClick={() => { setEditingItagOrder(o); setShowItagOrderForm(true); }} className="mr-2">✏️</button>
+                                  <button onClick={() => handleDeleteItagOrder(o.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot>
+                            <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}`, fontWeight: 700 }}>
+                              <td className="p-3" colSpan={3}>TOTAL</td>
+                              <td className="p-3">{somaQtd}</td>
+                              <td className="p-3">{money(unitMedio)}</td>
+                              <td className="p-3">{money(somaTotal)}</td>
+                              <td className="p-3" colSpan={2}></td>
+                              <td className="p-3"></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           )}
 

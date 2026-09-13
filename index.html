@@ -3907,6 +3907,26 @@ function App() {
     await loadPettyCashEntries();
     showToast("Lançamento excluído.");
   }
+  async function handleUploadPettyCashFile(e, file) {
+    if (!file) return;
+    try {
+      const path = `caixa/${e.id}-${Date.now()}-${file.name}`;
+      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supa.storage.from("boletos").getPublicUrl(path);
+      await supa.from("petty_cash_entries").update({ file_url: data.publicUrl, file_name: file.name }).eq("id", e.id);
+      await loadPettyCashEntries();
+      showToast("Comprovante anexado.");
+    } catch (err) {
+      showToast(`Erro: ${err.message || "não foi possível anexar o arquivo"}`);
+    }
+  }
+  async function handleRemovePettyCashFile(e) {
+    if (!confirm("Remover o comprovante anexado?")) return;
+    await supa.from("petty_cash_entries").update({ file_url: null, file_name: null }).eq("id", e.id);
+    await loadPettyCashEntries();
+    showToast("Comprovante removido.");
+  }
   const loadLunchEntries = useCallback(async () => {
     const { data } = await supa.from("lunch_entries").select("*").order("entry_date", { ascending: false });
     setLunchEntries(data || []);
@@ -3923,6 +3943,26 @@ function App() {
     await supa.from("lunch_entries").delete().eq("id", id);
     await loadLunchEntries();
     showToast("Registro excluído.");
+  }
+  async function handleUploadLunchFile(e, file) {
+    if (!file) return;
+    try {
+      const path = `almoco/${e.id}-${Date.now()}-${file.name}`;
+      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = supa.storage.from("boletos").getPublicUrl(path);
+      await supa.from("lunch_entries").update({ file_url: data.publicUrl, file_name: file.name }).eq("id", e.id);
+      await loadLunchEntries();
+      showToast("Comprovante anexado.");
+    } catch (err) {
+      showToast(`Erro: ${err.message || "não foi possível anexar o arquivo"}`);
+    }
+  }
+  async function handleRemoveLunchFile(e) {
+    if (!confirm("Remover o comprovante anexado?")) return;
+    await supa.from("lunch_entries").update({ file_url: null, file_name: null }).eq("id", e.id);
+    await loadLunchEntries();
+    showToast("Comprovante removido.");
   }
   async function handleSaveItagOrder(o) {
     const { error } = await supa.from("itag_orders").upsert(o);
@@ -7951,7 +7991,7 @@ function App() {
                             <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                               <thead>
                                 <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                                  <th className="text-left p-3">Data</th><th className="text-left p-3">Descrição</th><th className="text-left p-3">Tipo</th><th className="text-left p-3">Valor</th><th className="text-left p-3"></th>
+                                  <th className="text-left p-3">Data</th><th className="text-left p-3">Descrição</th><th className="text-left p-3">Tipo</th><th className="text-left p-3">Valor</th><th className="text-left p-3">Comprovante</th><th className="text-left p-3"></th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -7965,6 +8005,19 @@ function App() {
                                       </span>
                                     </td>
                                     <td className="p-3 font-bold">{money(e.amount)}</td>
+                                    <td className="p-3">
+                                      {e.file_url ? (
+                                        <div className="flex items-center gap-1">
+                                          <a href={e.file_url} target="_blank" className="text-[11px] font-bold px-2 py-1 rounded-full border whitespace-nowrap" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📎 Ver</a>
+                                          <button onClick={() => handleRemovePettyCashFile(e)} className="text-[11px] px-1" style={{ color: COLORS.danger }} title="Remover anexo">✕</button>
+                                        </div>
+                                      ) : (
+                                        <label className="text-[11px] font-bold px-2 py-1 rounded-full border cursor-pointer whitespace-nowrap" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
+                                          📎 Anexar
+                                          <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(ev) => handleUploadPettyCashFile(e, ev.target.files?.[0])} />
+                                        </label>
+                                      )}
+                                    </td>
                                     <td className="p-3">
                                       <button onClick={() => { setEditingPettyCash(e); setShowPettyCashForm(true); }} className="mr-2">✏️</button>
                                       <button onClick={() => handleDeletePettyCash(e.id)} style={{ color: COLORS.danger }}>🗑️</button>
@@ -8004,7 +8057,7 @@ function App() {
                             <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                               <thead>
                                 <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                                  <th className="text-left p-3">Data</th><th className="text-left p-3">Valor</th><th className="text-left p-3">Funcionários</th><th className="text-left p-3">Obs.</th><th className="text-left p-3"></th>
+                                  <th className="text-left p-3">Data</th><th className="text-left p-3">Valor</th><th className="text-left p-3">Funcionários</th><th className="text-left p-3">Obs.</th><th className="text-left p-3">Comprovante</th><th className="text-left p-3"></th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -8014,6 +8067,19 @@ function App() {
                                     <td className="p-3 font-bold">{money(e.amount)}</td>
                                     <td className="p-3">{e.employee_count}</td>
                                     <td className="p-3">{e.notes || "-"}</td>
+                                    <td className="p-3">
+                                      {e.file_url ? (
+                                        <div className="flex items-center gap-1">
+                                          <a href={e.file_url} target="_blank" className="text-[11px] font-bold px-2 py-1 rounded-full border whitespace-nowrap" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📎 Ver</a>
+                                          <button onClick={() => handleRemoveLunchFile(e)} className="text-[11px] px-1" style={{ color: COLORS.danger }} title="Remover anexo">✕</button>
+                                        </div>
+                                      ) : (
+                                        <label className="text-[11px] font-bold px-2 py-1 rounded-full border cursor-pointer whitespace-nowrap" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
+                                          📎 Anexar
+                                          <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(ev) => handleUploadLunchFile(e, ev.target.files?.[0])} />
+                                        </label>
+                                      )}
+                                    </td>
                                     <td className="p-3">
                                       <button onClick={() => { setEditingLunch(e); setShowLunchForm(true); }} className="mr-2">✏️</button>
                                       <button onClick={() => handleDeleteLunch(e.id)} style={{ color: COLORS.danger }}>🗑️</button>

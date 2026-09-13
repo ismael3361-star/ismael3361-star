@@ -383,6 +383,13 @@ function maskCEP(v) {
   const d = onlyDigits(v).slice(0, 8);
   return d.replace(/(\d{5})(\d)/, "$1-$2");
 }
+function maskPhone(v) {
+  const d = onlyDigits(v).slice(0, 11);
+  if (d.length > 10) return d.replace(/^(\d{2})(\d{5})(\d{0,4})$/, (m, a, b, c) => c ? `(${a}) ${b}-${c}` : `(${a}) ${b}`);
+  if (d.length > 5) return d.replace(/^(\d{2})(\d{4})(\d{0,4})$/, (m, a, b, c) => c ? `(${a}) ${b}-${c}` : `(${a}) ${b}`);
+  if (d.length > 2) return d.replace(/^(\d{2})(\d{0,5})$/, (m, a, b) => `(${a}) ${b}`);
+  return d.length ? `(${d}` : d;
+}
 
 async function fetchCNPJData(rawCnpj) {
   const digits = onlyDigits(rawCnpj);
@@ -750,7 +757,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
           </div>
           {cnpjError && <span className="text-[11px]" style={{ color: COLORS.danger }}>{cnpjError}</span>}
         </label>
-        <TextField label="WhatsApp" value={phone} onChange={setPhone} placeholder="(11) 91234-5678" />
+        <TextField label="WhatsApp" value={phone} onChange={(v) => setPhone(maskPhone(v))} placeholder="(11) 91234-5678" />
         <TextField label="E-mail" value={email} onChange={setEmail} placeholder="cliente@email.com" />
         <TextField label={annual ? "Valor da mensalidade anual" : "Valor da mensalidade"} value={value} onChange={setValue} type="number" placeholder="150" />
         <label className="block">
@@ -3649,7 +3656,11 @@ function App() {
 
   const loadClients = useCallback(async () => {
     const { data } = await supa.from("clients").select("*").order("name");
-    setClients((data || []).map((c) => c.bank_number ? { ...c, bank_number: padBankNumber(c.bank_number) } : c));
+    setClients((data || []).map((c) => ({
+      ...c,
+      bank_number: c.bank_number ? padBankNumber(c.bank_number) : c.bank_number,
+      phone: c.phone ? maskPhone(c.phone) : c.phone,
+    })));
   }, []);
   const loadSettings = useCallback(async () => {
     const { data } = await supa.from("settings").select("*").eq("id", "default").single();
@@ -5637,7 +5648,7 @@ function App() {
       const iBank = idx("codigo_banco"), iInteg = idx("integracao"), iAnnual = idx("mensalidade_anual"), iCloud = idx("cliente_cloud"), iMarket = idx("marketplace");
       if (iName === -1) { showToast('CSV precisa ter a coluna "Nome".'); return; }
       const imported = rows.slice(1).filter((r) => r[iName] && r[iName].trim()).map((r) => ({
-        id: uid(), name: (r[iName] || "").trim(), phone: (r[iPhone] || "").trim(), email: (r[iEmail] || "").trim(),
+        id: uid(), name: (r[iName] || "").trim(), phone: maskPhone((r[iPhone] || "").trim()), email: (r[iEmail] || "").trim(),
         value: Number(r[iValue]) || 0, consultations_value: Number(r[iCons]) || 0, due_day: Number(r[iDue]) || null,
         plan: (r[iPlan] || "").trim(), notes: (r[iNotes] || "").trim(),
         cnpj: (r[iCnpj] || "").trim(), cep: (r[iCep] || "").trim(), street: (r[iStreet] || "").trim(), number: (r[iNumber] || "").trim(),

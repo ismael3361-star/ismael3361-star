@@ -2983,6 +2983,29 @@ function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabe
   const totalValue = (Number(quantity) || 0) * (Number(unitValue) || 0);
   const canSave = clientName.trim() && orderNumber !== "" && Number(quantity) > 0;
 
+  function previewPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 80, 10, 50, 15); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text(`Fechamento de pedidos — ${clientName.trim() || "Cliente"}`, 14, 36);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Pré-visualização (ainda não salvo) · ${new Date().toLocaleDateString("pt-BR")}`, 14, 42);
+    doc.autoTable({
+      startY: 50,
+      head: [["Pedido", "Data pedido", "Quantidade", "Valor unitário", "Valor total", "Etiqueta", "Ribbon"]],
+      body: [[orderNumber || "-", orderDate ? new Date(orderDate + "T00:00:00").toLocaleDateString("pt-BR") : "-", quantity || 0, fmtMoney(unitValue), fmtMoney(totalValue), labelModel || "-", ribbon || "-"]],
+      foot: [["TOTAL", "", quantity || 0, fmtMoney(unitValue), fmtMoney(totalValue), "", ""]],
+      styles: { fontSize: 9, halign: "center" },
+      headStyles: { fillColor: [124, 92, 255], halign: "center" },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold", halign: "center" },
+      margin: { left: 14, right: 14 },
+    });
+    window.open(doc.output("bloburl"), "_blank");
+  }
+
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
       <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar pedido" : "Novo pedido de RFID"}</div>
@@ -3017,7 +3040,10 @@ function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabe
           <datalist id="itag-order-ribbons">{existingRibbons.map((r) => <option key={r} value={r} />)}</datalist>
         </label>
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
+        <button onClick={previewPDF} disabled={!canSave} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
+          👁️ Visualizar antes de salvar
+        </button>
         <button
           disabled={!canSave}
           onClick={() => onSave({

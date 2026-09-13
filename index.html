@@ -142,7 +142,7 @@ function rgba(hex, alpha) {
 const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
   comercial: ["clientes", "propostas", "romaneio"],
-  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes"],
+  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes", "caixa"],
   operacional: ["compra_tag_rfid", "venda_tag_rfid", "fechamento_rfid", "implantacao_tecnica", "escala"],
   migracao: ["migracoes"],
 };
@@ -3059,6 +3059,74 @@ function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabe
     </div>
   );
 }
+function PettyCashForm({ initial, onSave, onCancel }) {
+  const [entryDate, setEntryDate] = useState(initial?.entry_date || new Date().toISOString().slice(0, 10));
+  const [description, setDescription] = useState(initial?.description || "");
+  const [type, setType] = useState(initial?.type || "saida");
+  const [amount, setAmount] = useState(initial?.amount ?? "");
+  const canSave = description.trim() && Number(amount) > 0;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar lançamento" : "Novo lançamento do caixa"}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data</span>
+          <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Tipo</span>
+          <select value={type} onChange={(e) => setType(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
+            <option value="saida">Saída (gasto)</option>
+            <option value="entrada">Entrada (aporte extra)</option>
+          </select>
+        </label>
+        <TextField label="Descrição" value={description} onChange={setDescription} placeholder="Ex: Material de limpeza" />
+        <TextField label="Valor" value={amount} onChange={setAmount} type="number" placeholder="0" />
+      </div>
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({ id: initial?.id || uid(), entry_date: entryDate, description: description.trim(), type, amount: Number(amount) || 0 })}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar lançamento
+        </button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
+}
+function LunchForm({ initial, onSave, onCancel }) {
+  const [entryDate, setEntryDate] = useState(initial?.entry_date || new Date().toISOString().slice(0, 10));
+  const [amount, setAmount] = useState(initial?.amount ?? "30");
+  const [employeeCount, setEmployeeCount] = useState(initial?.employee_count ?? "7");
+  const [notes, setNotes] = useState(initial?.notes || "");
+  const canSave = entryDate && Number(amount) > 0;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar almoço" : "Novo almoço de quinta"}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data (quinta-feira)</span>
+          <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+        </label>
+        <TextField label="Valor" value={amount} onChange={setAmount} type="number" placeholder="30" />
+        <TextField label="Nº de funcionários" value={employeeCount} onChange={setEmployeeCount} type="number" placeholder="7" />
+        <TextField label="Obs." value={notes} onChange={setNotes} placeholder="opcional" />
+      </div>
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({ id: initial?.id || uid(), entry_date: entryDate, amount: Number(amount) || 0, employee_count: Number(employeeCount) || 0, notes: notes.trim() || null })}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar almoço
+        </button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
+}
 function ItagBillingForm({ initial, onSave, onCancel }) {
   const [clientName, setClientName] = useState(initial?.client_name || "");
   const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "");
@@ -3661,6 +3729,14 @@ function App() {
   const [editingItagOrder, setEditingItagOrder] = useState(null);
   const [fechamentoClientId, setFechamentoClientId] = useState("");
   const [fechamentoMonth, setFechamentoMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [pettyCashEntries, setPettyCashEntries] = useState([]);
+  const [showPettyCashForm, setShowPettyCashForm] = useState(false);
+  const [editingPettyCash, setEditingPettyCash] = useState(null);
+  const [lunchEntries, setLunchEntries] = useState([]);
+  const [showLunchForm, setShowLunchForm] = useState(false);
+  const [editingLunch, setEditingLunch] = useState(null);
+  const [caixaSubTab, setCaixaSubTab] = useState("caixa");
+  const [caixaMonth, setCaixaMonth] = useState(new Date().toISOString().slice(0, 7));
   const [dbMigrations, setDbMigrations] = useState([]);
   const [showDbMigrationForm, setShowDbMigrationForm] = useState(false);
   const [editingDbMigration, setEditingDbMigration] = useState(null);
@@ -3814,6 +3890,40 @@ function App() {
     const { data } = await supa.from("itag_orders").select("*").order("order_number", { ascending: false });
     setItagOrders(data || []);
   }, []);
+  const loadPettyCashEntries = useCallback(async () => {
+    const { data } = await supa.from("petty_cash_entries").select("*").order("entry_date", { ascending: false });
+    setPettyCashEntries(data || []);
+  }, []);
+  async function handleSavePettyCash(e) {
+    const { error } = await supa.from("petty_cash_entries").upsert(e);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadPettyCashEntries();
+    setShowPettyCashForm(false); setEditingPettyCash(null);
+    showToast("Lançamento salvo.");
+  }
+  async function handleDeletePettyCash(id) {
+    if (!confirm("Excluir esse lançamento do caixa?")) return;
+    await supa.from("petty_cash_entries").delete().eq("id", id);
+    await loadPettyCashEntries();
+    showToast("Lançamento excluído.");
+  }
+  const loadLunchEntries = useCallback(async () => {
+    const { data } = await supa.from("lunch_entries").select("*").order("entry_date", { ascending: false });
+    setLunchEntries(data || []);
+  }, []);
+  async function handleSaveLunch(e) {
+    const { error } = await supa.from("lunch_entries").upsert(e);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadLunchEntries();
+    setShowLunchForm(false); setEditingLunch(null);
+    showToast("Almoço registrado.");
+  }
+  async function handleDeleteLunch(id) {
+    if (!confirm("Excluir esse registro de almoço?")) return;
+    await supa.from("lunch_entries").delete().eq("id", id);
+    await loadLunchEntries();
+    showToast("Registro excluído.");
+  }
   async function handleSaveItagOrder(o) {
     const { error } = await supa.from("itag_orders").upsert(o);
     if (error) { showToast(`Erro: ${error.message}`); return; }
@@ -5014,7 +5124,7 @@ function App() {
     doc.save(`fechamento-${stripEmojiForPDF(clientName).toLowerCase().replace(/\s+/g, "-")}-${monthLabelStr.replace("/", "-")}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadPettyCashEntries(); loadLunchEntries(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -6241,6 +6351,7 @@ function App() {
                 { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
                 { id: "folha", label: "Folha de Pagamento", icon: "👥" },
                 { id: "comissao_representantes", label: "Comissão Representantes", icon: "🤝" },
+                { id: "caixa", label: "Caixa", icon: "💵" },
               ]},
               { group: "RFID", items: [
                 { id: "compra_tag_rfid", label: "Compra Tag RFID", icon: "🏷️" },
@@ -6366,6 +6477,7 @@ function App() {
                 {effectiveTab === "pedidos_etiquetas" && "Compra de Etiqueta"}
                 {effectiveTab === "migracoes" && "Migração de Banco de Dados"}
                 {effectiveTab === "comissao_representantes" && "Comissão de Representantes"}
+                {effectiveTab === "caixa" && "Caixa"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
                 {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : ["clientes", "boletos", "calendario"].includes(effectiveTab) ? `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}` : ""}
@@ -7708,6 +7820,152 @@ function App() {
                             ))}
                           </tbody>
                         </table>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {effectiveTab === "caixa" && (
+            <div>
+              {(() => {
+                const [cy, cm] = caixaMonth.split("-").map(Number);
+                const thursdaysInMonth = (() => {
+                  let count = 0;
+                  const d = new Date(cy, cm - 1, 1);
+                  while (d.getMonth() === cm - 1) { if (d.getDay() === 4) count++; d.setDate(d.getDate() + 1); }
+                  return count;
+                })();
+
+                const cashOfMonth = pettyCashEntries.filter((e) => (e.entry_date || "").slice(0, 7) === caixaMonth);
+                const totalSaidas = cashOfMonth.filter((e) => e.type !== "entrada").reduce((s, e) => s + (Number(e.amount) || 0), 0);
+                const totalEntradasExtra = cashOfMonth.filter((e) => e.type === "entrada").reduce((s, e) => s + (Number(e.amount) || 0), 0);
+                const orcamentoMes = 500 + totalEntradasExtra;
+                const saldoCaixa = orcamentoMes - totalSaidas;
+
+                const lunchOfMonth = lunchEntries.filter((e) => (e.entry_date || "").slice(0, 7) === caixaMonth).sort((a, b) => (a.entry_date || "").localeCompare(b.entry_date || ""));
+                const totalLunch = lunchOfMonth.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+
+                return (
+                  <>
+                    <div className="flex items-center gap-1.5 mb-4">
+                      <button onClick={() => setCaixaSubTab("caixa")} className="px-4 py-2 rounded-lg text-sm font-semibold"
+                        style={{ background: caixaSubTab === "caixa" ? COLORS.brand : "transparent", color: caixaSubTab === "caixa" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>
+                        💰 Caixa Mensal
+                      </button>
+                      <button onClick={() => setCaixaSubTab("almoco")} className="px-4 py-2 rounded-lg text-sm font-semibold"
+                        style={{ background: caixaSubTab === "almoco" ? COLORS.brand : "transparent", color: caixaSubTab === "almoco" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>
+                        🍽️ Almoço de Quinta
+                      </button>
+                      <label className="ml-auto block">
+                        <input type="month" value={caixaMonth} onChange={(e) => setCaixaMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
+                      </label>
+                    </div>
+
+                    {caixaSubTab === "caixa" && (
+                      <div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                          <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                            <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Orçamento do mês</div>
+                            <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(orcamentoMes)}</div>
+                            {totalEntradasExtra > 0 && <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>R$500 + {money(totalEntradasExtra)} extra</div>}
+                          </div>
+                          <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                            <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Gasto no mês</div>
+                            <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(totalSaidas)}</div>
+                          </div>
+                          <div className="rounded-2xl p-4 border-2" style={{ background: COLORS.card, borderColor: saldoCaixa < 0 ? COLORS.danger : COLORS.success }}>
+                            <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: saldoCaixa < 0 ? COLORS.danger : COLORS.success }}>Saldo restante</div>
+                            <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(saldoCaixa)}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end mb-3">
+                          <button onClick={() => { setEditingPettyCash(null); setShowPettyCashForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo lançamento</button>
+                        </div>
+                        {showPettyCashForm && <div className="mb-4"><PettyCashForm initial={editingPettyCash} onSave={handleSavePettyCash} onCancel={() => { setShowPettyCashForm(false); setEditingPettyCash(null); }} /></div>}
+
+                        <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                          {cashOfMonth.length === 0 ? (
+                            <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum lançamento nesse mês.</div>
+                          ) : (
+                            <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                              <thead>
+                                <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                                  <th className="text-left p-3">Data</th><th className="text-left p-3">Descrição</th><th className="text-left p-3">Tipo</th><th className="text-left p-3">Valor</th><th className="text-left p-3"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {cashOfMonth.sort((a, b) => (b.entry_date || "").localeCompare(a.entry_date || "")).map((e, i) => (
+                                  <tr key={e.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                    <td className="p-3">{fmtDate(e.entry_date)}</td>
+                                    <td className="p-3 font-semibold">{e.description}</td>
+                                    <td className="p-3">
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: e.type === "entrada" ? COLORS.success : COLORS.warn, background: e.type === "entrada" ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>
+                                        {e.type === "entrada" ? "Entrada" : "Saída"}
+                                      </span>
+                                    </td>
+                                    <td className="p-3 font-bold">{money(e.amount)}</td>
+                                    <td className="p-3">
+                                      <button onClick={() => { setEditingPettyCash(e); setShowPettyCashForm(true); }} className="mr-2">✏️</button>
+                                      <button onClick={() => handleDeletePettyCash(e.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {caixaSubTab === "almoco" && (
+                      <div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                          <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                            <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Quintas no mês</div>
+                            <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{lunchOfMonth.length} de {thursdaysInMonth}</div>
+                          </div>
+                          <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                            <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Total gasto no mês</div>
+                            <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(totalLunch)}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end mb-3">
+                          <button onClick={() => { setEditingLunch(null); setShowLunchForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo almoço</button>
+                        </div>
+                        {showLunchForm && <div className="mb-4"><LunchForm initial={editingLunch} onSave={handleSaveLunch} onCancel={() => { setShowLunchForm(false); setEditingLunch(null); }} /></div>}
+
+                        <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                          {lunchOfMonth.length === 0 ? (
+                            <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum almoço registrado nesse mês.</div>
+                          ) : (
+                            <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                              <thead>
+                                <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                                  <th className="text-left p-3">Data</th><th className="text-left p-3">Valor</th><th className="text-left p-3">Funcionários</th><th className="text-left p-3">Obs.</th><th className="text-left p-3"></th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {lunchOfMonth.map((e, i) => (
+                                  <tr key={e.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                    <td className="p-3">{fmtDate(e.entry_date)}</td>
+                                    <td className="p-3 font-bold">{money(e.amount)}</td>
+                                    <td className="p-3">{e.employee_count}</td>
+                                    <td className="p-3">{e.notes || "-"}</td>
+                                    <td className="p-3">
+                                      <button onClick={() => { setEditingLunch(e); setShowLunchForm(true); }} className="mr-2">✏️</button>
+                                      <button onClick={() => handleDeleteLunch(e.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
                       </div>
                     )}
                   </>

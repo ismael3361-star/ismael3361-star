@@ -502,6 +502,12 @@ function SystemFooter({ userRole, session }) {
     </div>
   );
 }
+function padBankNumber(v) {
+  if (v == null) return v;
+  const s = String(v).trim();
+  if (!s) return s;
+  return /^\d+$/.test(s) ? s.padStart(4, "0") : s;
+}
 function sortByBankNumber(a, b) {
   const na = a.bank_number ? Number(String(a.bank_number).replace(/\D/g, "")) : NaN;
   const nb = b.bank_number ? Number(String(b.bank_number).replace(/\D/g, "")) : NaN;
@@ -656,6 +662,7 @@ function TextField({ label, value, onChange, type = "text", placeholder, require
 
 function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || "");
+  const [contactName, setContactName] = useState(initial?.contact_name || "");
   const [phone, setPhone] = useState(initial?.phone || "");
   const [email, setEmail] = useState(initial?.email || "");
   const [value, setValue] = useState(initial?.value ?? "");
@@ -733,6 +740,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
         <TextField label="Nome do cliente" value={name} onChange={setName} required placeholder="Ex: Maria Souza" />
+        <TextField label="Nome do contato" value={contactName} onChange={setContactName} placeholder="Ex: João (responsável na loja)" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>CNPJ / CPF {cnpjLoading && <span className="font-normal normal-case">(buscando...)</span>}</span>
           <div className="flex gap-2">
@@ -813,11 +821,11 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
         <button
           disabled={!canSave}
           onClick={() => onSave({
-            id: initial?.id || uid(), name: name.trim(), phone: phone.trim(), email: email.trim(),
+            id: initial?.id || uid(), name: name.trim(), contact_name: contactName.trim() || null, phone: phone.trim(), email: email.trim(),
             value: Number(value) || 0, due_day: nextDueDate ? Number(nextDueDate.slice(8, 10)) : null, next_due_date: nextDueDate || null, annual_due_date: annual ? (nextDueDate || null) : null,
             plan: plan.trim(), notes: notes.trim(), cnpj: cnpj.trim(), cep: cep.trim(), street: street.trim(), number: number.trim(),
             complement: complement.trim(), neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
-            bank_number: bankNumber.trim(), integration: integration.trim(), annual, cloud, marketplace: marketplace.trim(),
+            bank_number: padBankNumber(bankNumber.trim()), integration: integration.trim(), annual, cloud, marketplace: marketplace.trim(),
             group_name: groupName.trim() || null, additional_stores: additionalStores.filter((s) => s.name.trim()),
             representative_name: representativeName.trim() || null,
           })}
@@ -3641,7 +3649,7 @@ function App() {
 
   const loadClients = useCallback(async () => {
     const { data } = await supa.from("clients").select("*").order("name");
-    setClients(data || []);
+    setClients((data || []).map((c) => c.bank_number ? { ...c, bank_number: padBankNumber(c.bank_number) } : c));
   }, []);
   const loadSettings = useCallback(async () => {
     const { data } = await supa.from("settings").select("*").eq("id", "default").single();
@@ -5634,7 +5642,7 @@ function App() {
         plan: (r[iPlan] || "").trim(), notes: (r[iNotes] || "").trim(),
         cnpj: (r[iCnpj] || "").trim(), cep: (r[iCep] || "").trim(), street: (r[iStreet] || "").trim(), number: (r[iNumber] || "").trim(),
         complement: (r[iComp] || "").trim(), neighborhood: (r[iNeigh] || "").trim(), city: (r[iCity] || "").trim(), state: (r[iState] || "").trim(),
-        bank_number: (r[iBank] || "").trim(), integration: (r[iInteg] || "").trim(),
+        bank_number: padBankNumber((r[iBank] || "").trim()), integration: (r[iInteg] || "").trim(),
         annual: /sim|true|1/i.test(r[iAnnual] || ""), cloud: /sim|true|1/i.test(r[iCloud] || ""), marketplace: (r[iMarket] || "").trim(),
       }));
       await supa.from("clients").upsert(imported);

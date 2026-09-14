@@ -4301,16 +4301,45 @@ function App() {
   function exportExpensesPDF(list) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    doc.setFontSize(14);
-    doc.text("Contas a Pagar", 14, 15);
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text("Contas a Pagar", 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+
+    const hoje = new Date().toISOString().slice(0, 10);
+    const upcomingIds = list
+      .filter((e) => !e.paid && e.due_date && e.due_date >= hoje)
+      .sort((a, b) => a.due_date.localeCompare(b.due_date))
+      .slice(0, 3)
+      .map((e) => e.id);
+
     doc.autoTable({
-      startY: 22,
+      startY: 44,
       head: [["Categoria", "Descrição", "Obs.", "Valor", "Vencimento", "Situação"]],
       body: list.map((e) => [e.category, e.description || "-", e.notes || "-", fmtMoney(e.value), e.due_date ? new Date(e.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", e.paid ? "Pago" : "Em aberto"]),
       styles: { fontSize: 8 },
       headStyles: { fillColor: [124, 92, 255] },
       margin: { left: 14, right: 14 },
+      didParseCell: (data) => {
+        if (data.section === "body" && upcomingIds.includes(list[data.row.index]?.id)) {
+          data.cell.styles.fontStyle = "bold";
+        }
+      },
+      didDrawCell: (data) => {
+        if (data.section === "body" && upcomingIds.includes(list[data.row.index]?.id)) {
+          const { x, y, width, height } = data.cell;
+          doc.setDrawColor(124, 92, 255);
+          doc.setLineWidth(0.4);
+          doc.line(x + 1, y + height - 0.8, x + width - 1, y + height - 0.8);
+        }
+      },
     });
+    doc.setFontSize(8);
+    doc.setTextColor(124, 92, 255);
+    doc.text("▬ Sublinhado = próximos 3 vencimentos em aberto", 14, doc.lastAutoTable.finalY + 6);
     doc.save(`despesas-${new Date().toISOString().slice(0, 10)}.pdf`);
   }
   async function handleSaveTechImplementation(t) {

@@ -5772,6 +5772,14 @@ function App() {
     await supa.from("romaneios").update({ commission_paid: !r.commission_paid }).eq("id", r.id);
     await loadRomaneios();
   }
+  async function handleMarkAllCommissionPaid(rows) {
+    const pendentes = rows.filter((r) => !r.commission_paid);
+    if (pendentes.length === 0) return;
+    if (!confirm(`Marcar ${pendentes.length} comissão(ões) como pagas?`)) return;
+    await Promise.all(pendentes.map((r) => supa.from("romaneios").update({ commission_paid: true }).eq("id", r.id)));
+    await loadRomaneios();
+    showToast("Comissões marcadas como pagas.");
+  }
   async function handleToggleRomaneioPaid(r) {
     const nowPaid = !r.paid;
     await supa.from("romaneios").update({ paid: nowPaid, payment_date: nowPaid ? (r.payment_date || new Date().toISOString().slice(0, 10)) : null }).eq("id", r.id);
@@ -8971,7 +8979,12 @@ function App() {
                         <div key={s} className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                           <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}`, background: "rgba(124,92,255,0.08)" }}>
                             <div className="text-sm font-bold" style={{ color: COLORS.brandLight }}>👤 {s}</div>
-                            <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Total: {money(sellerTotal)}</div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Total: {money(sellerTotal)}</div>
+                              {rows.some((r) => !r.commission_paid) && (
+                                <button onClick={() => handleMarkAllCommissionPaid(rows)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: COLORS.success, color: COLORS.success }}>✓ Marcar tudo como pago</button>
+                              )}
+                            </div>
                           </div>
                           <table className="w-full text-sm" style={{ color: COLORS.ink }}>
                             <thead>

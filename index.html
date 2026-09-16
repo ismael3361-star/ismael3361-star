@@ -6286,7 +6286,7 @@ function App() {
     return clients
       .filter((c) => !c.cancelled && !c.annual && computeStatus(c, boletos[c.id], monthDate) === "atrasado")
       .map((c) => ({ ...c, _diasAtraso: daysOverdue(c, monthDate) }))
-      .sort((a, b) => b._diasAtraso - a._diasAtraso);
+      .sort(sortByBankNumber);
   }, [clients, boletos, monthDate]);
 
   const dueSoonNotSent = useMemo(() => {
@@ -7408,16 +7408,11 @@ function App() {
 
           {effectiveTab === "compra_tag_rfid" && (
             <div>
-              <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 mb-4">
+              <div className="grid grid-cols-1 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total comprado</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0)} un.</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{money(itagEntries.reduce((s, e) => s + (Number(e.total_value) || 0), 0))} gastos</div>
-                </div>
-                <div className="rounded-2xl p-4 border-2" style={{ background: COLORS.card, borderColor: "#D4AF37" }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: "#D4AF37" }}>📦 Saldo em estoque</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0) - itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un.</div>
-                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>comprado − faturado</div>
                 </div>
               </div>
 
@@ -7482,16 +7477,11 @@ function App() {
 
           {effectiveTab === "venda_tag_rfid" && (
             <div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Total faturado</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un.</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{money(itagBillings.reduce((s, b) => s + (Number(b.boleto_value) || 0), 0))} em boletos</div>
-                </div>
-                <div className="rounded-2xl p-4 border-2" style={{ background: COLORS.card, borderColor: "#D4AF37" }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: "#D4AF37" }}>📦 Saldo em estoque</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0) - itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un.</div>
-                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>comprado − faturado</div>
                 </div>
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Total recebido</div>

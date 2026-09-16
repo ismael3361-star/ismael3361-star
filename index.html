@@ -6285,7 +6285,24 @@ function App() {
     return clients.filter((c) => !c.cancelled && !c.annual && isDueSoon(c, boletos[c.id], monthDate) && !boletos[c.id]?.sent_whatsapp && !boletos[c.id]?.sent_email);
   }, [clients, boletos, monthDate]);
 
-  const paidValue = useMemo(() => clients.filter((c) => !c.annual && boletos[c.id]?.paid).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos]);
+  const paidValue = useMemo(() => clients
+    .filter((c) => {
+      if (c.annual || c.cancelled) return false;
+      if (!boletos[c.id]?.paid) return false;
+      if (!c.due_day) return false;
+      if (c.next_due_date) {
+        const nd = new Date(c.next_due_date + "T00:00:00");
+        const ndKey = nd.getFullYear() * 12 + nd.getMonth();
+        const monthKey = monthDate.getFullYear() * 12 + monthDate.getMonth();
+        if (ndKey > monthKey) return false;
+      }
+      return true;
+    })
+    .reduce((s, c) => {
+      const b = boletos[c.id];
+      const pv = Number(b?.paid_value);
+      return s + (pv > 0 ? pv : effectiveValue(c, b));
+    }, 0), [clients, boletos, monthDate]);
   const totalPrevisto = stats.totalMonthly;
   const pendingValue = totalPrevisto - paidValue;
   const yearTotal = useMemo(() => yearHistory.reduce((s, h) => s + (h.pago || 0), 0), [yearHistory]);
@@ -6675,7 +6692,7 @@ function App() {
                 </div>
               )}
               {/* Linha 1: cards principais */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Clientes cadastrados</span>
@@ -6714,17 +6731,6 @@ function App() {
                   </div>
                   <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(pendingValue)} style={{ color: COLORS.ink }}>{money(pendingValue)}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{totalPrevisto > 0 ? ((pendingValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</div>
-                </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Boletos enviados</div>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="flex items-center gap-1.5" style={{ color: COLORS.ink }}><span style={{ color: COLORS.wa }}>💬</span>WhatsApp</span>
-                    <span className="font-bold" style={{ color: COLORS.ink }}>{stats.sentWa}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5" style={{ color: COLORS.ink }}><span style={{ color: COLORS.email }}>📧</span>E-mail</span>
-                    <span className="font-bold" style={{ color: COLORS.ink }}>{stats.sentEmail}</span>
-                  </div>
                 </div>
               </div>
 
@@ -6868,18 +6874,24 @@ function App() {
                             onMouseEnter={(e) => { if (hasContent) e.currentTarget.style.borderColor = COLORS.brandLight; }}
                             onMouseLeave={(e) => { if (hasContent) e.currentTarget.style.borderColor = isToday ? COLORS.brandLight : COLORS.cardBorder; }}>
                             <div className="text-xs font-bold mb-1" style={{ color: isToday ? COLORS.brandLight : COLORS.ink }}>{day}</div>
-                            {dayExpenses.length > 0 && (
-                              <div className="mb-1">
-                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }} title={dayExpenses.map((e) => `${e.category}${e.description ? " - " + e.description : ""}`).join("\n")}>🧾 {dayExpenses.length} conta{dayExpenses.length > 1 ? "s" : ""}</div>
-                                <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{money(totalExpenses)}</div>
-                              </div>
-                            )}
-                            {daySupplier.length > 0 && (
-                              <div>
-                                <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }} title={daySupplier.map((it) => `${it._order.notes ? it._order.notes + " · " : ""}parcela ${it._parcela}/${it._totalParcelas}`).join("\n")}>🏷️ {daySupplier.length} etiqueta{daySupplier.length > 1 ? "s" : ""}</div>
-                                <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{money(totalSupplier)}</div>
-                              </div>
-                            )}
+                            {dayExpenses.length > 0 && (() => {
+                              const allPaid = dayExpenses.every((e) => e.paid);
+                              return (
+                                <div className="mb-1">
+                                  <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: allPaid ? COLORS.success : COLORS.danger, background: allPaid ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)" }} title={dayExpenses.map((e) => `${e.category}${e.description ? " - " + e.description : ""} ${e.paid ? "(paga)" : "(em aberto)"}`).join("\n")}>{allPaid ? "✓" : "🧾"} {dayExpenses.length} conta{dayExpenses.length > 1 ? "s" : ""}{allPaid ? " paga" + (dayExpenses.length > 1 ? "s" : "") : ""}</div>
+                                  <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{money(totalExpenses)}</div>
+                                </div>
+                              );
+                            })()}
+                            {daySupplier.length > 0 && (() => {
+                              const allPaid = daySupplier.every((it) => it.paid);
+                              return (
+                                <div>
+                                  <div className="text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-block" style={{ color: allPaid ? COLORS.success : COLORS.warn, background: allPaid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }} title={daySupplier.map((it) => `${it._order.notes ? it._order.notes + " · " : ""}parcela ${it._parcela}/${it._totalParcelas} ${it.paid ? "(paga)" : "(em aberto)"}`).join("\n")}>{allPaid ? "✓" : "🏷️"} {daySupplier.length} etiqueta{daySupplier.length > 1 ? "s" : ""}{allPaid ? " paga" + (daySupplier.length > 1 ? "s" : "") : ""}</div>
+                                  <div className="text-[10px] truncate" style={{ color: COLORS.inkMuted }}>{money(totalSupplier)}</div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}

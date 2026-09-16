@@ -3729,6 +3729,7 @@ function App() {
   const [editingItagOrder, setEditingItagOrder] = useState(null);
   const [fechamentoClientId, setFechamentoClientId] = useState("");
   const [fechamentoMonth, setFechamentoMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedItagOrderIds, setSelectedItagOrderIds] = useState(new Set());
   const [pettyCashEntries, setPettyCashEntries] = useState([]);
   const [showPettyCashForm, setShowPettyCashForm] = useState(false);
   const [editingPettyCash, setEditingPettyCash] = useState(null);
@@ -7568,6 +7569,18 @@ function App() {
                 const unitMedio = somaQtd > 0 ? somaTotal / somaQtd : 0;
                 const [my, mm] = fechamentoMonth.split("-");
                 const monthLabelStr = `${MONTHS_PT[Number(mm) - 1]}/${my}`;
+                const selectedOrders = filteredOrders.filter((o) => selectedItagOrderIds.has(o.id));
+                const allSelected = filteredOrders.length > 0 && selectedOrders.length === filteredOrders.length;
+                function toggleSelectOne(id) {
+                  setSelectedItagOrderIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id); else next.add(id);
+                    return next;
+                  });
+                }
+                function toggleSelectAll() {
+                  setSelectedItagOrderIds(allSelected ? new Set() : new Set(filteredOrders.map((o) => o.id)));
+                }
 
                 return (
                   <>
@@ -7592,7 +7605,8 @@ function App() {
 
                     <div className="rounded-xl border p-2.5 flex items-center gap-2 flex-wrap mb-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.015)" }}>
                       <span className="text-[10px] font-bold uppercase tracking-wider px-1 shrink-0" style={{ color: COLORS.inkFaint }}>Ferramentas</span>
-                      <button onClick={() => exportItagOrderClosingPDF(filteredOrders, fechamentoClientId || "Todos os clientes", monthLabelStr)} disabled={filteredOrders.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF (enviar com boleto)</button>
+                      <button onClick={() => exportItagOrderClosingPDF(filteredOrders, fechamentoClientId || "Todos os clientes", monthLabelStr)} disabled={filteredOrders.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF (todos listados)</button>
+                      <button onClick={() => exportItagOrderClosingPDF(selectedOrders, fechamentoClientId || "Todos os clientes", monthLabelStr)} disabled={selectedOrders.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📄 Gerar PDF dos selecionados ({selectedOrders.length})</button>
                       <div className="ml-auto">
                         <button onClick={() => { setEditingItagOrder(null); setShowItagOrderForm(true); }} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo pedido</button>
                       </div>
@@ -7612,6 +7626,7 @@ function App() {
                         <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                           <thead>
                             <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                              <th className="p-3"><input type="checkbox" checked={allSelected} onChange={toggleSelectAll} /></th>
                               <th className="text-left p-3 font-bold uppercase">Pedido</th>
                               <th className="text-left p-3 font-bold uppercase">Cliente</th>
                               <th className="text-left p-3 font-bold uppercase">Data pedido</th>
@@ -7625,7 +7640,8 @@ function App() {
                           </thead>
                           <tbody>
                             {filteredOrders.map((o, i) => (
-                              <tr key={o.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                              <tr key={o.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", background: selectedItagOrderIds.has(o.id) ? "rgba(124,92,255,0.08)" : "transparent" }}>
+                                <td className="p-3"><input type="checkbox" checked={selectedItagOrderIds.has(o.id)} onChange={() => toggleSelectOne(o.id)} /></td>
                                 <td className="p-3 font-bold">{o.order_number}</td>
                                 <td className="p-3 font-semibold">{o.client_name}</td>
                                 <td className="p-3">{fmtDate(o.order_date)}</td>
@@ -7643,7 +7659,7 @@ function App() {
                           </tbody>
                           <tfoot>
                             <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}`, fontWeight: 700 }}>
-                              <td className="p-3" colSpan={3}>TOTAL</td>
+                              <td className="p-3" colSpan={4}>TOTAL</td>
                               <td className="p-3">{somaQtd}</td>
                               <td className="p-3">{money(unitMedio)}</td>
                               <td className="p-3">{money(somaTotal)}</td>
@@ -9269,7 +9285,7 @@ function App() {
               </>)}
 
               {reportTab === "financeiro" && (<>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Propostas geradas</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{proposals.length}</div>
@@ -9279,11 +9295,6 @@ function App() {
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.wa }}>Propostas enviadas</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{proposals.filter((p) => p.sent_whatsapp || p.sent_email).length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>WhatsApp: {proposals.filter((p) => p.sent_whatsapp).length} · E-mail: {proposals.filter((p) => p.sent_email).length}</div>
-                </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Valor total em propostas</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(proposals.reduce((s, p) => s + (Number(p.monthly_value) || 0), 0))}</div>
-                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>soma das mensalidades propostas</div>
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Romaneios gerados</div>

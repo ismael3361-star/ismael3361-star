@@ -2143,6 +2143,7 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
   const [vtManual, setVtManual] = useState(false);
   const [vtValue, setVtValue] = useState(initial?.vt_value ?? "");
   const [vrDaily, setVrDaily] = useState("35");
+  const [vrManual, setVrManual] = useState(false);
   const [vrValue, setVrValue] = useState(initial?.vr_value ?? "");
   const [homeOfficeDays, setHomeOfficeDays] = useState(initial?.home_office_days ? String(initial.home_office_days) : "");
   const [notes, setNotes] = useState(initial?.notes || "");
@@ -2157,7 +2158,8 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
 
   useEffect(() => { if (!vtManual) setVtValue(vtCalculado ? vtCalculado.toFixed(2) : ""); }, [dias, homeOfficeDays, numConducoes, vtManual]);
 
-  function calcularVR() { setVrValue((diasComVtVr * (Number(vrDaily) || 0)).toFixed(2)); }
+  const vrCalculado = diasComVtVr * (Number(vrDaily) || 0);
+  useEffect(() => { if (!vrManual) setVrValue(vrCalculado ? vrCalculado.toFixed(2) : ""); }, [dias, homeOfficeDays, vrDaily, vrManual]);
 
   const total = (Number(vrValue) || 0) + (Number(vtValue) || 0);
   const canSave = employeeId && paymentDate;
@@ -2189,11 +2191,11 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
           </div>
         </label>
         <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor vale refeição</span>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor vale refeição (calculado)</span>
           <div className="flex gap-2">
-            <input value={vrValue} onChange={(e) => setVrValue(e.target.value)} type="number" placeholder="735" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+            <input value={vrValue} onChange={(e) => { setVrValue(e.target.value); setVrManual(true); }} type="number" placeholder="735" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             <input value={vrDaily} onChange={(e) => setVrDaily(e.target.value)} type="number" title="Valor diário do VR" className="w-16 rounded-lg border px-2 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
-            <button type="button" onClick={calcularVR} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Calcular: dias × valor diário">🧮</button>
+            {vrManual && <button type="button" onClick={() => setVrManual(false)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Voltar a calcular automático">↺</button>}
           </div>
         </label>
         <label className="block">

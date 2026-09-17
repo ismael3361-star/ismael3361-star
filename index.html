@@ -2153,13 +2153,12 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
   const employee = employees.find((e) => e.id === employeeId);
   const dias = Number(numDays) || 0;
   const homeOffice = Number(homeOfficeDays) || 0;
-  const diasComVtVr = Math.max(dias - homeOffice, 0);
-  const vtCalculado = diasComVtVr * (VT_RATES[numConducoes] || 0) * 2;
+  const vtCalculado = dias * (VT_RATES[numConducoes] || 0) * 2;
 
-  useEffect(() => { if (!vtManual) setVtValue(vtCalculado ? vtCalculado.toFixed(2) : ""); }, [dias, homeOfficeDays, numConducoes, vtManual]);
+  useEffect(() => { if (!vtManual) setVtValue(vtCalculado ? vtCalculado.toFixed(2) : ""); }, [dias, numConducoes, vtManual]);
 
-  const vrCalculado = diasComVtVr * (Number(vrDaily) || 0);
-  useEffect(() => { if (!vrManual) setVrValue(vrCalculado ? vrCalculado.toFixed(2) : ""); }, [dias, homeOfficeDays, vrDaily, vrManual]);
+  const vrCalculado = dias * (Number(vrDaily) || 0);
+  useEffect(() => { if (!vrManual) setVrValue(vrCalculado ? vrCalculado.toFixed(2) : ""); }, [dias, vrDaily, vrManual]);
 
   const total = (Number(vrValue) || 0) + (Number(vtValue) || 0);
   const canSave = employeeId && paymentDate;
@@ -2200,13 +2199,13 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
         </label>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>🏠 Dias de home office</span>
-          <input value={homeOfficeDays} onChange={(e) => setHomeOfficeDays(e.target.value)} type="number" placeholder="0" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} title="Dias em home office não recebem VT e VR — serão descontados automaticamente do cálculo" />
+          <input value={homeOfficeDays} onChange={(e) => setHomeOfficeDays(e.target.value)} type="number" placeholder="0" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} title="Apenas informativo — não altera o cálculo de VT e VR" />
         </label>
         <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Ex: faltou 1 dia" />
       </div>
       {homeOffice > 0 && (
-        <div className="text-xs font-semibold rounded-lg px-3 py-2" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.10)" }}>
-          🏠 {homeOffice} dia{homeOffice > 1 ? "s" : ""} de home office descontado{homeOffice > 1 ? "s" : ""} do VT e VR — cálculo considerando {diasComVtVr} dia{diasComVtVr === 1 ? "" : "s"}.
+        <div className="text-xs font-semibold rounded-lg px-3 py-2" style={{ color: COLORS.inkMuted, background: "rgba(255,255,255,0.04)" }}>
+          🏠 {homeOffice} dia{homeOffice > 1 ? "s" : ""} de home office registrado{homeOffice > 1 ? "s" : ""} (só informativo — não muda o valor do VT/VR).
         </div>
       )}
       <div className="flex items-center gap-3 flex-wrap">
@@ -4959,7 +4958,7 @@ function App() {
 
   function exportVtVrPDF() {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: "landscape" });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -4980,9 +4979,15 @@ function App() {
       head: [["Funcionário", "Data", "Dias", "VR", "VT", "Transporte", "Total", "Situação", "Home Office", "Obs"]],
       body: rows,
       foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalGeral), "", "", ""]],
-      styles: { fontSize: 8.5 },
-      headStyles: { fillColor: [124, 92, 255] },
-      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      styles: { fontSize: 8.5, valign: "middle", halign: "center" },
+      headStyles: { fillColor: [124, 92, 255], halign: "center" },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold", halign: "center" },
+      columnStyles: {
+        0: { halign: "left", cellWidth: 42 },
+        5: { halign: "left", cellWidth: 30 },
+        9: { halign: "left", cellWidth: 34 },
+      },
+      showFoot: "lastPage",
       margin: { left: 14, right: 14 },
     });
     doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -8795,7 +8800,7 @@ function App() {
                         <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                           <td className="p-3 font-semibold">{r.employee_name}{r.notes && <span className="ml-1" title={r.notes}>📝</span>}</td>
                           <td className="p-3">{r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                          <td className="p-3">{r.days_worked || "-"}{Number(r.home_office_days) > 0 && <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }} title="Dias de home office (descontados do VT/VR)">🏠 {r.home_office_days}d</span>}</td>
+                          <td className="p-3">{r.days_worked || "-"}{Number(r.home_office_days) > 0 && <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.inkMuted, background: "rgba(255,255,255,0.06)" }} title="Dias de home office (informativo)">🏠 {r.home_office_days}d</span>}</td>
                           <td className="p-3">{money(r.vr_value)}</td>
                           <td className="p-3">{money(r.vt_value)}</td>
                           <td className="p-3">{r.transport_desc || "-"}</td>

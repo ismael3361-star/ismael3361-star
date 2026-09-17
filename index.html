@@ -5106,9 +5106,9 @@ function App() {
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
     const sortedRomaneios = [...romaneios].sort((a, b) => {
-      const sa = a.seller || "Sem vendedor", sb = b.seller || "Sem vendedor";
+      const sa = (a.seller || "Sem vendedor").toUpperCase(), sb = (b.seller || "Sem vendedor").toUpperCase();
       if (sa !== sb) return sa.localeCompare(sb, "pt-BR");
-      return (a.order_date || "").localeCompare(b.order_date || "");
+      return (Number(a.number) || 0) - (Number(b.number) || 0);
     });
 
     const body = sortedRomaneios.map((r) => {
@@ -5117,7 +5117,7 @@ function App() {
       const custoTotal = romaneioCustoTotal(r);
       const lucro = romaneioLucro(r);
       const comissao = romaneioComissao(r);
-      return [r.seller || "Sem vendedor", r.number || "-", r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", qtd, fmtMoney(venda), fmtMoney(custoTotal), fmtMoney(lucro), `${r.commission_percent || 0}%`, fmtMoney(comissao), r.commission_paid ? "Pago" : "Pendente"];
+      return [(r.seller || "Sem vendedor").toUpperCase(), r.number || "-", r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", qtd, fmtMoney(venda), fmtMoney(custoTotal), fmtMoney(lucro), `${r.commission_percent || 0}%`, fmtMoney(comissao), r.commission_paid ? "Pago" : "Pendente"];
     });
     const totalGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioComissao(r), 0);
 

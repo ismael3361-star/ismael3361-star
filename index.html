@@ -4828,6 +4828,20 @@ function App() {
     doc.setFont(undefined, "normal");
     y += 24;
 
+    if (emp?.pix_key) {
+      const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: rec.net_total, txid: (rec.id || "folha").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
+      const qrData = generatePixQRDataURL(qrPayload, 200);
+      if (qrData) {
+        if (y > 220) { doc.addPage(); y = 20; }
+        try { doc.addImage(qrData, "PNG", 14, y, 30, 30); } catch (e) {}
+        doc.setFontSize(8);
+        doc.setTextColor(90);
+        doc.text("Aponte a câmera do seu banco pra pagar via PIX", 48, y + 13);
+        doc.text(`Chave: ${emp.pix_key}`, 48, y + 19);
+        y += 36;
+      }
+    }
+
     doc.setFontSize(9);
     doc.setTextColor(60);
     const declaracao = `Declaro ter recebido a importância líquida de ${fmtMoney(rec.net_total)}, referente ao ${rec.is_advance ? "vale/adiantamento" : "pagamento de salário"} do período de ${rec.reference_month || "-"}, nada mais tendo a reclamar.`;

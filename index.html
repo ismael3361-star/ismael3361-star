@@ -1875,7 +1875,7 @@ function EmployeePicker({ employees, value, onSelect, onCreateNew }) {
     <div>
       <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Funcionário *</span>
       <div className="flex gap-2">
-        <select value={value} onChange={(e) => onSelect(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
+        <select value={value} onChange={(e) => onSelect(e.target.value)} className="flex-1 min-w-0 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }}>
           <option value="">Selecione...</option>
           {employees.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
@@ -2153,12 +2153,16 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
   const employee = employees.find((e) => e.id === employeeId);
   const dias = Number(numDays) || 0;
   const homeOffice = Number(homeOfficeDays) || 0;
-  const vtCalculado = dias * (VT_RATES[numConducoes] || 0) * 2;
+  const vtCheio = dias * (VT_RATES[numConducoes] || 0) * 2;
+  const vtDescontoHomeOffice = homeOffice * (VT_RATES[numConducoes] || 0) * 2;
+  const vtCalculado = Math.max(vtCheio - vtDescontoHomeOffice, 0);
 
-  useEffect(() => { if (!vtManual) setVtValue(vtCalculado ? vtCalculado.toFixed(2) : ""); }, [dias, numConducoes, vtManual]);
+  useEffect(() => { if (!vtManual) setVtValue(vtCalculado ? vtCalculado.toFixed(2) : ""); }, [dias, homeOfficeDays, numConducoes, vtManual]);
 
-  const vrCalculado = dias * (Number(vrDaily) || 0);
-  useEffect(() => { if (!vrManual) setVrValue(vrCalculado ? vrCalculado.toFixed(2) : ""); }, [dias, vrDaily, vrManual]);
+  const vrCheio = dias * (Number(vrDaily) || 0);
+  const vrDescontoHomeOffice = homeOffice * (Number(vrDaily) || 0);
+  const vrCalculado = Math.max(vrCheio - vrDescontoHomeOffice, 0);
+  useEffect(() => { if (!vrManual) setVrValue(vrCalculado ? vrCalculado.toFixed(2) : ""); }, [dias, homeOfficeDays, vrDaily, vrManual]);
 
   const total = (Number(vrValue) || 0) + (Number(vtValue) || 0);
   const canSave = employeeId && paymentDate;
@@ -2185,27 +2189,30 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor vale transporte (calculado)</span>
           <div className="flex gap-2">
-            <input value={vtValue} onChange={(e) => { setVtValue(e.target.value); setVtManual(true); }} type="number" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+            <input value={vtValue} onChange={(e) => { setVtValue(e.target.value); setVtManual(true); }} type="number" className="flex-1 min-w-0 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             {vtManual && <button type="button" onClick={() => setVtManual(false)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Voltar a calcular automático">↺</button>}
           </div>
         </label>
         <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor diário do VR</span>
+          <input value={vrDaily} onChange={(e) => setVrDaily(e.target.value)} type="number" placeholder="35" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+        </label>
+        <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Valor vale refeição (calculado)</span>
           <div className="flex gap-2">
-            <input value={vrValue} onChange={(e) => { setVrValue(e.target.value); setVrManual(true); }} type="number" placeholder="735" className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
-            <input value={vrDaily} onChange={(e) => setVrDaily(e.target.value)} type="number" title="Valor diário do VR" className="w-16 rounded-lg border px-2 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+            <input value={vrValue} onChange={(e) => { setVrValue(e.target.value); setVrManual(true); }} type="number" placeholder="735" className="flex-1 min-w-0 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
             {vrManual && <button type="button" onClick={() => setVrManual(false)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Voltar a calcular automático">↺</button>}
           </div>
         </label>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>🏠 Dias de home office</span>
-          <input value={homeOfficeDays} onChange={(e) => setHomeOfficeDays(e.target.value)} type="number" placeholder="0" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} title="Apenas informativo — não altera o cálculo de VT e VR" />
+          <input value={homeOfficeDays} onChange={(e) => setHomeOfficeDays(e.target.value)} type="number" placeholder="0" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} title="Desconta do VT e do VR — os dias trabalhados não mudam" />
         </label>
         <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Ex: faltou 1 dia" />
       </div>
       {homeOffice > 0 && (
-        <div className="text-xs font-semibold rounded-lg px-3 py-2" style={{ color: COLORS.inkMuted, background: "rgba(255,255,255,0.04)" }}>
-          🏠 {homeOffice} dia{homeOffice > 1 ? "s" : ""} de home office registrado{homeOffice > 1 ? "s" : ""} (só informativo — não muda o valor do VT/VR).
+        <div className="text-xs font-semibold rounded-lg px-3 py-2" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.10)" }}>
+          🏠 {homeOffice} dia{homeOffice > 1 ? "s" : ""} de home office — desconto de {fmtMoney(vtDescontoHomeOffice)} no VT e {fmtMoney(vrDescontoHomeOffice)} no VR (os dias trabalhados continuam contando {dias}).
         </div>
       )}
       <div className="flex items-center gap-3 flex-wrap">
@@ -6566,7 +6573,6 @@ function App() {
                 { id: "migracoes", label: "Migração de Banco", icon: "🗄️" },
               ]},
               { group: "Sistema", items: [
-                { id: "atividades", label: "Atividades", icon: "🕓" },
                 { id: "config", label: "Configurações", icon: "⚙️" },
               ]},
             ];
@@ -6671,7 +6677,6 @@ function App() {
                 {effectiveTab === "vtvr" && "Vale Transporte / Vale Refeição"}
                 {effectiveTab === "relatorios" && "Relatórios"}
                 {effectiveTab === "config" && "Configurações de mensagens"}
-                {effectiveTab === "atividades" && "Log de Atividades"}
                 {effectiveTab === "despesas" && "Contas a Pagar"}
                 {effectiveTab === "comissao" && "Comissão Etiqueta"}
                 {effectiveTab === "escala" && "Escala de Sábado"}
@@ -8800,7 +8805,7 @@ function App() {
                         <tr key={r.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                           <td className="p-3 font-semibold">{r.employee_name}{r.notes && <span className="ml-1" title={r.notes}>📝</span>}</td>
                           <td className="p-3">{r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                          <td className="p-3">{r.days_worked || "-"}{Number(r.home_office_days) > 0 && <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.inkMuted, background: "rgba(255,255,255,0.06)" }} title="Dias de home office (informativo)">🏠 {r.home_office_days}d</span>}</td>
+                          <td className="p-3">{r.days_worked || "-"}{Number(r.home_office_days) > 0 && <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }} title="Dias de home office (descontados do VT/VR)">🏠 {r.home_office_days}d</span>}</td>
                           <td className="p-3">{money(r.vr_value)}</td>
                           <td className="p-3">{money(r.vt_value)}</td>
                           <td className="p-3">{r.transport_desc || "-"}</td>
@@ -9629,29 +9634,6 @@ function App() {
                 <button onClick={exportPDF} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: COLORS.brand }}>⬇️ Exportar relatório do mês em PDF</button>
               </div>
               </>)}
-            </div>
-          )}
-
-          {effectiveTab === "atividades" && (
-            <div>
-              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                {activityLog.length === 0 ? (
-                  <div className="p-10 text-center"><div className="text-3xl mb-2">🕓</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma atividade registrada ainda.</div></div>
-                ) : (
-                  <div>
-                    {activityLog.map((a, i) => (
-                      <div key={a.id} className="flex items-center justify-between px-4 py-3" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                        <div>
-                          <div className="text-sm" style={{ color: COLORS.ink }}>{a.action}</div>
-                          <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>{a.user_email}</div>
-                        </div>
-                        <div className="text-xs shrink-0 ml-3" style={{ color: COLORS.inkMuted }}>{new Date(a.created_at).toLocaleString("pt-BR")}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <p className="text-[11px] mt-2" style={{ color: COLORS.inkFaint }}>Mostrando as últimas 200 atividades registradas no sistema.</p>
             </div>
           )}
 

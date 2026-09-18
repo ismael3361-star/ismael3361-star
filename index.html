@@ -455,6 +455,29 @@ function Pagination({ page, setPage, totalItems, pageSize }) {
   );
 }
 
+function ActionMenu({ actions, align = "right" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    function onDocClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+  const visible = actions.filter(Boolean);
+  if (visible.length === 0) return null;
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button type="button" onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} className="text-xs font-semibold px-1" style={{ color: COLORS.inkMuted }}>Mais ⋯</button>
+      {open && (
+        <div className="absolute z-30 mt-1 rounded-lg border shadow-lg py-1 whitespace-nowrap" style={{ [align]: 0, borderColor: COLORS.cardBorder, background: COLORS.card, minWidth: 170 }}>
+          {visible.map((a, i) => (
+            <button key={i} type="button" onClick={(e) => { e.stopPropagation(); setOpen(false); a.onClick(); }} className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" style={{ color: a.danger ? COLORS.danger : COLORS.ink }}>{a.label}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 function StatusBadge({ status }) {
   const m = STATUS_META[status] || STATUS_META.pendente;
   return (
@@ -7031,16 +7054,14 @@ function App() {
 
               <div className="rounded-xl border p-2.5 flex items-center gap-2 flex-wrap mb-4" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.015)" }}>
                 <span className="text-[10px] font-bold uppercase tracking-wider px-1 shrink-0" style={{ color: COLORS.inkFaint }}>Ferramentas</span>
-                <label className="px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
-                  ⬆️ Importar CSV
-                  <input type="file" accept=".csv" className="hidden" onChange={(e) => handleImportCSV(e.target.files?.[0])} />
-                </label>
-                <button onClick={() => exportClientsCSV(clients)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>⬇️ Backup CSV</button>
-                <button onClick={exportFullBackup} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>💾 Backup completo</button>
-                <label className="px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
-                  ♻️ Restaurar
-                  <input type="file" accept=".json" className="hidden" onChange={(e) => importFullBackup(e.target.files?.[0])} />
-                </label>
+                <input id="file-import-csv" type="file" accept=".csv" className="hidden" onChange={(e) => handleImportCSV(e.target.files?.[0])} />
+                <input id="file-restore-backup" type="file" accept=".json" className="hidden" onChange={(e) => importFullBackup(e.target.files?.[0])} />
+                <ActionMenu actions={[
+                  { label: "⬆️ Importar CSV", onClick: () => document.getElementById("file-import-csv").click() },
+                  { label: "⬇️ Backup CSV", onClick: () => exportClientsCSV(clients) },
+                  { label: "💾 Backup completo", onClick: exportFullBackup },
+                  { label: "♻️ Restaurar backup", onClick: () => document.getElementById("file-restore-backup").click() },
+                ]} />
                 <span className="text-[11px] ml-auto" style={{ color: COLORS.inkFaint }}>💾 O backup completo salva clientes, boletos e anotações.</span>
               </div>
 
@@ -7249,18 +7270,16 @@ function App() {
 
                       {/* LINHA 4: ações */}
                       <div className="flex flex-wrap items-center gap-2 pl-[54px]">
-                        <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>
-                          {busyId === c.id ? "Enviando..." : b?.file_name ? "🔄 Trocar PDF" : "📎 Anexar boleto"}
-                          <input type="file" accept="application/pdf" className="hidden" onChange={(e) => handleUpload(c, e.target.files?.[0])} />
-                        </label>
-                        {b?.file_url && <a href={b.file_url} target="_blank" className="text-xs underline px-1" style={{ color: COLORS.brandLight }}>ver PDF</a>}
-                        <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }} title="Pra clientes que precisam de mais de um boleto no mesmo mês">
-                          ＋ Anexar outro boleto
-                          <input type="file" accept="application/pdf" className="hidden" onChange={(e) => handleUploadExtra(c, e.target.files?.[0])} />
-                        </label>
                         <button onClick={() => sendWhatsApp(c)} disabled={!c.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.wa }}>💬 {b?.sent_whatsapp ? "✓ Reenviar" : "Enviar"} WhatsApp</button>
-                        <button onClick={() => sendEmail(c)} disabled={!c.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.brand }}>📧 {b?.sent_email ? "✓ Reenviar" : "Enviar"} e-mail</button>
-                        <button onClick={() => setPixModal({ pixKey: settings.mensalidade_pix_key, favorecido: settings.mensalidade_pix_favorecido, city: settings.company_pix_city, value: effectiveValue(c, boletos[c.id]), label: c.name })} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📱 QR PIX</button>
+                        {b?.file_url && <a href={b.file_url} target="_blank" className="text-xs underline px-1" style={{ color: COLORS.brandLight }}>ver PDF</a>}
+                        <input id={`file-boleto-${c.id}`} type="file" accept="application/pdf" className="hidden" onChange={(e) => handleUpload(c, e.target.files?.[0])} />
+                        <input id={`file-boleto-extra-${c.id}`} type="file" accept="application/pdf" className="hidden" onChange={(e) => handleUploadExtra(c, e.target.files?.[0])} />
+                        <ActionMenu actions={[
+                          { label: busyId === c.id ? "Enviando..." : (b?.file_name ? "🔄 Trocar PDF" : "📎 Anexar boleto"), onClick: () => document.getElementById(`file-boleto-${c.id}`).click() },
+                          { label: "＋ Anexar outro boleto", onClick: () => document.getElementById(`file-boleto-extra-${c.id}`).click() },
+                          c.email ? { label: `📧 ${b?.sent_email ? "Reenviar" : "Enviar"} e-mail`, onClick: () => sendEmail(c) } : null,
+                          { label: "📱 QR PIX", onClick: () => setPixModal({ pixKey: settings.mensalidade_pix_key, favorecido: settings.mensalidade_pix_favorecido, city: settings.company_pix_city, value: effectiveValue(c, boletos[c.id]), label: c.name }) },
+                        ]} />
                       </div>
                       {(b?.extra_files || []).length > 0 && (
                         <div className="flex flex-wrap items-center gap-2 pl-[54px] mt-1.5">
@@ -8003,18 +8022,16 @@ function App() {
                           <button onClick={() => handleCloseCommissionMonth(closeMonthKey, rows)} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: COLORS.success }}>🔒 Fechar mês</button>
                         </div>
                       )}
-                      {!isHistory && closedMonths.length > 0 && (
-                        <button onClick={() => handleReplicatePreviousMonth(closedMonths[0])} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.brand, color: COLORS.brandLight }}>🔁 Replicar {monthLabel(closedMonths[0])}</button>
-                      )}
-                      {isHistory && (
-                        <button onClick={() => handleDeleteCommissionHistoryMonth(commissionViewMonth)} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.danger, color: COLORS.danger }}>🗑️ Apagar fechamento</button>
-                      )}
-                      <div className="ml-auto flex gap-2">
-                        <button onClick={() => setCollapsedReps(new Set(allGroupKeys))} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>▸ Recolher tudo</button>
-                        <button onClick={() => setCollapsedReps(new Set())} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>▾ Expandir tudo</button>
-                        <button onClick={() => exportClientCommissionsExcel(rows, isHistory ? `comissao-${commissionViewMonth}` : "comissao-representantes")} disabled={rows.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
-                        <button onClick={() => exportClientCommissionsPDF(visibleRows.filter((r) => (Number(r.due_day) || 0) <= 15), `${isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes"} — Vencimento dia 15`)} disabled={visibleRows.filter((r) => (Number(r.due_day) || 0) <= 15).length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 PDF Venc. 15</button>
-                        <button onClick={() => exportClientCommissionsPDF(visibleRows.filter((r) => (Number(r.due_day) || 0) > 15), `${isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes"} — Vencimento dia 30`)} disabled={visibleRows.filter((r) => (Number(r.due_day) || 0) > 15).length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 PDF Venc. 30</button>
+                      <div className="ml-auto">
+                        <ActionMenu actions={[
+                          (!isHistory && closedMonths.length > 0) ? { label: `🔁 Replicar ${monthLabel(closedMonths[0])}`, onClick: () => handleReplicatePreviousMonth(closedMonths[0]) } : null,
+                          isHistory ? { label: "🗑️ Apagar fechamento", onClick: () => handleDeleteCommissionHistoryMonth(commissionViewMonth), danger: true } : null,
+                          { label: "▸ Recolher tudo", onClick: () => setCollapsedReps(new Set(allGroupKeys)) },
+                          { label: "▾ Expandir tudo", onClick: () => setCollapsedReps(new Set()) },
+                          rows.length > 0 ? { label: "📊 Excel", onClick: () => exportClientCommissionsExcel(rows, isHistory ? `comissao-${commissionViewMonth}` : "comissao-representantes") } : null,
+                          visibleRows.filter((r) => (Number(r.due_day) || 0) <= 15).length > 0 ? { label: "📄 PDF Venc. 15", onClick: () => exportClientCommissionsPDF(visibleRows.filter((r) => (Number(r.due_day) || 0) <= 15), `${isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes"} — Vencimento dia 15`) } : null,
+                          visibleRows.filter((r) => (Number(r.due_day) || 0) > 15).length > 0 ? { label: "📄 PDF Venc. 30", onClick: () => exportClientCommissionsPDF(visibleRows.filter((r) => (Number(r.due_day) || 0) > 15), `${isHistory ? `Comissão de Representantes — ${monthLabel(commissionViewMonth)}` : "Comissão de Representantes"} — Vencimento dia 30`) } : null,
+                        ]} />
                       </div>
                     </div>
 
@@ -8692,12 +8709,14 @@ function App() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                  <button onClick={() => previewReciboPDF(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📄 Recibo</button>
                                   <button onClick={() => handleTogglePayrollPaid(r)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: r.paid ? COLORS.success : COLORS.cardBorder, color: r.paid ? COLORS.success : COLORS.inkMuted, background: r.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
                                     {r.paid ? "✓ Pago" : "○ Marcar como pago"}
                                   </button>
-                                  <button onClick={() => { setEditingPayroll(r); setShowPayrollForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
-                                  <button onClick={() => handleDeletePayroll(r.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                                  <ActionMenu actions={[
+                                    { label: "📄 Recibo (com QR PIX)", onClick: () => previewReciboPDF(r) },
+                                    { label: "✏️ Editar", onClick: () => { setEditingPayroll(r); setShowPayrollForm(true); } },
+                                    { label: "🗑️ Excluir", onClick: () => handleDeletePayroll(r.id), danger: true },
+                                  ]} />
                                 </div>
                               </div>
                             ))}
@@ -8960,8 +8979,10 @@ function App() {
 
                     {expenses.length > 0 && (
                       <div className="flex items-center justify-end gap-2 mb-3">
-                        <button onClick={() => exportExpensesExcel(filtered)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
-                        <button onClick={() => exportExpensesPDF(filtered)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Exportar PDF</button>
+                        <ActionMenu actions={[
+                          { label: "📊 Exportar Excel", onClick: () => exportExpensesExcel(filtered) },
+                          { label: "📄 Exportar PDF", onClick: () => exportExpensesPDF(filtered) },
+                        ]} />
                       </div>
                     )}
 
@@ -9002,21 +9023,16 @@ function App() {
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5">
-                                {e.file_url ? (
-                                  <a href={e.paid && e.file_url_watermarked ? e.file_url_watermarked : e.file_url} target="_blank" className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: e.paid ? COLORS.success : COLORS.brandLight, color: e.paid ? COLORS.success : COLORS.brandLight }}>
-                                    {e.paid ? "✓📎 Ver boleto (pago)" : "📎 Ver boleto"}
-                                  </a>
-                                ) : (
-                                  <label className="text-xs font-bold px-2.5 py-1.5 rounded-full border cursor-pointer" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
-                                    📎 Anexar boleto
-                                    <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e2) => handleUploadExpenseFile(e, e2.target.files?.[0])} />
-                                  </label>
-                                )}
                                 <button onClick={() => handleToggleExpensePaid(e)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: e.paid ? COLORS.success : COLORS.cardBorder, color: e.paid ? COLORS.success : COLORS.inkMuted, background: e.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
                                   {e.paid ? "✓ Pago" : "○ Marcar como pago"}
                                 </button>
-                                <button onClick={() => { setEditingExpense(e); setShowExpenseForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
-                                <button onClick={() => handleDeleteExpense(e.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                                {e.file_url && <a href={e.paid && e.file_url_watermarked ? e.file_url_watermarked : e.file_url} target="_blank" className="text-xs underline" style={{ color: COLORS.brandLight }}>ver boleto</a>}
+                                <input id={`file-despesa-${e.id}`} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e2) => handleUploadExpenseFile(e, e2.target.files?.[0])} />
+                                <ActionMenu actions={[
+                                  { label: e.file_url ? "🔄 Trocar boleto" : "📎 Anexar boleto", onClick: () => document.getElementById(`file-despesa-${e.id}`).click() },
+                                  { label: "✏️ Editar", onClick: () => { setEditingExpense(e); setShowExpenseForm(true); } },
+                                  { label: "🗑️ Excluir", onClick: () => handleDeleteExpense(e.id), danger: true },
+                                ]} />
                               </div>
                             </div>
                           );

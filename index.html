@@ -4921,12 +4921,12 @@ function App() {
       head: [["Funcionário", "Tipo", "Referência", "Pagamento", "Proventos", "Descontos", "Líquido", "Situação", "PIX"]],
       body,
       foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalLiquido), "", ""]],
-      styles: { fontSize: 9, valign: "middle" },
+      styles: { fontSize: 9, valign: "middle", cellPadding: { top: 4, right: 3, bottom: 4, left: 3 } },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
       showFoot: "lastPage",
       margin: { left: 14, right: 14 },
-      columnStyles: { [qrColIndex]: { minCellHeight: 24, cellWidth: 26 } },
+      columnStyles: { [qrColIndex]: { minCellHeight: 34, cellWidth: 32 } },
       didDrawCell: (data) => {
         if (data.section !== "body" || data.column.index !== qrColIndex) return;
         const r = list[data.row.index];
@@ -4940,7 +4940,7 @@ function App() {
         const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: r.net_total, txid: (r.id || "folha").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
         const qrData = generatePixQRDataURL(qrPayload, 150);
         if (qrData) {
-          try { doc.addImage(qrData, "PNG", data.cell.x + (data.cell.width - 20) / 2, data.cell.y + 2, 20, 20); } catch (e) {}
+          try { doc.addImage(qrData, "PNG", data.cell.x + (data.cell.width - 26) / 2, data.cell.y + (data.cell.height - 26) / 2, 26, 26); } catch (e) {}
         }
       },
     });

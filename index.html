@@ -5131,6 +5131,55 @@ function App() {
       return (Number(a.number) || 0) - (Number(b.number) || 0);
     });
 
+    const bySeller = {};
+    sortedRomaneios.forEach((r) => {
+      const s = (r.seller || "Sem vendedor").toUpperCase();
+      if (!bySeller[s]) bySeller[s] = { total: 0, pendente: 0 };
+      const c = romaneioComissao(r);
+      bySeller[s].total += c;
+      if (!r.commission_paid) bySeller[s].pendente += c;
+    });
+    const sellerNames = Object.keys(bySeller).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    const qrColIndex = 3;
+
+    doc.setFontSize(11);
+    doc.setTextColor(30);
+    doc.text("Resumo por vendedor — PIX da comissão pendente", 14, 46);
+
+    doc.autoTable({
+      startY: 50,
+      head: [["Vendedor", "Total comissão", "Pendente", "PIX"]],
+      body: sellerNames.map((s) => [s, fmtMoney(bySeller[s].total), fmtMoney(bySeller[s].pendente), ""]),
+      styles: { fontSize: 9, valign: "middle", cellPadding: { top: 4, right: 3, bottom: 4, left: 3 } },
+      headStyles: { fillColor: [124, 92, 255] },
+      columnStyles: { [qrColIndex]: { minCellHeight: 34, cellWidth: 32 } },
+      margin: { left: 14, right: 14 },
+      didDrawCell: (data) => {
+        if (data.section !== "body" || data.column.index !== qrColIndex) return;
+        const s = sellerNames[data.row.index];
+        const pend = bySeller[s].pendente;
+        const emp = employees.find((e) => (e.name || "").toUpperCase() === s);
+        if (pend <= 0 || !emp?.pix_key) {
+          doc.setFontSize(7);
+          doc.setTextColor(150);
+          doc.text(pend <= 0 ? "quitado" : "sem PIX", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: "center" });
+          return;
+        }
+        const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: pend, txid: `COM${s}`.replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
+        const qrData = generatePixQRDataURL(qrPayload, 150);
+        if (qrData) {
+          try { doc.addImage(qrData, "PNG", data.cell.x + (data.cell.width - 26) / 2, data.cell.y + (data.cell.height - 26) / 2, 26, 26); } catch (e) {}
+        }
+      },
+    });
+
+    let y2 = doc.lastAutoTable.finalY + 10;
+    if (y2 > 170) { doc.addPage(); y2 = 20; }
+    doc.setFontSize(11);
+    doc.setTextColor(30);
+    doc.text("Detalhamento por romaneio", 14, y2);
+    y2 += 4;
+
     const body = sortedRomaneios.map((r) => {
       const venda = romaneioVenda(r);
       const qtd = romaneioQtd(r);
@@ -5142,7 +5191,7 @@ function App() {
     const totalGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioComissao(r), 0);
 
     doc.autoTable({
-      startY: 44,
+      startY: y2,
       head: [["Vendedor", "Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão", "Situação"]],
       body,
       foot: [["TOTAL GERAL", "", "", "", "", "", "", "", fmtMoney(totalGeral), ""]],

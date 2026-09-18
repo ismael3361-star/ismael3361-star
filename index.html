@@ -366,6 +366,12 @@ function clientDueDisplay(c, monthDate) {
   return "-";
 }
 function onlyDigits(s) { return (s || "").replace(/\D/g, ""); }
+function todayStr() {
+  // Data de HOJE no fuso horário local — nunca usar toISOString() aqui, que converte pra UTC
+  // e pode "pular" pro dia seguinte à noite (ex: 21h no Brasil já é outro dia em UTC).
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function waNumber(phone) { let d = onlyDigits(phone); if (d.length <= 11) d = "55" + d; return d; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 function effectiveValue(c, b) {
@@ -538,7 +544,7 @@ function exportClientsCSV(clients) {
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = `clientes-backup-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.href = url; a.download = `clientes-backup-${todayStr()}.csv`;
   a.click(); URL.revokeObjectURL(url);
 }
 function parseCSV(text) {
@@ -1708,7 +1714,7 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
 function DbMigrationForm({ initial, onSave, onCancel }) {
   const [clientName, setClientName] = useState(initial?.client_name || "");
   const [requestedBy, setRequestedBy] = useState(initial?.requested_by || "");
-  const [requestDate, setRequestDate] = useState(initial?.request_date || new Date().toISOString().slice(0, 10));
+  const [requestDate, setRequestDate] = useState(initial?.request_date || todayStr());
   const [migratedBank, setMigratedBank] = useState(initial?.migrated_bank || "");
   const [status, setStatus] = useState(initial?.status || "pendente");
   const [completionDate, setCompletionDate] = useState(initial?.completion_date || "");
@@ -1792,7 +1798,7 @@ function DbMigrationForm({ initial, onSave, onCancel }) {
 }
 
 function ItagEntryForm({ initial, onSave, onCancel }) {
-  const [purchaseDate, setPurchaseDate] = useState(initial?.purchase_date || new Date().toISOString().slice(0, 10));
+  const [purchaseDate, setPurchaseDate] = useState(initial?.purchase_date || todayStr());
   const [invoiceNumber, setInvoiceNumber] = useState(initial?.invoice_number || "");
   const [model, setModel] = useState(initial?.model || "");
   const [arrivalDate, setArrivalDate] = useState(initial?.arrival_date || "");
@@ -1898,7 +1904,7 @@ const VT_RATES = { "1": 5.4, "2": 9.38 };
 const SUPPLIER_MODELS = ["MODELO 03", "MODELO 04", "MODELO 03 + MODELO 04"];
 
 function SupplierOrderForm({ initial, onSave, onCancel }) {
-  const [orderDate, setOrderDate] = useState(initial?.order_date || new Date().toISOString().slice(0, 10));
+  const [orderDate, setOrderDate] = useState(initial?.order_date || todayStr());
   const [model, setModel] = useState(initial?.model || SUPPLIER_MODELS[0]);
   const [arrivalDate, setArrivalDate] = useState(initial?.arrival_date || "");
   const [quantity, setQuantity] = useState(initial?.quantity ?? "");
@@ -2137,7 +2143,7 @@ function PayrollForm({ initial, employees, onSave, onCancel }) {
 
 function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
   const [employeeId, setEmployeeId] = useState(initial?.employee_id || "");
-  const [paymentDate, setPaymentDate] = useState(initial?.payment_date || new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(initial?.payment_date || todayStr());
   const [numDays, setNumDays] = useState(initial?.days_worked ? String(initial.days_worked).replace(/\D/g, "") : "");
   const [numConducoes, setNumConducoes] = useState(initial?.transport_desc?.startsWith("02") ? "2" : initial?.transport_desc?.startsWith("01") ? "1" : "1");
   const [vtManual, setVtManual] = useState(false);
@@ -2218,7 +2224,7 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
       <div className="flex items-center gap-3 flex-wrap">
         <span className="text-sm font-bold" style={{ color: COLORS.success }}>Total a receber: {fmtMoney(total)}</span>
         <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-2.5 py-1 rounded-lg" style={{ color: paid ? COLORS.success : COLORS.inkMuted, background: paid ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.05)" }}>
-          <input type="checkbox" checked={paid} onChange={(e) => { setPaid(e.target.checked); if (e.target.checked && !paidDate) setPaidDate(new Date().toISOString().slice(0, 10)); }} /> Pago
+          <input type="checkbox" checked={paid} onChange={(e) => { setPaid(e.target.checked); if (e.target.checked && !paidDate) setPaidDate(todayStr()); }} /> Pago
         </label>
         {paid && <input type="date" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />}
       </div>
@@ -2287,7 +2293,7 @@ function ScheduleForm({ initial, employees, onCreateEmployee, onSave, onCancel }
 function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect, onSave, onCancel }) {
   const [prospectId, setProspectId] = useState(initial?.prospect_id || "");
   const [showNewProspect, setShowNewProspect] = useState(false);
-  const [installments, setInstallments] = useState(initial?.installments?.length ? initial.installments : [{ due_date: new Date().toISOString().slice(0, 10), value: "", paid: false, paid_date: "" }]);
+  const [installments, setInstallments] = useState(initial?.installments?.length ? initial.installments : [{ due_date: todayStr(), value: "", paid: false, paid_date: "" }]);
   const [pixKey, setPixKey] = useState(initial?.pix_key || settings?.implantacao_pix_key || "");
   const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || settings?.implantacao_pix_favorecido || "");
   const [notes, setNotes] = useState(initial?.notes || "");
@@ -2653,7 +2659,7 @@ function TechImplementationViewer({ t, onClose }) {
 
 function TechImplementationForm({ initial, onSave, onCancel }) {
   const [numero, setNumero] = useState(initial?.numero || "");
-  const [dataFicha, setDataFicha] = useState(initial?.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+  const [dataFicha, setDataFicha] = useState(initial?.created_at?.slice(0, 10) || todayStr());
   const [technicianName, setTechnicianName] = useState(initial?.technician_name || "");
   const [technicianEmail, setTechnicianEmail] = useState(initial?.technician_email || "");
   const [versaoSistema, setVersaoSistema] = useState(initial?.versao_sistema || "");
@@ -2983,7 +2989,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
 function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabels, existingRibbons, onSave, onCancel }) {
   const [clientName, setClientName] = useState(initial?.client_name || "");
   const [orderNumber, setOrderNumber] = useState(initial?.order_number ?? nextOrderNumber);
-  const [orderDate, setOrderDate] = useState(initial?.order_date || new Date().toISOString().slice(0, 10));
+  const [orderDate, setOrderDate] = useState(initial?.order_date || todayStr());
   const [quantity, setQuantity] = useState(initial?.quantity ?? "");
   const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "0.31");
   const [labelModel, setLabelModel] = useState(initial?.label_model || "");
@@ -3069,7 +3075,7 @@ function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabe
   );
 }
 function PettyCashForm({ initial, onSave, onCancel }) {
-  const [entryDate, setEntryDate] = useState(initial?.entry_date || new Date().toISOString().slice(0, 10));
+  const [entryDate, setEntryDate] = useState(initial?.entry_date || todayStr());
   const [description, setDescription] = useState(initial?.description || "");
   const [type, setType] = useState(initial?.type || "saida");
   const [amount, setAmount] = useState(initial?.amount ?? "");
@@ -3106,7 +3112,7 @@ function PettyCashForm({ initial, onSave, onCancel }) {
   );
 }
 function LunchForm({ initial, onSave, onCancel }) {
-  const [entryDate, setEntryDate] = useState(initial?.entry_date || new Date().toISOString().slice(0, 10));
+  const [entryDate, setEntryDate] = useState(initial?.entry_date || todayStr());
   const [amount, setAmount] = useState(initial?.amount ?? "30");
   const [employeeCount, setEmployeeCount] = useState(initial?.employee_count ?? "7");
   const [notes, setNotes] = useState(initial?.notes || "");
@@ -3258,7 +3264,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
   const currentYear = new Date().getFullYear();
   const nextNumberPreview = (settings?.romaneio_next_year === currentYear) ? (settings?.romaneio_next_number || 1) : 1;
   const [number, setNumber] = useState(initial?.number || `${nextNumberPreview}/${currentYear}`);
-  const [orderDate, setOrderDate] = useState(initial?.order_date || new Date().toISOString().slice(0, 10));
+  const [orderDate, setOrderDate] = useState(initial?.order_date || todayStr());
   const [seller, setSeller] = useState(initial?.seller || "Ismael Oliveira");
   const [commissionPercent, setCommissionPercent] = useState(initial?.commission_percent ?? 5);
   const [purchaseCost, setPurchaseCost] = useState(initial?.purchase_cost ?? "");
@@ -3383,7 +3389,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
 
       <div className="rounded-lg border p-3 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.cardBorder }}>
         <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer" style={{ color: paid ? COLORS.success : COLORS.ink }}>
-          <input type="checkbox" checked={paid} onChange={(e) => { setPaid(e.target.checked); if (e.target.checked && !paymentDate) setPaymentDate(new Date().toISOString().slice(0, 10)); }} />
+          <input type="checkbox" checked={paid} onChange={(e) => { setPaid(e.target.checked); if (e.target.checked && !paymentDate) setPaymentDate(todayStr()); }} />
           ✓ Pago
         </label>
         {paid && (
@@ -4146,7 +4152,7 @@ function App() {
   }
   async function handleToggleExpensePaid(exp) {
     const willPay = !exp.paid;
-    await supa.from("company_expenses").update({ paid: willPay, paid_date: willPay ? new Date().toISOString().slice(0, 10) : null, paid_value: willPay ? exp.value : null }).eq("id", exp.id);
+    await supa.from("company_expenses").update({ paid: willPay, paid_date: willPay ? todayStr() : null, paid_value: willPay ? exp.value : null }).eq("id", exp.id);
     await loadExpenses();
     if (willPay) logActivity(`Despesa paga: ${exp.category} — ${exp.description || ""}`);
     if (willPay && exp.file_url && !exp.file_url_watermarked) {
@@ -4306,7 +4312,7 @@ function App() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, "Despesas");
-    XLSX.writeFile(wb, `despesas-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `despesas-${todayStr()}.xlsx`);
   }
   function exportExpensesPDF(list) {
     const { jsPDF } = window.jspdf;
@@ -4327,7 +4333,7 @@ function App() {
       headStyles: { fillColor: [124, 92, 255] },
       margin: { left: 14, right: 14 },
     });
-    doc.save(`despesas-${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`despesas-${todayStr()}.pdf`);
   }
   async function handleSaveTechImplementation(t) {
     const payload = { ...t, updated_at: new Date().toISOString(), updated_by: session?.user?.email || "desconhecido" };
@@ -4559,7 +4565,7 @@ function App() {
     showToast("Implantação removida.");
   }
   async function handleToggleInstallmentPaid(imp, idx) {
-    const newInstallments = imp.installments.map((it, i) => i === idx ? { ...it, paid: !it.paid, paid_date: !it.paid ? new Date().toISOString().slice(0, 10) : null } : it);
+    const newInstallments = imp.installments.map((it, i) => i === idx ? { ...it, paid: !it.paid, paid_date: !it.paid ? todayStr() : null } : it);
     await supa.from("implantacoes").update({ installments: newInstallments }).eq("id", imp.id);
     await loadImplantacoes();
   }
@@ -4768,7 +4774,7 @@ function App() {
   }
   async function handleTogglePayrollPaid(rec) {
     const willPay = !rec.paid;
-    await supa.from("payroll_records").update({ paid: willPay, paid_date: willPay ? new Date().toISOString().slice(0, 10) : null }).eq("id", rec.id);
+    await supa.from("payroll_records").update({ paid: willPay, paid_date: willPay ? todayStr() : null }).eq("id", rec.id);
     await loadPayrollRecords();
     if (willPay) logActivity(`Folha paga: ${rec.employee_name} (${rec.reference_month})`);
   }
@@ -4890,7 +4896,7 @@ function App() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, "Folha de Pagamento");
-    XLSX.writeFile(wb, `folha-pagamento-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `folha-pagamento-${todayStr()}.xlsx`);
   }
   function exportPayrollPDF(list) {
     const { jsPDF } = window.jspdf;
@@ -4938,7 +4944,7 @@ function App() {
         }
       },
     });
-    doc.save(`folha-pagamento-${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`folha-pagamento-${todayStr()}.pdf`);
   }
   async function handleSaveVtVr(rec) {
     const { error } = await supa.from("vt_vr_records").upsert(rec);
@@ -4955,7 +4961,7 @@ function App() {
   }
   async function handleToggleVtVrPaid(rec) {
     const paid = !rec.paid;
-    await supa.from("vt_vr_records").update({ paid, paid_date: paid ? new Date().toISOString().slice(0, 10) : null }).eq("id", rec.id);
+    await supa.from("vt_vr_records").update({ paid, paid_date: paid ? todayStr() : null }).eq("id", rec.id);
     await loadVtVrRecords();
   }
   const visibleVtVrRecords = useMemo(() => {
@@ -4997,7 +5003,7 @@ function App() {
       showFoot: "lastPage",
       margin: { left: 14, right: 14 },
     });
-    doc.save(`vt-vr-${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`vt-vr-${todayStr()}.pdf`);
   }
 
   function exportDbMigrationsPDF() {
@@ -5034,7 +5040,7 @@ function App() {
       headStyles: { fillColor: [124, 92, 255] },
       margin: { left: 14, right: 14 },
     });
-    doc.save(`migracoes-banco-${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`migracoes-banco-${todayStr()}.pdf`);
   }
 
   function exportClientCommissionsExcel(rows, filenamePrefix = "comissao-representantes") {
@@ -5064,7 +5070,7 @@ function App() {
     if (repNames.length === 0) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([]), "Sem dados");
     }
-    XLSX.writeFile(wb, `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `${filenamePrefix}-${todayStr()}.xlsx`);
   }
 
   function exportClientCommissionsPDF(rows, title = "Comissão de Representantes") {
@@ -5105,7 +5111,7 @@ function App() {
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
       margin: { left: 14, right: 14 },
     });
-    doc.save(`comissao-representantes-${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`comissao-representantes-${todayStr()}.pdf`);
   }
 
   function exportSellerCommissionsPDF() {
@@ -5146,7 +5152,7 @@ function App() {
       showFoot: "lastPage",
       margin: { left: 14, right: 14 },
     });
-    doc.save(`comissao-etiquetas-${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`comissao-etiquetas-${todayStr()}.pdf`);
   }
 
   function exportItagEntriesPDF() {
@@ -5176,7 +5182,7 @@ function App() {
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
       margin: { left: 14, right: 14 },
     });
-    doc.save(`rfid-entradas-${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`rfid-entradas-${todayStr()}.pdf`);
   }
 
   function exportItagBillingsPDF() {
@@ -5207,7 +5213,7 @@ function App() {
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
       margin: { left: 14, right: 14 },
     });
-    doc.save(`rfid-faturado-${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`rfid-faturado-${todayStr()}.pdf`);
   }
 
   function exportItagOrderClosingPDF(rows, clientName, monthLabelStr) {
@@ -5390,7 +5396,7 @@ function App() {
   async function handleToggleCancelled(c) {
     const willCancel = !c.cancelled;
     if (willCancel && !confirm(`Marcar "${c.name}" como cancelada? Ela vai sair da lista de Mensalidades.`)) return;
-    await supa.from("clients").update({ cancelled: willCancel, cancelled_at: willCancel ? new Date().toISOString().slice(0, 10) : null }).eq("id", c.id);
+    await supa.from("clients").update({ cancelled: willCancel, cancelled_at: willCancel ? todayStr() : null }).eq("id", c.id);
     await loadClients();
     showToast(willCancel ? "Loja marcada como cancelada." : "Loja reativada.");
   }
@@ -5613,7 +5619,7 @@ function App() {
       await supa.from("implantacoes").upsert({
         id: uid(), prospect_id: prospect.id, proposal_id: p.id, client_name: prospect.name,
         total_value: implantacaoTotal,
-        installments: [{ due_date: new Date().toISOString().slice(0, 10), value: implantacaoTotal, paid: false, paid_date: null }],
+        installments: [{ due_date: todayStr(), value: implantacaoTotal, paid: false, paid_date: null }],
         pix_key: p.pix_key || "", pix_favorecido: p.pix_favorecido || "",
         notes: `Gerada automaticamente ao fechar a proposta nº ${p.number}.`,
       });
@@ -5825,7 +5831,7 @@ function App() {
   }
   async function handleToggleRomaneioPaid(r) {
     const nowPaid = !r.paid;
-    await supa.from("romaneios").update({ paid: nowPaid, payment_date: nowPaid ? (r.payment_date || new Date().toISOString().slice(0, 10)) : null }).eq("id", r.id);
+    await supa.from("romaneios").update({ paid: nowPaid, payment_date: nowPaid ? (r.payment_date || todayStr()) : null }).eq("id", r.id);
     await loadRomaneios();
   }
   async function handleUpdateCommissionPercent(r, newPercent) {
@@ -5960,7 +5966,7 @@ function App() {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, "Romaneios");
-    XLSX.writeFile(wb, `relatorio-romaneios-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(wb, `relatorio-romaneios-${todayStr()}.xlsx`);
   }
 
   function exportConsultasExcel() {
@@ -6105,9 +6111,9 @@ function App() {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `backup-completo-${new Date().toISOString().slice(0, 10)}.json`;
+    a.href = url; a.download = `backup-completo-${todayStr()}.json`;
     a.click(); URL.revokeObjectURL(url);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayStr();
     await saveSettings({ ...settings, last_backup_at: today });
     showToast("Backup baixado! Guarde esse arquivo em local seguro.");
   }
@@ -7165,7 +7171,7 @@ function App() {
                             <input type="checkbox" checked={!!b?.paid} onChange={(e) => upsertBoleto(c.id, {
                                 paid: e.target.checked,
                                 paid_value: e.target.checked ? (b?.paid_value || effectiveValue(c, b)) : b?.paid_value,
-                                paid_date: e.target.checked ? (b?.paid_date || new Date().toISOString().slice(0, 10)) : null,
+                                paid_date: e.target.checked ? (b?.paid_date || todayStr()) : null,
                               })} /> {b?.paid ? "✓ Pago" : "Marcar como pago"}
                           </label>
                           {b?.paid && (
@@ -8252,7 +8258,7 @@ function App() {
                   if (visible.length === 0) {
                     return <div className="p-10 text-center"><div className="text-3xl mb-2">🏗️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>{implantacoes.length === 0 ? "Nenhuma implantação registrada ainda." : "Nenhuma implantação em aberto encontrada."}</div></div>;
                   }
-                  const today = new Date().toISOString().slice(0, 10);
+                  const today = todayStr();
                   return visible.map((imp, i) => {
                     const paid = (imp.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
                     const open = (imp.total_value || 0) - paid;
@@ -8411,7 +8417,7 @@ function App() {
                 const somaTotal = doAno.reduce((s, o) => s + (Number(o.total_value) || 0), 0);
                 const somaPago = doAno.reduce((s, o) => s + (o.installments || []).filter((it) => it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0);
                 const somaAberto = doAno.reduce((s, o) => s + (o.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0);
-                const hoje = new Date().toISOString().slice(0, 10);
+                const hoje = todayStr();
                 const atrasadas = doAno.flatMap((o) => (o.installments || []).filter((it) => !it.paid && it.due_date && it.due_date < hoje).map((it) => ({ ...it, obs: o.notes })));
                 return (
                   <>
@@ -8831,7 +8837,7 @@ function App() {
           {effectiveTab === "despesas" && (
             <div>
               {(() => {
-                const today = new Date().toISOString().slice(0, 10);
+                const today = todayStr();
                 const in7days = new Date(); in7days.setDate(in7days.getDate() + 7);
                 const in7 = in7days.toISOString().slice(0, 10);
                 const totalAberto = expenses.filter((e) => !e.paid).reduce((s, e) => s + (Number(e.value) || 0), 0);

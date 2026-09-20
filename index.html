@@ -2588,7 +2588,7 @@ function TechImplementationViewer({ t, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
-      <div className="rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }} onClick={(e) => e.stopPropagation()}>
+      <div className="rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }} onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b sticky top-0 flex items-center justify-between" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
           <div>
             <div className="font-bold text-base" style={{ color: COLORS.ink }}>{t.client_name}</div>
@@ -3532,7 +3532,7 @@ function ClientHistoryModal({ client, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
-      <div className="rounded-xl w-full max-w-md max-h-[85vh] overflow-y-auto border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }} onClick={(e) => e.stopPropagation()}>
+      <div className="rounded-xl w-full max-w-md max-h-[85vh] overflow-y-auto border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }} onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b flex items-center justify-between sticky top-0" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
           <div>
             <div className="font-bold text-sm" style={{ color: COLORS.ink }}>{client.name}</div>
@@ -3685,7 +3685,7 @@ function Login() {
 
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg }}>
-      <div className="p-6 rounded-2xl border w-80 shadow-sm" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+      <div className="p-6 rounded-2xl border w-80 shadow-sm" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
         <div className="flex items-center gap-3 mb-4">
           <img src={LOGO_DATA_URI} alt="Miré" className="w-32 h-auto object-contain" />
           <div className="font-bold" style={{ color: COLORS.ink }}>ADM / MIRE</div>
@@ -6884,7 +6884,7 @@ function App() {
 
               {/* Linha 2: gráfico de receita */}
               <div className="grid grid-cols-1 gap-4">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Receita mensal (mensalidade + consultas)</div>
                   <ReceitaChart history={receitaHistory} />
                 </div>
@@ -6892,7 +6892,7 @@ function App() {
 
               {/* Linha 3: vencimentos, tipo, últimos enviados */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Vencimentos por dia ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</div>
                   {dueDayGroups.length === 0 ? (
                     <div className="text-sm text-center py-6" style={{ color: COLORS.inkMuted }}>Nenhum cliente com vencimento cadastrado.</div>
@@ -6924,11 +6924,11 @@ function App() {
                     </div>
                   )}
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Clientes por tipo</div>
                   <DonutTipo countMonthly={stats.countMonthly} countAnnual={stats.countAnnual} />
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Últimos boletos enviados</div>
                   {recentSent.length === 0 ? (
                     <div className="text-sm text-center py-6" style={{ color: COLORS.inkMuted }}>Nenhum envio registrado ainda neste mês.</div>
@@ -6965,7 +6965,7 @@ function App() {
                   { l: "Pagos (mês)", v: money(paidValue), sub: `${stats.paid} clientes`, c: COLORS.success, icon: "✅" },
                   { l: "Ticket médio (mês)", v: money(ticketMedio), sub: "Mensalidade + Consultas", c: COLORS.brandLight, icon: "💲" },
                 ].map((s) => (
-                  <div key={s.l} className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                  <div key={s.l} className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                     <div className="flex items-center gap-2 mb-2">
                       <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs" style={{ background: `${s.c}22` }}>{s.icon}</span>
                       <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: s.c }}>{s.l}</span>
@@ -7220,8 +7220,8 @@ function App() {
                   return (
                     <div key={c.id} className="p-4 transition-colors" style={{
                         borderColor: COLORS.cardBorder,
-                        background: b?.paid ? "rgba(34,197,94,0.07)" : "transparent",
-                        borderLeft: b?.paid ? `4px solid ${COLORS.success}` : `4px solid transparent`,
+                        background: b?.paid ? `linear-gradient(160deg, ${rgba(COLORS.success, 0.1)}, ${rgba(COLORS.success, 0.01)})` : status === "atrasado" ? `linear-gradient(160deg, ${rgba(COLORS.danger, 0.1)}, ${rgba(COLORS.danger, 0.01)})` : dueSoon ? `linear-gradient(160deg, ${rgba(COLORS.warn, 0.08)}, ${rgba(COLORS.warn, 0.01)})` : "transparent",
+                        borderLeft: b?.paid ? `4px solid ${COLORS.success}` : status === "atrasado" ? `4px solid ${COLORS.danger}` : dueSoon ? `4px solid ${COLORS.warn}` : `4px solid transparent`,
                       }}>
                       {/* LINHA 1: identificação do cliente */}
                       <div className="flex items-center gap-3 mb-3">
@@ -7269,9 +7269,12 @@ function App() {
                           </label>
                           {b?.paid && (
                             <>
-                              <div className="w-28 shrink-0">
-                                <MiniMoneyField label="Valor pago" value={b?.paid_value} fieldKey={`paidval-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { paid_value: v })} />
-                              </div>
+                              <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
+                                Valor pago
+                                <input type="number" step="0.01" key={`paidval-${c.id}-${mKey}`} defaultValue={b?.paid_value || ""} placeholder="0,00"
+                                  onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(b?.paid_value) || 0)) upsertBoleto(c.id, { paid_value: v }); }}
+                                  className="rounded-lg border px-2 py-1 text-xs outline-none w-24" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+                              </label>
                               <label className="flex items-center gap-1 text-xs font-semibold" style={{ color: COLORS.inkMuted }}>
                                 Data
                                 <input type="date" key={`paiddate-${c.id}-${mKey}`} defaultValue={b?.paid_date || ""}
@@ -7549,7 +7552,7 @@ function App() {
           {effectiveTab === "compra_tag_rfid" && (
             <div>
               <div className="grid grid-cols-1 gap-3 mb-4">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total comprado</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0)} un.</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{money(itagEntries.reduce((s, e) => s + (Number(e.total_value) || 0), 0))} gastos</div>
@@ -7618,16 +7621,16 @@ function App() {
           {effectiveTab === "venda_tag_rfid" && (
             <div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Total faturado</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un.</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{money(itagBillings.reduce((s, b) => s + (Number(b.boleto_value) || 0), 0))} em boletos</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Total recebido</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(itagBillings.reduce((s, b) => s + (Number(b.paid_value) || 0), 0))}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Em aberto</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(itagBillings.reduce((s, b) => s + (Number(b.open_value) || 0), 0))}</div>
                 </div>
@@ -7723,7 +7726,7 @@ function App() {
 
                 return (
                   <>
-                    <div className="rounded-2xl p-4 border mb-4" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                    <div className="rounded-2xl p-4 border mb-4" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                       <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Próximo nº de pedido</div>
                       <div className="text-2xl font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{nextOrderNumber}</div>
                     </div>
@@ -7818,15 +7821,15 @@ function App() {
           {effectiveTab === "migracoes" && (
             <div>
               <div className="grid grid-cols-3 gap-3 mb-4">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.inkMuted }}>Pendentes</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => (m.status || "pendente") === "pendente").length}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Em andamento</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => m.status === "andamento").length}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Concluídas</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => m.status === "concluida").length}</div>
                 </div>
@@ -8070,11 +8073,11 @@ function App() {
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                       {repNames.length === 0 ? (
-                        <div className="rounded-2xl p-4 border col-span-2 sm:col-span-3" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="rounded-2xl p-4 border col-span-2 sm:col-span-3" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                           <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com representante {isHistory ? `em ${monthLabel(commissionViewMonth)}` : "atribuído ainda"}.</div>
                         </div>
                       ) : repNames.map((r) => (
-                        <div key={r} className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div key={r} className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                           <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>👤 {r}</div>
                           <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(byRep[r])}</div>
                         </div>
@@ -8174,12 +8177,12 @@ function App() {
                     {caixaSubTab === "caixa" && (
                       <div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                          <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                          <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                             <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Orçamento do mês</div>
                             <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(orcamentoMes)}</div>
                             {totalEntradasExtra > 0 && <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>R$500 + {money(totalEntradasExtra)} extra</div>}
                           </div>
-                          <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                          <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                             <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Gasto no mês</div>
                             <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(totalSaidas)}</div>
                           </div>
@@ -8245,11 +8248,11 @@ function App() {
                     {caixaSubTab === "almoco" && (
                       <div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                          <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                          <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                             <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Quintas no mês</div>
                             <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{lunchOfMonth.length} de {thursdaysInMonth}</div>
                           </div>
-                          <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                          <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                             <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Total gasto no mês</div>
                             <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(totalLunch)}</div>
                           </div>
@@ -8312,15 +8315,15 @@ function App() {
           {effectiveTab === "implantacoes" && (
             <div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Total em implantações</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (Number(i.total_value) || 0), 0))}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Já recebido</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Em aberto</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
                 </div>
@@ -8525,19 +8528,19 @@ function App() {
                     )}
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Caixas compradas</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{somaQtd}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Total do ano</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(somaTotal)}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Valor pago</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(somaPago)}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Valor em aberto</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(somaAberto)}</div>
                       </div>
@@ -8678,19 +8681,19 @@ function App() {
                 return (
                   <>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Funcionários ativos</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{activeEmployees.length}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>A pagar</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{mask(totalPendente)}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Já pago</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{mask(totalPago)}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Lançamentos</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{pagamentos.length} folha · {vales.length} vale</div>
                       </div>
@@ -8860,15 +8863,15 @@ function App() {
           {effectiveTab === "vtvr" && (
             <div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>A pagar este mês</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(vtVrRecords.filter((r) => !r.paid && r.payment_date && r.payment_date.slice(0, 7) === monthKey(new Date())).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Já pago (este mês)</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(vtVrRecords.filter((r) => r.paid && r.payment_date && r.payment_date.slice(0, 7) === monthKey(new Date())).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.inkMuted }}>Em aberto (todos os meses)</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{money(vtVrRecords.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                 </div>
@@ -8984,19 +8987,19 @@ function App() {
                     )}
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Em aberto</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalAberto)}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Pago</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalPago)}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>Atrasadas</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{atrasadas.length}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Recorrentes</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{expenses.filter((e) => e.recurring).length}</div>
                       </div>
@@ -9100,15 +9103,15 @@ function App() {
                       <button onClick={exportSellerCommissionsPDF} disabled={sellers.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total em comissões</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalComissao)}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Já pago</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalPago)}</div>
                       </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Em aberto</div>
                         <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalAberto)}</div>
                       </div>
@@ -9370,22 +9373,22 @@ function App() {
               })()}
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Clientes cloud</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => c.cloud).length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>de {stats.count} clientes</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total em consultas</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>somado à mensalidade</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Só mensalidade</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>sem consultas</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Clientes não cloud</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => !c.cloud).length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>de {stats.count} clientes</div>
@@ -9444,17 +9447,17 @@ function App() {
 
               {reportTab === "financeiro" && (<>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Propostas geradas</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{proposals.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>total no sistema</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.wa }}>Propostas enviadas</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{proposals.filter((p) => p.sent_whatsapp || p.sent_email).length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>WhatsApp: {proposals.filter((p) => p.sent_whatsapp).length} · E-mail: {proposals.filter((p) => p.sent_email).length}</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Romaneios gerados</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{romaneios.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>etiqueta de composição</div>
@@ -9581,21 +9584,21 @@ function App() {
 
               {reportTab === "financeiro" && (<>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>RFID — Entradas</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagEntries.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{itagEntries.reduce((s, e) => s + (Number(e.quantity) || 0), 0)} un. compradas</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>RFID — Gasto em compras</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(itagEntries.reduce((s, e) => s + (Number(e.total_value) || 0), 0))}</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>RFID — Faturamentos</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{itagBillings.length}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{itagBillings.reduce((s, b) => s + (Number(b.quantity) || 0), 0)} un. faturadas</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>RFID — Recebido / Em aberto</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(itagBillings.reduce((s, b) => s + (Number(b.paid_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.warn }}>Em aberto: {money(itagBillings.reduce((s, b) => s + (Number(b.open_value) || 0), 0))}</div>
@@ -9603,20 +9606,20 @@ function App() {
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Implantações — total</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (Number(i.total_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{implantacoes.length} implantação(ões)</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Implantações — recebido</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Implantações — em aberto</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Vale Transp. / Refeição</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(vtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.warn }}>Em aberto: {money(vtVrRecords.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
@@ -9847,7 +9850,7 @@ function App() {
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} showToast={showToast} />}
       {selectedCalendarDay && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setSelectedCalendarDay(null)}>
-          <div className="rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }} onClick={(e) => e.stopPropagation()}>
+          <div className="rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }} onClick={(e) => e.stopPropagation()}>
             <div className="p-4 border-b sticky top-0 flex items-center justify-between" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
               <div className="font-bold text-sm" style={{ color: COLORS.ink }}>
                 📅 {String(selectedCalendarDay.day).padStart(2, "0")}/{String(monthDate.getMonth() + 1).padStart(2, "0")}/{monthDate.getFullYear()}

@@ -2168,7 +2168,7 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
   const [employeeId, setEmployeeId] = useState(initial?.employee_id || "");
   const [paymentDate, setPaymentDate] = useState(initial?.payment_date || todayStr());
   const [numDays, setNumDays] = useState(initial?.days_worked ? String(initial.days_worked).replace(/\D/g, "") : "");
-  const [numConducoes, setNumConducoes] = useState(initial?.transport_desc?.startsWith("02") ? "2" : initial?.transport_desc?.startsWith("01") ? "1" : "1");
+  const [numConducoes, setNumConducoes] = useState(initial?.transport_desc === "2" || initial?.transport_desc?.startsWith("02") ? "2" : initial?.transport_desc === "1" || initial?.transport_desc?.startsWith("01") ? "1" : "1");
   const [vtManual, setVtManual] = useState(false);
   const [vtValue, setVtValue] = useState(initial?.vt_value ?? "");
   const [vrDaily, setVrDaily] = useState("35");
@@ -2195,7 +2195,7 @@ function VtVrForm({ initial, employees, onCreateEmployee, onSave, onCancel }) {
 
   const total = (Number(vrValue) || 0) + (Number(vtValue) || 0);
   const canSave = employeeId && paymentDate;
-  const transportDesc = numConducoes === "0" ? "" : `${numConducoes === "1" ? "01 condução" : "02 conduções"}`;
+  const transportDesc = numConducoes === "0" ? "" : numConducoes;
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
@@ -5005,7 +5005,7 @@ function App() {
 
     const rows = visibleVtVrRecords.map((r) => [
       r.employee_name || "-", r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
-      r.days_worked || "-", fmtMoney(r.vr_value), fmtMoney(r.vt_value), r.transport_desc || "-", fmtMoney(r.total_value), r.paid ? "Pago" : "Pendente",
+      r.days_worked || "-", fmtMoney(r.vr_value), fmtMoney(r.vt_value), (String(r.transport_desc || "").match(/^0?(1|2)/)?.[1]) || r.transport_desc || "-", fmtMoney(r.total_value), r.paid ? "Pago" : "Pendente",
       Number(r.home_office_days) > 0 ? `${r.home_office_days}d` : "-", r.notes || "-", "",
     ]);
     const totalGeral = visibleVtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0);
@@ -8900,7 +8900,7 @@ function App() {
                           <td className="p-3">{r.days_worked || "-"}{Number(r.home_office_days) > 0 && <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }} title="Dias de home office (descontados do VT/VR)">🏠 {r.home_office_days}d</span>}</td>
                           <td className="p-3">{money(r.vr_value)}</td>
                           <td className="p-3">{money(r.vt_value)}</td>
-                          <td className="p-3">{r.transport_desc || "-"}</td>
+                          <td className="p-3">{(String(r.transport_desc || "").match(/^0?(1|2)/)?.[1]) || r.transport_desc || "-"}</td>
                           <td className="p-3 font-bold">{money(r.total_value)}</td>
                           <td className="p-3">
                             <button onClick={() => handleToggleVtVrPaid(r)} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: r.paid ? COLORS.success : COLORS.warn, background: r.paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>

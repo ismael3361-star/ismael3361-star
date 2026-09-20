@@ -5003,26 +5003,29 @@ function App() {
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
-    const rows = visibleVtVrRecords.map((r) => [
-      r.employee_name || "-", r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
-      r.days_worked || "-", fmtMoney(r.vr_value), fmtMoney(r.vt_value), (String(r.transport_desc || "").match(/^0?(1|2)/)?.[1]) || r.transport_desc || "-", fmtMoney(r.total_value), r.paid ? "Pago" : "Pendente",
-      Number(r.home_office_days) > 0 ? `${r.home_office_days}d` : "-", r.notes || "-", "",
-    ]);
+    const rows = visibleVtVrRecords.map((r) => {
+      const hoNote = Number(r.home_office_days) > 0 ? `${r.home_office_days} dias home` : "";
+      const obs = [hoNote, r.notes].filter(Boolean).join(" · ") || "-";
+      return [
+        r.employee_name || "-", r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+        r.days_worked || "-", fmtMoney(r.vr_value), fmtMoney(r.vt_value), (String(r.transport_desc || "").match(/^0?(1|2)/)?.[1]) || r.transport_desc || "-", fmtMoney(r.total_value), r.paid ? "Pago" : "Pendente",
+        obs, "",
+      ];
+    });
     const totalGeral = visibleVtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0);
-    const qrColIndex = 10;
+    const qrColIndex = 9;
 
     doc.autoTable({
       startY: 44,
-      head: [["Funcionário", "Data", "Dias", "VR", "VT", "Transporte", "Total", "Situação", "Home Office", "Obs", "PIX"]],
+      head: [["Funcionário", "Data", "Dias", "VR", "VT", "Transporte", "Total", "Situação", "Obs", "PIX"]],
       body: rows,
-      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalGeral), "", "", "", ""]],
+      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalGeral), "", "", ""]],
       styles: { fontSize: 8.5, valign: "middle", halign: "center", cellPadding: { top: 4, right: 3, bottom: 4, left: 3 } },
       headStyles: { fillColor: [124, 92, 255], halign: "center" },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold", halign: "center" },
       columnStyles: {
         0: { halign: "left", cellWidth: 40 },
-        5: { halign: "left", cellWidth: 26 },
-        9: { halign: "left", cellWidth: 28 },
+        8: { halign: "left", cellWidth: 40 },
         [qrColIndex]: { minCellHeight: 34, cellWidth: 32 },
       },
       showFoot: "lastPage",
@@ -8888,7 +8891,7 @@ function App() {
                     <thead>
                       <tr style={{ color: COLORS.inkMuted }}>
                         <th className="text-left p-3">Funcionário</th><th className="text-left p-3">Data</th><th className="text-left p-3">Dias</th>
-                        <th className="text-left p-3">VR</th><th className="text-left p-3">VT</th><th className="text-left p-3">Transporte</th>
+                        <th className="text-left p-3">VR</th><th className="text-left p-3">VT</th><th className="text-center p-3">Transporte</th>
                         <th className="text-left p-3">Total</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
                       </tr>
                     </thead>
@@ -8900,7 +8903,7 @@ function App() {
                           <td className="p-3">{r.days_worked || "-"}{Number(r.home_office_days) > 0 && <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }} title="Dias de home office (descontados do VT/VR)">🏠 {r.home_office_days}d</span>}</td>
                           <td className="p-3">{money(r.vr_value)}</td>
                           <td className="p-3">{money(r.vt_value)}</td>
-                          <td className="p-3">{(String(r.transport_desc || "").match(/^0?(1|2)/)?.[1]) || r.transport_desc || "-"}</td>
+                          <td className="p-3 text-center">{(String(r.transport_desc || "").match(/^0?(1|2)/)?.[1]) || r.transport_desc || "-"}</td>
                           <td className="p-3 font-bold">{money(r.total_value)}</td>
                           <td className="p-3">
                             <button onClick={() => handleToggleVtVrPaid(r)} className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: r.paid ? COLORS.success : COLORS.warn, background: r.paid ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>

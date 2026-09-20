@@ -4907,15 +4907,13 @@ function App() {
       return y + 6;
     }
 
-    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 8, 34, 10); } catch (e) {}
-    let cursorY = 24;
+    let cursorY = 14;
     cursorY = drawBlock(cursorY);
     doc.setLineDashPattern([1, 1], 0);
     doc.setDrawColor(160);
     doc.line(14, cursorY, pageWidth - 14, cursorY);
     doc.setLineDashPattern([], 0);
     cursorY += 8;
-    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, cursorY - 16, 34, 10); } catch (e) {}
     cursorY = drawBlock(cursorY);
 
     if (emp?.pix_key) {

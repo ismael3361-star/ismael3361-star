@@ -435,6 +435,20 @@ function isDueSoon(client, b, monthDate) {
   const d = daysUntilDue(client, monthDate);
   return d !== null && d >= 0 && d <= 3;
 }
+// Um cliente só "conta" no previsto/em aberto/atrasado deste mês se: não é anual, não está cancelado,
+// tem dia de vencimento cadastrado, e (se tiver "próxima data de vencimento") ela não cai num mês futuro.
+// Usado para manter os totais do Dashboard (previsto, pago, em aberto, atrasados) todos batendo entre si.
+function isInCurrentMonthCycle(client, monthDate) {
+  if (client.annual || client.cancelled) return false;
+  if (!client.due_day) return false;
+  if (client.next_due_date) {
+    const nd = new Date(client.next_due_date + "T00:00:00");
+    const ndKey = nd.getFullYear() * 12 + nd.getMonth();
+    const monthKey = monthDate.getFullYear() * 12 + monthDate.getMonth();
+    if (ndKey > monthKey) return false;
+  }
+  return true;
+}
 
 function Pagination({ page, setPage, totalItems, pageSize }) {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -6500,17 +6514,7 @@ function App() {
   }, [clients, search]);
 
   const stats = useMemo(() => {
-    const monthly = clients.filter((c) => {
-      if (c.annual || c.cancelled) return false;
-      if (!c.due_day) return false;
-      if (c.next_due_date) {
-        const nd = new Date(c.next_due_date + "T00:00:00");
-        const ndKey = nd.getFullYear() * 12 + nd.getMonth();
-        const monthKey = monthDate.getFullYear() * 12 + monthDate.getMonth();
-        if (ndKey > monthKey) return false; // vencimento cai num mês futuro — ainda não entra no previsto deste mês
-      }
-      return true;
-    });
+    const monthly = clients.filter((c) => isInCurrentMonthCycle(c, monthDate));
     const annualC = clients.filter((c) => c.annual);
     const sentWa = monthly.filter((c) => boletos[c.id]?.sent_whatsapp).length;
     const sentEmail = monthly.filter((c) => boletos[c.id]?.sent_email).length;
@@ -6530,7 +6534,7 @@ function App() {
 
   const inadimplentes = useMemo(() => {
     return clients
-      .filter((c) => !c.cancelled && !c.annual && computeStatus(c, boletos[c.id], monthDate) === "atrasado")
+      .filter((c) => isInCurrentMonthCycle(c, monthDate) && computeStatus(c, boletos[c.id], monthDate) === "atrasado")
       .map((c) => ({ ...c, _diasAtraso: daysOverdue(c, monthDate) }))
       .sort(sortByBankNumber);
   }, [clients, boletos, monthDate]);
@@ -6561,8 +6565,8 @@ function App() {
   const pendingValue = totalPrevisto - paidValue;
   const yearTotal = useMemo(() => yearHistory.reduce((s, h) => s + (h.pago || 0), 0), [yearHistory]);
   const momChange = prevMonthPaid > 0 ? ((paidValue - prevMonthPaid) / prevMonthPaid) * 100 : (paidValue > 0 ? 100 : 0);
-  const overdueValue = useMemo(() => clients.filter((c) => computeStatus(c, boletos[c.id], monthDate) === "atrasado").reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos, monthDate]);
-  const dueSoonValue = useMemo(() => clients.filter((c) => isDueSoon(c, boletos[c.id], monthDate)).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos, monthDate]);
+  const overdueValue = useMemo(() => clients.filter((c) => isInCurrentMonthCycle(c, monthDate) && computeStatus(c, boletos[c.id], monthDate) === "atrasado").reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos, monthDate]);
+  const dueSoonValue = useMemo(() => clients.filter((c) => isInCurrentMonthCycle(c, monthDate) && isDueSoon(c, boletos[c.id], monthDate)).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos, monthDate]);
   const ticketMedio = stats.count > 0 ? totalPrevisto / stats.count : 0;
 
   // Contas a pagar que vencem no mês exibido no calendário, agrupadas por dia

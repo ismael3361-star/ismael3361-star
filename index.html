@@ -882,6 +882,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
 
 function ProspectForm({ initial, onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || "");
+  const [contactName, setContactName] = useState(initial?.contact_name || "");
   const [cnpj, setCnpj] = useState(initial?.cnpj || "");
   const [phone, setPhone] = useState(initial?.phone || "");
   const [email, setEmail] = useState(initial?.email || "");
@@ -938,6 +939,7 @@ function ProspectForm({ initial, onSave, onCancel }) {
       <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Novo cliente para proposta {cepLoading && "(buscando CEP...)"}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <TextField label="Nome / Empresa" value={name} onChange={setName} required placeholder="Ex: Confecções Silva LTDA" />
+        <TextField label="Nome do contato" value={contactName} onChange={setContactName} placeholder="Ex: João (responsável)" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>CNPJ / CPF {cnpjLoading && <span className="font-normal normal-case">(buscando...)</span>}</span>
           <div className="flex gap-2">
@@ -961,7 +963,7 @@ function ProspectForm({ initial, onSave, onCancel }) {
         <button
           disabled={!canSave}
           onClick={() => onSave({
-            id: initial?.id || uid(), name: name.trim(), cnpj: cnpj.trim(), phone: phone.trim(), email: email.trim(),
+            id: initial?.id || uid(), name: name.trim(), contact_name: contactName.trim() || null, cnpj: cnpj.trim(), phone: phone.trim(), email: email.trim(),
             cep: cep.trim(), street: street.trim(), number: number.trim(), complement: complement.trim(),
             neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
           })}
@@ -1152,13 +1154,13 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
   const cloudTotal = hasCloud ? Number(cloudValue) || 0 : 0;
   const integrationSetupTotal = hasIntegration ? Number(integrationSetupValue) || 0 : 0;
   const integrationMonthlyTotal = hasIntegration ? Number(integrationMonthlyValue) || 0 : 0;
-  const mensalidadeBaseTotal = storesTotal + factoryTotal + productionTotal + integrationMonthlyTotal;
+  const mensalidadeBaseTotal = storesTotal + factoryTotal + productionTotal + integrationMonthlyTotal + cloudTotal;
   const customTotal = customizations.reduce((s, it) => s + (Number(it.value) || 0), 0);
   const installationTotal = Number(installationValue) || 0;
   const trainingTotal = Number(trainingValue) || 0;
   const dbTransferTotal = Number(dbTransferValue) || 0;
   const monthlyTotal = Math.max(0, mensalidadeBaseTotal - (Number(discountValue) || 0));
-  const implantacaoTotal = installationTotal + trainingTotal + dbTransferTotal + customTotal + cloudTotal + integrationSetupTotal;
+  const implantacaoTotal = installationTotal + trainingTotal + dbTransferTotal + customTotal + integrationSetupTotal;
   const grandTotal = monthlyTotal + implantacaoTotal;
 
   async function handleSaveNewProspect(p) {
@@ -1495,8 +1497,32 @@ function ExpenseForm({ initial, onSave, onCancel }) {
   const [value, setValue] = useState(initial?.value ?? "");
   const [dueDate, setDueDate] = useState(initial?.due_date || "");
   const [recurring, setRecurring] = useState(initial?.recurring || false);
+  const [pendingFile, setPendingFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
-  const canSave = category && Number(value) > 0;
+  const canSave = category && Number(value) > 0 && !uploading;
+
+  async function handleSubmit() {
+    const id = initial?.id || uid();
+    let fileUrl = initial?.file_url || null;
+    let fileName = initial?.file_name || null;
+    if (pendingFile) {
+      setUploading(true);
+      try {
+        const path = `despesas/${id}-${Date.now()}-${pendingFile.name}`;
+        const { error } = await supa.storage.from("boletos").upload(path, pendingFile, { upsert: true });
+        if (error) throw error;
+        const { data } = supa.storage.from("boletos").getPublicUrl(path);
+        fileUrl = data.publicUrl; fileName = pendingFile.name;
+      } catch (e) {
+        setUploading(false);
+        alert(`Erro ao anexar o boleto: ${e.message || "tente novamente"}`);
+        return;
+      }
+      setUploading(false);
+    }
+    onSave({ id, category, description: description.trim() || null, notes: expenseNotes.trim() || null, value: Number(value) || 0, due_date: dueDate || null, recurring, paid: initial?.paid || false, paid_date: initial?.paid_date || null, paid_value: initial?.paid_value || null, file_url: fileUrl, file_name: fileName });
+  }
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
@@ -1515,6 +1541,11 @@ function ExpenseForm({ initial, onSave, onCancel }) {
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento</span>
           <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
         </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Anexo (boleto)</span>
+          <input type="file" accept="application/pdf,image/*" onChange={(e) => setPendingFile(e.target.files?.[0] || null)} className="w-full rounded-lg border px-3 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+          {initial?.file_name && !pendingFile && <span className="text-[11px]" style={{ color: COLORS.inkMuted }}>Já tem um arquivo anexado ({initial.file_name}) — escolher outro vai trocar.</span>}
+        </label>
       </div>
       <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: COLORS.ink }}>
         <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
@@ -1523,9 +1554,9 @@ function ExpenseForm({ initial, onSave, onCancel }) {
       <div className="flex gap-2">
         <button
           disabled={!canSave}
-          onClick={() => onSave({ id: initial?.id || uid(), category, description: description.trim() || null, notes: expenseNotes.trim() || null, value: Number(value) || 0, due_date: dueDate || null, recurring, paid: initial?.paid || false, paid_date: initial?.paid_date || null, paid_value: initial?.paid_value || null })}
+          onClick={handleSubmit}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
-          Salvar despesa
+          {uploading ? "Anexando..." : "Salvar despesa"}
         </button>
         <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
       </div>
@@ -5201,8 +5232,9 @@ function App() {
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
     const sortedRomaneios = [...romaneios].sort((a, b) => {
-      const sa = (a.seller || "Sem vendedor").toUpperCase(), sb = (b.seller || "Sem vendedor").toUpperCase();
-      if (sa !== sb) return sa.localeCompare(sb, "pt-BR");
+      const ca = (romaneioClients.find((rc) => rc.id === a.romaneio_client_id)?.name || "Sem cliente").toUpperCase();
+      const cb = (romaneioClients.find((rc) => rc.id === b.romaneio_client_id)?.name || "Sem cliente").toUpperCase();
+      if (ca !== cb) return ca.localeCompare(cb, "pt-BR");
       return (Number(a.number) || 0) - (Number(b.number) || 0);
     });
 
@@ -5261,13 +5293,14 @@ function App() {
       const custoTotal = romaneioCustoTotal(r);
       const lucro = romaneioLucro(r);
       const comissao = romaneioComissao(r);
-      return [(r.seller || "Sem vendedor").toUpperCase(), r.number || "-", r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", qtd, fmtMoney(venda), fmtMoney(custoTotal), fmtMoney(lucro), `${r.commission_percent || 0}%`, fmtMoney(comissao), r.commission_paid ? "Pago" : "Pendente"];
+      const cliName = romaneioClients.find((rc) => rc.id === r.romaneio_client_id)?.name || "Sem cliente";
+      return [cliName.toUpperCase(), r.number || "-", r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", qtd, fmtMoney(venda), fmtMoney(custoTotal), fmtMoney(lucro), `${r.commission_percent || 0}%`, fmtMoney(comissao), r.commission_paid ? "Pago" : "Pendente"];
     });
     const totalGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioComissao(r), 0);
 
     doc.autoTable({
       startY: y2,
-      head: [["Vendedor", "Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão", "Situação"]],
+      head: [["Cliente", "Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão", "Situação"]],
       body,
       foot: [["TOTAL GERAL", "", "", "", "", "", "", "", fmtMoney(totalGeral), ""]],
       styles: { fontSize: 8 },
@@ -5508,6 +5541,16 @@ function App() {
   async function handleUpdateClientValue(clientId, newValue) {
     await supa.from("clients").update({ value: Number(newValue) || 0 }).eq("id", clientId);
     await loadClients();
+    // Se a mensalidade desse mês já está marcada como paga, resincroniza o valor pago
+    // pra não ficar desatualizado (evita diferença entre Previsto e Pago no Dashboard).
+    const b = boletos[clientId];
+    if (b?.paid) {
+      const updatedClient = { ...clients.find((x) => x.id === clientId), value: Number(newValue) || 0 };
+      const newPaidValue = effectiveValue(updatedClient, b);
+      const next = { ...b, paid_value: newPaidValue, updated_at: new Date().toISOString() };
+      await supa.from("boletos").upsert(next);
+      setBoletos((prev) => ({ ...prev, [clientId]: next }));
+    }
   }
   async function handleDeleteClient(id) {
     if (!confirm("Remover este cliente e os boletos/anotações dele?")) return;
@@ -6191,12 +6234,35 @@ function App() {
     const id = `${mKey}_${clientId}`;
     const current = boletos[clientId] || {};
     const next = { ...current, ...patch, id, client_id: clientId, month_key: mKey, updated_at: new Date().toISOString() };
+    // Se já está marcado como pago e a mudança não foi no próprio valor pago,
+    // resincroniza o "valor pago" com a mensalidade atual — evita que o Dashboard
+    // mostre "Pago" desatualizado quando a mensalidade/consultas/etc. mudam depois.
+    if (next.paid && !("paid_value" in patch)) {
+      const c = clients.find((x) => x.id === clientId);
+      if (c) next.paid_value = effectiveValue(c, next);
+    }
     await supa.from("boletos").upsert(next);
     setBoletos((prev) => ({ ...prev, [clientId]: next }));
     if (patch.paid === true && !current.paid) {
       const c = clients.find((x) => x.id === clientId);
       logActivity(`Mensalidade marcada como paga: ${c?.name || clientId} (${mKey})`);
     }
+  }
+  async function handleRecalcPaidValues() {
+    const desatualizados = clients.filter((c) => {
+      const b = boletos[c.id];
+      if (!b?.paid) return false;
+      return Math.abs((Number(b.paid_value) || 0) - effectiveValue(c, b)) > 0.005;
+    });
+    if (desatualizados.length === 0) { showToast("Nenhuma diferença encontrada — está tudo certo."); return; }
+    if (!confirm(`Encontrei ${desatualizados.length} cliente(s) com o "valor pago" desatualizado nesse mês. Corrigir agora?`)) return;
+    await Promise.all(desatualizados.map((c) => {
+      const b = boletos[c.id];
+      const next = { ...b, paid_value: effectiveValue(c, b), updated_at: new Date().toISOString() };
+      setBoletos((prev) => ({ ...prev, [c.id]: next }));
+      return supa.from("boletos").upsert(next);
+    }));
+    showToast(`${desatualizados.length} valor(es) corrigido(s).`);
   }
 
   function handleImportCSV(file) {
@@ -7212,6 +7278,7 @@ function App() {
                 <span className="text-[10px] font-bold uppercase tracking-wider px-1 shrink-0" style={{ color: COLORS.inkFaint }}>Ferramentas</span>
                 <button onClick={generateMonth} disabled={generating} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-50" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>{generating ? "Gerando..." : "🗓️ Gerar boletos do mês"}</button>
                 <button onClick={exportPDF} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>⬇️ Exportar PDF</button>
+                <button onClick={handleRecalcPaidValues} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.warn, color: COLORS.warn }} title="Corrige o &quot;valor pago&quot; de quem já está marcado como pago, caso a mensalidade tenha mudado depois">🔄 Recalcular valores pagos</button>
                 <div className="ml-auto flex gap-2">
                   <button onClick={() => sendBulkWhatsApp(bulkTargets)} disabled={bulkSending} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: COLORS.wa }}>💬 {bulkSending ? "Enviando..." : `Lote (${bulkTargets.length})`}</button>
                   <button onClick={() => sendBulkEmail(bulkTargetsEmail)} disabled={bulkSendingEmail} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-50" style={{ background: COLORS.brand }}>📧 {bulkSendingEmail ? "Enviando..." : `Lote (${bulkTargetsEmail.length})`}</button>
@@ -9116,13 +9183,13 @@ function App() {
           {effectiveTab === "comissao" && (
             <div>
               {(() => {
-                const bySeller = {};
+                const byClient = {};
                 romaneios.forEach((r) => {
-                  const s = r.seller || "Sem vendedor";
-                  if (!bySeller[s]) bySeller[s] = [];
-                  bySeller[s].push(r);
+                  const cli = romaneioClients.find((rc) => rc.id === r.romaneio_client_id)?.name || "Sem cliente";
+                  if (!byClient[cli]) byClient[cli] = [];
+                  byClient[cli].push(r);
                 });
-                const sellers = Object.keys(bySeller).sort((a, b) => a.localeCompare(b, "pt-BR"));
+                const sellers = Object.keys(byClient).sort((a, b) => a.localeCompare(b, "pt-BR"));
                 const calcComissao = romaneioComissao;
                 const totalComissao = romaneios.reduce((s, r) => s + calcComissao(r), 0);
                 const totalPago = romaneios.filter((r) => r.commission_paid).reduce((s, r) => s + calcComissao(r), 0);
@@ -9167,10 +9234,10 @@ function App() {
                     {sellers.length === 0 ? (
                       <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                         <div className="text-3xl mb-2">💰</div>
-                        <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio com vendedor cadastrado ainda.</div>
+                        <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio cadastrado ainda.</div>
                       </div>
                     ) : sellers.map((s) => {
-                      const rows = bySeller[s];
+                      const rows = byClient[s];
                       const sellerTotal = rows.reduce((sum, r) => sum + calcComissao(r), 0);
                       return (
                         <div key={s} className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>

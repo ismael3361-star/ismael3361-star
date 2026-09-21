@@ -1113,23 +1113,25 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
 
   // Reconstrói os campos estruturados a partir dos itens salvos (quando está editando)
   const existingItems = initial?.monthly_items || [];
+  // isKind: usa o campo "kind" salvo no item (robusto a maiúsculas/acentos digitados pelo usuário).
+  // Para propostas antigas sem "kind", cai no reconhecimento por texto (compatibilidade).
+  const isKind = (it, kind, legacyTest) => (it.kind ? it.kind === kind : legacyTest(it));
   const [stores, setStores] = useState(() => {
-    const lojas = existingItems.filter((it) => (it.desc || "").startsWith("Loja"));
-    return lojas.length ? lojas : [{ desc: "Loja 1", value: "" }];
+    const lojas = existingItems.filter((it) => isKind(it, "loja", (x) => (x.desc || "").startsWith("Loja")));
+    return lojas.length ? lojas : [{ desc: "Loja 1", value: "", kind: "loja" }];
   });
-  const [hasFactory, setHasFactory] = useState(() => existingItems.some((it) => it.desc === "Fábrica"));
-  const [factoryValue, setFactoryValue] = useState(() => existingItems.find((it) => it.desc === "Fábrica")?.value ?? "");
-  const [hasProduction, setHasProduction] = useState(() => existingItems.some((it) => it.desc === "Produção"));
-  const [productionValue, setProductionValue] = useState(() => existingItems.find((it) => it.desc === "Produção")?.value ?? "");
-  const [hasIntegration, setHasIntegration] = useState(() => existingItems.some((it) => (it.desc || "").startsWith("Integração")));
+  const [hasFactory, setHasFactory] = useState(() => existingItems.some((it) => isKind(it, "fabrica", (x) => x.desc === "Fábrica")));
+  const [factoryValue, setFactoryValue] = useState(() => existingItems.find((it) => isKind(it, "fabrica", (x) => x.desc === "Fábrica"))?.value ?? "");
+  const [hasProduction, setHasProduction] = useState(() => existingItems.some((it) => isKind(it, "producao", (x) => x.desc === "Produção")));
+  const [productionValue, setProductionValue] = useState(() => existingItems.find((it) => isKind(it, "producao", (x) => x.desc === "Produção"))?.value ?? "");
+  const [hasIntegration, setHasIntegration] = useState(() => existingItems.some((it) => isKind(it, "integracao_setup", (x) => (x.desc || "").startsWith("Integração")) || isKind(it, "integracao_mensal", (x) => (x.desc || "").startsWith("Integração"))));
   const [integrationSetupValue, setIntegrationSetupValue] = useState(initial?.integration_setup_value ?? "");
   const [integrationMonthlyValue, setIntegrationMonthlyValue] = useState(initial?.integration_monthly_value ?? "");
   const [integrationPlatforms, setIntegrationPlatforms] = useState(() => initial?.integration_platforms ? initial.integration_platforms.split(",").map((s) => s.trim()).filter(Boolean) : []);
-  const [hasCloud, setHasCloud] = useState(() => existingItems.some((it) => it.desc === "Cloud"));
-  const [cloudValue, setCloudValue] = useState(() => existingItems.find((it) => it.desc === "Cloud")?.value ?? "");
+  const [hasCloud, setHasCloud] = useState(() => existingItems.some((it) => isKind(it, "cloud", (x) => x.desc === "Cloud")));
+  const [cloudValue, setCloudValue] = useState(() => existingItems.find((it) => isKind(it, "cloud", (x) => x.desc === "Cloud"))?.value ?? "");
   const [customizations, setCustomizations] = useState(() => {
-    const known = ["Fábrica", "Produção", "Cloud"];
-    const custom = existingItems.filter((it) => !(it.desc || "").startsWith("Loja") && !(it.desc || "").startsWith("Integração") && !known.includes(it.desc));
+    const custom = existingItems.filter((it) => it.kind ? it.kind === "custom" : (!(it.desc || "").startsWith("Loja") && !(it.desc || "").startsWith("Integração") && !["Fábrica", "Produção", "Cloud"].includes(it.desc)));
     return custom;
   });
   const [discountValue, setDiscountValue] = useState(initial?.discount_value ?? "");
@@ -1356,13 +1358,13 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
           disabled={!canSave}
           onClick={() => {
             const builtItems = [
-              ...stores.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Loja", value: Number(it.value) || 0 })),
-              ...(hasFactory ? [{ desc: "Fábrica", value: Number(factoryValue) || 0 }] : []),
-              ...(hasProduction ? [{ desc: "Produção", value: Number(productionValue) || 0 }] : []),
-              ...(hasIntegration && Number(integrationSetupValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - único`, value: Number(integrationSetupValue) || 0 }] : []),
-              ...(hasIntegration && Number(integrationMonthlyValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - mensal`, value: Number(integrationMonthlyValue) || 0 }] : []),
-              ...(hasCloud ? [{ desc: "Cloud", value: Number(cloudValue) || 0 }] : []),
-              ...customizations.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Customização", value: Number(it.value) || 0 })),
+              ...stores.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Loja", value: Number(it.value) || 0, kind: "loja" })),
+              ...(hasFactory ? [{ desc: "Fábrica", value: Number(factoryValue) || 0, kind: "fabrica" }] : []),
+              ...(hasProduction ? [{ desc: "Produção", value: Number(productionValue) || 0, kind: "producao" }] : []),
+              ...(hasIntegration && Number(integrationSetupValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - único`, value: Number(integrationSetupValue) || 0, kind: "integracao_setup" }] : []),
+              ...(hasIntegration && Number(integrationMonthlyValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - mensal`, value: Number(integrationMonthlyValue) || 0, kind: "integracao_mensal" }] : []),
+              ...(hasCloud ? [{ desc: "Cloud", value: Number(cloudValue) || 0, kind: "cloud" }] : []),
+              ...customizations.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Customização", value: Number(it.value) || 0, kind: "custom" })),
             ];
             onPreview({
               id: initial?.id || uid(), prospect_id: prospectId, number: number.trim(),
@@ -1386,13 +1388,13 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
           disabled={!canSave}
           onClick={() => {
             const builtItems = [
-              ...stores.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Loja", value: Number(it.value) || 0 })),
-              ...(hasFactory ? [{ desc: "Fábrica", value: Number(factoryValue) || 0 }] : []),
-              ...(hasProduction ? [{ desc: "Produção", value: Number(productionValue) || 0 }] : []),
-              ...(hasIntegration && Number(integrationSetupValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - único`, value: Number(integrationSetupValue) || 0 }] : []),
-              ...(hasIntegration && Number(integrationMonthlyValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - mensal`, value: Number(integrationMonthlyValue) || 0 }] : []),
-              ...(hasCloud ? [{ desc: "Cloud", value: Number(cloudValue) || 0 }] : []),
-              ...customizations.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Customização", value: Number(it.value) || 0 })),
+              ...stores.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Loja", value: Number(it.value) || 0, kind: "loja" })),
+              ...(hasFactory ? [{ desc: "Fábrica", value: Number(factoryValue) || 0, kind: "fabrica" }] : []),
+              ...(hasProduction ? [{ desc: "Produção", value: Number(productionValue) || 0, kind: "producao" }] : []),
+              ...(hasIntegration && Number(integrationSetupValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - único`, value: Number(integrationSetupValue) || 0, kind: "integracao_setup" }] : []),
+              ...(hasIntegration && Number(integrationMonthlyValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - mensal`, value: Number(integrationMonthlyValue) || 0, kind: "integracao_mensal" }] : []),
+              ...(hasCloud ? [{ desc: "Cloud", value: Number(cloudValue) || 0, kind: "cloud" }] : []),
+              ...customizations.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Customização", value: Number(it.value) || 0, kind: "custom" })),
             ];
             onSave({
               id: initial?.id || uid(), prospect_id: prospectId, number: number.trim(),
@@ -5643,23 +5645,27 @@ function App() {
 
     // Monta a tabela: Módulos | Qtd | Valor Implantação (único) | Valor Mensalidade
     // Coluna Mensalidade: Loja + Fábrica + Produção + mensalidade da integração. Coluna Implantação: implantação, treinamento, customização, cloud, setup da integração.
+    // Usa o campo "kind" salvo em cada item para classificar (robusto a maiúsculas/acentos digitados pelo usuário na descrição, ex.: "LOJA MATRIZ" ou "FABRICA" sem acento);
+    // para propostas antigas sem "kind", cai no reconhecimento por texto (compatibilidade).
     const items = p.monthly_items || [];
+    const isKindPdf = (it, kind, legacyTest) => (it.kind ? it.kind === kind : legacyTest(it));
     const rows = [];
-    items.filter((it) => (it.desc || "").startsWith("Loja")).forEach((it) => rows.push([it.desc, "1", "--", fmtMoney(it.value)]));
-    const fabricaItem = items.find((it) => it.desc === "Fábrica");
+    items.filter((it) => isKindPdf(it, "loja", (x) => (x.desc || "").startsWith("Loja"))).forEach((it) => rows.push([it.desc, "1", "--", fmtMoney(it.value)]));
+    const fabricaItem = items.find((it) => isKindPdf(it, "fabrica", (x) => x.desc === "Fábrica"));
     if (fabricaItem) rows.push(["Fábrica", "1", "--", fmtMoney(fabricaItem.value)]);
-    const producaoItem = items.find((it) => it.desc === "Produção");
+    const producaoItem = items.find((it) => isKindPdf(it, "producao", (x) => x.desc === "Produção"));
     if (producaoItem) rows.push(["Produção", "1", "--", fmtMoney(producaoItem.value)]);
     if (p.integration_monthly_value > 0) rows.push([`Mensalidade integração${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, "1", "--", fmtMoney(p.integration_monthly_value)]);
 
     const installBundle = (p.installation_value || 0) + (p.training_value || 0) + (p.db_transfer_value || 0);
     if (installBundle > 0) rows.push(["Implantação (inclui treinamento e transferência de banco de dados, quando houver)", "1", fmtMoney(installBundle), "--"]);
-    const cloudItem = items.find((it) => it.desc === "Cloud");
+    const cloudItem = items.find((it) => isKindPdf(it, "cloud", (x) => x.desc === "Cloud"));
     if (cloudItem) rows.push([`Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, "1", fmtMoney(cloudItem.value), "--"]);
     if (p.integration_setup_value > 0) rows.push([`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, "1", fmtMoney(p.integration_setup_value), "--"]);
-    items.filter((it) => !(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")).forEach((it) => rows.push([it.desc, "1", fmtMoney(it.value), "--"]));
+    const customItemsPdf = items.filter((it) => it.kind ? it.kind === "custom" : (!(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")));
+    customItemsPdf.forEach((it) => rows.push([it.desc, "1", fmtMoney(it.value), "--"]));
 
-    const customTotalPdf = items.filter((it) => !(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")).reduce((s, it) => s + (Number(it.value) || 0), 0);
+    const customTotalPdf = customItemsPdf.reduce((s, it) => s + (Number(it.value) || 0), 0);
     const implantacaoTotalPdf = installBundle + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotalPdf;
 
     doc.autoTable({
@@ -5778,8 +5784,9 @@ function App() {
 
     // Cria automaticamente o controle de implantação, com o valor total (implantação+treinamento+cloud+customização+setup de integração)
     const items = p.monthly_items || [];
-    const cloudItem = items.find((it) => it.desc === "Cloud");
-    const customItems = items.filter((it) => !(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração"));
+    const isKindClose = (it, kind, legacyTest) => (it.kind ? it.kind === kind : legacyTest(it));
+    const cloudItem = items.find((it) => isKindClose(it, "cloud", (x) => x.desc === "Cloud"));
+    const customItems = items.filter((it) => it.kind ? it.kind === "custom" : (!(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")));
     const customTotal = customItems.reduce((s, it) => s + (Number(it.value) || 0), 0);
     const implantacaoTotal = (p.installation_value || 0) + (p.training_value || 0) + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotal;
     if (implantacaoTotal > 0) {

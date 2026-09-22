@@ -356,7 +356,14 @@ function romaneioComissao(r) {
 }
 
 function clientDueDisplay(c, monthDate) {
-  if (c?.next_due_date) return fmtDate(c.next_due_date);
+  // "next_due_date" é uma data fixa (usada normalmente só pro 1º vencimento do cliente).
+  // Só deve valer como exibição quando for realmente do mês que está sendo visto na tela —
+  // senão ela ficaria travada mostrando sempre o mesmo mês/ano, mesmo depois que ele já passou.
+  if (c?.next_due_date) {
+    const nd = new Date(c.next_due_date + "T00:00:00");
+    const ref = monthDate || new Date();
+    if (nd.getFullYear() === ref.getFullYear() && nd.getMonth() === ref.getMonth()) return fmtDate(c.next_due_date);
+  }
   if (c?.due_day) {
     const ref = monthDate || new Date();
     const dia = String(c.due_day).padStart(2, "0");

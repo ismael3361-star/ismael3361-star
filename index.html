@@ -5254,12 +5254,7 @@ function App() {
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
-    const sortedRomaneios = [...romaneios].sort((a, b) => {
-      const ca = (romaneioClients.find((rc) => rc.id === a.romaneio_client_id)?.name || "Sem cliente").toUpperCase();
-      const cb = (romaneioClients.find((rc) => rc.id === b.romaneio_client_id)?.name || "Sem cliente").toUpperCase();
-      if (ca !== cb) return ca.localeCompare(cb, "pt-BR");
-      return (Number(a.number) || 0) - (Number(b.number) || 0);
-    });
+    const sortedRomaneios = [...romaneios].sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
 
     const bySeller = {};
     sortedRomaneios.forEach((r) => {
@@ -5320,12 +5315,13 @@ function App() {
       return [cliName.toUpperCase(), r.number || "-", r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", qtd, fmtMoney(venda), fmtMoney(custoTotal), fmtMoney(lucro), `${r.commission_percent || 0}%`, fmtMoney(comissao), r.commission_paid ? "Pago" : "Pendente"];
     });
     const totalGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioComissao(r), 0);
+    const totalVendaGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioVenda(r), 0);
 
     doc.autoTable({
       startY: y2,
       head: [["Cliente", "Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão", "Situação"]],
       body,
-      foot: [["TOTAL GERAL", "", "", "", "", "", "", "", fmtMoney(totalGeral), ""]],
+      foot: [["TOTAL GERAL", "", "", "", fmtMoney(totalVendaGeral), "", "", "", fmtMoney(totalGeral), ""]],
       styles: { fontSize: 8 },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },

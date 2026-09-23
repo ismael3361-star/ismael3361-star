@@ -4027,7 +4027,8 @@ function App() {
     setProspects(data || []);
   }, []);
   async function handleSaveProspect(p) {
-    await supa.from("prospects").upsert(p);
+    const { error } = await supa.from("prospects").upsert(p);
+    if (error) { showToast(`Erro ao salvar cliente: ${error.message}`); throw error; }
     await loadProspects();
     showToast("Cliente da proposta salvo.");
     return p;
@@ -4037,7 +4038,8 @@ function App() {
     setRomaneioClients(data || []);
   }, []);
   async function handleSaveRomaneioClient(p) {
-    await supa.from("romaneio_clients").upsert(p);
+    const { error } = await supa.from("romaneio_clients").upsert(p);
+    if (error) { showToast(`Erro ao salvar cliente: ${error.message}`); throw error; }
     await loadRomaneioClients();
     showToast("Cliente do romaneio salvo.");
     return p;
@@ -5660,7 +5662,8 @@ function App() {
   useEffect(() => { if (session) loadRecentSent(); }, [session, mKey, boletos]);
 
   async function handleSaveClient(c) {
-    await supa.from("clients").upsert(c);
+    const { error: clientSaveError } = await supa.from("clients").upsert(c);
+    if (clientSaveError) { showToast(`Erro ao salvar cliente: ${clientSaveError.message}`); return; }
     if (c.representative_name) {
       const existingMatches = clientCommissions.filter((cc) => cc.client_id === c.id);
       if (existingMatches.length === 1) {

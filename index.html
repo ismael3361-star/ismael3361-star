@@ -730,6 +730,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
   const [plan, setPlan] = useState(initial?.plan || "");
   const [notes, setNotes] = useState(initial?.notes || "");
   const [cnpj, setCnpj] = useState(initial?.cnpj || "");
+  const [stateRegistration, setStateRegistration] = useState(initial?.state_registration || "");
   const [cep, setCep] = useState(initial?.cep || "");
   const [street, setStreet] = useState(initial?.street || "");
   const [number, setNumber] = useState(initial?.number || "");
@@ -810,6 +811,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
           </div>
           {cnpjError && <span className="text-[11px]" style={{ color: COLORS.danger }}>{cnpjError}</span>}
         </label>
+        <TextField label="Inscrição Estadual" value={stateRegistration} onChange={setStateRegistration} placeholder="Ex: 123.456.789.110 (ou ISENTO)" />
         <TextField label="WhatsApp" value={phone} onChange={(v) => setPhone(maskPhone(v))} placeholder="(11) 91234-5678" />
         <TextField label="E-mail" value={email} onChange={setEmail} placeholder="cliente@email.com" />
         <TextField label={annual ? "Valor da mensalidade anual" : "Valor da mensalidade"} value={value} onChange={setValue} type="number" placeholder="150" />
@@ -883,7 +885,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
           onClick={() => onSave({
             id: initial?.id || uid(), name: name.trim(), contact_name: contactName.trim() || null, phone: phone.trim(), email: email.trim(),
             value: Number(value) || 0, due_day: nextDueDate ? Number(nextDueDate.slice(8, 10)) : null, next_due_date: nextDueDate || null, annual_due_date: annual ? (nextDueDate || null) : null,
-            plan: plan.trim(), notes: notes.trim(), cnpj: cnpj.trim(), cep: cep.trim(), street: street.trim(), number: number.trim(),
+            plan: plan.trim(), notes: notes.trim(), cnpj: cnpj.trim(), state_registration: stateRegistration.trim() || null, cep: cep.trim(), street: street.trim(), number: number.trim(),
             complement: complement.trim(), neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
             bank_number: padBankNumber(bankNumber.trim()), integration: integration.trim(), annual, cloud, marketplace: marketplace.trim(),
             group_name: groupName.trim() || null, additional_stores: additionalStores.filter((s) => s.name.trim()),
@@ -905,6 +907,7 @@ function ProspectForm({ initial, onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || "");
   const [contactName, setContactName] = useState(initial?.contact_name || "");
   const [cnpj, setCnpj] = useState(initial?.cnpj || "");
+  const [stateRegistration, setStateRegistration] = useState(initial?.state_registration || "");
   const [phone, setPhone] = useState(initial?.phone || "");
   const [email, setEmail] = useState(initial?.email || "");
   const [cep, setCep] = useState(initial?.cep || "");
@@ -970,6 +973,7 @@ function ProspectForm({ initial, onSave, onCancel }) {
           </div>
           {cnpjError && <span className="text-[11px]" style={{ color: COLORS.danger }}>{cnpjError}</span>}
         </label>
+        <TextField label="Inscrição Estadual" value={stateRegistration} onChange={setStateRegistration} placeholder="Ex: 123.456.789.110 (ou ISENTO)" />
         <TextField label="WhatsApp" value={phone} onChange={setPhone} placeholder="(11) 91234-5678" />
         <TextField label="E-mail" value={email} onChange={setEmail} placeholder="contato@empresa.com" />
         <TextField label="CEP" value={cep} onChange={(v) => setCep(maskCEP(v))} placeholder="00000-000" />
@@ -984,7 +988,7 @@ function ProspectForm({ initial, onSave, onCancel }) {
         <button
           disabled={!canSave}
           onClick={() => onSave({
-            id: initial?.id || uid(), name: name.trim(), contact_name: contactName.trim() || null, cnpj: cnpj.trim(), phone: phone.trim(), email: email.trim(),
+            id: initial?.id || uid(), name: name.trim(), contact_name: contactName.trim() || null, cnpj: cnpj.trim(), state_registration: stateRegistration.trim() || null, phone: phone.trim(), email: email.trim(),
             cep: cep.trim(), street: street.trim(), number: number.trim(), complement: complement.trim(),
             neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
           })}
@@ -2816,6 +2820,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
   const [razaoSocial, setRazaoSocial] = useState(initial?.razao_social || "");
   const [nomeFantasia, setNomeFantasia] = useState(initial?.nome_fantasia || "");
   const [cnpj, setCnpj] = useState(initial?.cnpj || "");
+  const [stateRegistration, setStateRegistration] = useState(initial?.state_registration || "");
   const [responsavelAtendimento, setResponsavelAtendimento] = useState(initial?.responsavel_atendimento || "");
   const [telefone, setTelefone] = useState(initial?.telefone || "");
   const [whatsapp, setWhatsapp] = useState(initial?.whatsapp || "");
@@ -2892,7 +2897,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
     return {
       id: initial?.id || uid(), client_name: clientName.trim(), numero: numero.trim() || null, versao_sistema: versaoSistema.trim() || null,
       technician_name: technicianName.trim() || null, technician_email: technicianEmail.trim() || null,
-      razao_social: razaoSocial.trim() || null, nome_fantasia: nomeFantasia.trim() || null, cnpj: cnpj.trim() || null,
+      razao_social: razaoSocial.trim() || null, nome_fantasia: nomeFantasia.trim() || null, cnpj: cnpj.trim() || null, state_registration: stateRegistration.trim() || null,
       responsavel_atendimento: responsavelAtendimento.trim() || null, telefone: telefone.trim() || null, whatsapp: whatsapp.trim() || null,
       email: email.trim() || null, endereco: endereco.trim() || null,
       tipo_atendimento: tipoAtendimento || null, data_inicio: dataInicio || null, data_conclusao: dataConclusao || null,
@@ -2947,6 +2952,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
           <TextField label="Razão social" value={razaoSocial} onChange={setRazaoSocial} placeholder="Razão social" />
           <TextField label="Nome fantasia" value={nomeFantasia} onChange={setNomeFantasia} placeholder="Nome fantasia" />
           <TextField label="CNPJ" value={cnpj} onChange={setCnpj} placeholder="00.000.000/0000-00" />
+          <TextField label="Inscrição Estadual" value={stateRegistration} onChange={setStateRegistration} placeholder="Ex: 123.456.789.110 (ou ISENTO)" />
           <TextField label="Responsável pelo atendimento" value={responsavelAtendimento} onChange={setResponsavelAtendimento} placeholder="Nome" />
           <TextField label="Telefone" value={telefone} onChange={setTelefone} placeholder="(11) 1234-5678" />
           <TextField label="WhatsApp" value={whatsapp} onChange={setWhatsapp} placeholder="(11) 91234-5678" />
@@ -5980,7 +5986,8 @@ function App() {
     doc.setFontSize(9);
     doc.setTextColor(60);
     if (prospect && addressLine(prospect)) { doc.text(addressLine(prospect), 14, y); y += 5; }
-    if (prospect?.cnpj) { doc.text(`CNPJ: ${prospect.cnpj}`, 14, y); y += 5; }
+    if (prospect?.cnpj) { doc.text(`CNPJ: ${prospect.cnpj}${prospect?.state_registration ? `  ·  IE: ${prospect.state_registration}` : ""}`, 14, y); y += 5; }
+    if (prospect?.contact_name) { doc.text(`Contato: ${prospect.contact_name}`, 14, y); y += 5; }
     const contact = [prospect?.phone, prospect?.email].filter(Boolean).join("  ·  ");
     if (contact) { doc.text(contact, 14, y); y += 5; }
     if (r.delivery_address) { doc.setTextColor(30); doc.text(`Endereço de entrega: ${r.delivery_address}`, 14, y); y += 5; doc.setTextColor(60); }

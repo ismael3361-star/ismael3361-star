@@ -1177,13 +1177,13 @@ function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onP
   const cloudTotal = hasCloud ? Number(cloudValue) || 0 : 0;
   const integrationSetupTotal = hasIntegration ? Number(integrationSetupValue) || 0 : 0;
   const integrationMonthlyTotal = hasIntegration ? Number(integrationMonthlyValue) || 0 : 0;
-  const mensalidadeBaseTotal = storesTotal + factoryTotal + productionTotal + integrationMonthlyTotal + cloudTotal;
+  const mensalidadeBaseTotal = storesTotal + factoryTotal + productionTotal + integrationMonthlyTotal;
   const customTotal = customizations.reduce((s, it) => s + (Number(it.value) || 0), 0);
   const installationTotal = Number(installationValue) || 0;
   const trainingTotal = Number(trainingValue) || 0;
   const dbTransferTotal = Number(dbTransferValue) || 0;
   const monthlyTotal = Math.max(0, mensalidadeBaseTotal - (Number(discountValue) || 0));
-  const implantacaoTotal = installationTotal + trainingTotal + dbTransferTotal + customTotal + integrationSetupTotal;
+  const implantacaoTotal = installationTotal + trainingTotal + dbTransferTotal + customTotal + integrationSetupTotal + cloudTotal;
   const grandTotal = monthlyTotal + implantacaoTotal;
 
   async function handleSaveNewProspect(p) {
@@ -5316,12 +5316,13 @@ function App() {
     });
     const totalGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioComissao(r), 0);
     const totalVendaGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioVenda(r), 0);
+    const totalQtdGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioQtd(r), 0);
 
     doc.autoTable({
       startY: y2,
       head: [["Cliente", "Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão", "Situação"]],
       body,
-      foot: [["TOTAL GERAL", "", "", "", fmtMoney(totalVendaGeral), "", "", "", fmtMoney(totalGeral), ""]],
+      foot: [["TOTAL GERAL", "", "", totalQtdGeral, fmtMoney(totalVendaGeral), "", "", "", fmtMoney(totalGeral), ""]],
       styles: { fontSize: 8 },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },

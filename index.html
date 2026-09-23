@@ -1868,6 +1868,7 @@ function DbMigrationForm({ initial, onSave, onCancel }) {
   const [requestedBy, setRequestedBy] = useState(initial?.requested_by || "");
   const [requestDate, setRequestDate] = useState(initial?.request_date || todayStr());
   const [migratedBank, setMigratedBank] = useState(initial?.migrated_bank || "");
+  const [value, setValue] = useState(initial?.value ?? "");
   const [status, setStatus] = useState(initial?.status || "pendente");
   const [completionDate, setCompletionDate] = useState(initial?.completion_date || "");
   const [notes, setNotes] = useState(initial?.notes || "");
@@ -1901,6 +1902,7 @@ function DbMigrationForm({ initial, onSave, onCancel }) {
           <input type="date" value={requestDate} onChange={(e) => setRequestDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
         </label>
         <TextField label="Banco migrado" value={migratedBank} onChange={setMigratedBank} placeholder="Ex: Bling, Tiny, Consinco..." required />
+        <TextField label="Valor da migração" value={value} onChange={setValue} type="number" placeholder="0,00" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Status</span>
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
@@ -1934,7 +1936,7 @@ function DbMigrationForm({ initial, onSave, onCancel }) {
           disabled={!canSave}
           onClick={() => onSave({
             id: initial?.id || uid(), client_name: clientName.trim(), requested_by: requestedBy.trim() || null,
-            request_date: requestDate, migrated_bank: migratedBank.trim(),
+            request_date: requestDate, migrated_bank: migratedBank.trim(), value: Number(value) || 0,
             status, completion_date: status === "concluida" ? (completionDate || null) : null, notes: notes.trim() || null,
             migrated_clients: migClients, migrated_products: migProducts, migrated_stock: migStock,
             migrated_sales: migSales, migrated_others: migOthers,
@@ -5284,18 +5286,22 @@ function App() {
       return [
         m.client_name || "-", m.requested_by || "-",
         m.request_date ? new Date(m.request_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
-        m.migrated_bank || "-", itens, statusLabel,
+        m.migrated_bank || "-", itens, fmtMoney(m.value), statusLabel,
         m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
         m.notes || "-",
       ];
     });
+    const totalValor = dbMigrations.reduce((s, m) => s + (Number(m.value) || 0), 0);
 
     doc.autoTable({
       startY: 44,
-      head: [["Cliente", "Solicitado por", "Data", "Banco migrado", "O que foi migrado", "Status", "Conclusão", "Observações"]],
+      head: [["Cliente", "Solicitado por", "Data", "Banco migrado", "O que foi migrado", "Valor", "Status", "Conclusão", "Observações"]],
       body: rows,
+      foot: [["TOTAL", "", "", "", "", fmtMoney(totalValor), "", "", ""]],
       styles: { fontSize: 7.5 },
       headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 245], textColor: [30, 30, 30], fontStyle: "bold" },
+      columnStyles: { 5: { halign: "right" } },
       margin: { left: 14, right: 14 },
     });
     doc.save(`migracoes-banco-${todayStr()}.pdf`);
@@ -8065,7 +8071,7 @@ function App() {
 
           {effectiveTab === "migracoes" && (
             <div>
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.inkMuted }}>Pendentes</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => (m.status || "pendente") === "pendente").length}</div>
@@ -8077,6 +8083,10 @@ function App() {
                 <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Concluídas</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => m.status === "concluida").length}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total (R$)</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(dbMigrations.reduce((s, m) => s + (Number(m.value) || 0), 0))}</div>
                 </div>
               </div>
               <div className="flex justify-end gap-2 mb-3">
@@ -8093,6 +8103,7 @@ function App() {
                       <tr style={{ color: COLORS.inkMuted }}>
                         <th className="text-left p-3">Cliente</th><th className="text-left p-3">Solicitado por</th><th className="text-left p-3">Data</th>
                         <th className="text-left p-3">Banco migrado</th><th className="text-left p-3">O que foi migrado</th>
+                        <th className="text-right p-3">Valor</th>
                         <th className="text-left p-3">Status</th><th className="text-left p-3">Conclusão</th><th className="text-left p-3"></th>
                       </tr>
                     </thead>
@@ -8113,6 +8124,7 @@ function App() {
                             <td className="p-3">{m.request_date ? new Date(m.request_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                             <td className="p-3">{m.migrated_bank}</td>
                             <td className="p-3">{itens.length > 0 ? itens.join(", ") : "-"}</td>
+                            <td className="p-3 text-right font-semibold">{fmtMoney(m.value)}</td>
                             <td className="p-3"><span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ color: sm.color, background: sm.bg }}><span>{sm.icon}</span>{sm.label}</span></td>
                             <td className="p-3">{m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                             <td className="p-3">
@@ -8123,6 +8135,13 @@ function App() {
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                        <td className="p-3 font-bold" colSpan={5} style={{ color: COLORS.ink }}>TOTAL</td>
+                        <td className="p-3 text-right font-bold" style={{ color: COLORS.brandLight }}>{fmtMoney(dbMigrations.reduce((s, m) => s + (Number(m.value) || 0), 0))}</td>
+                        <td colSpan={3}></td>
+                      </tr>
+                    </tfoot>
                   </table>
                 )}
               </div>

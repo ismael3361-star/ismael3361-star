@@ -5302,19 +5302,19 @@ function App() {
       head: [["Cliente", "Solicitado por", "Migrado por", "Data", "Banco migrado", "O que foi migrado", "Valor", "Status", "Conclusão", "Observações"]],
       body: rows,
       foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalValor), "", "", ""]],
-      styles: { fontSize: 8, cellPadding: 2.5, valign: "middle", overflow: "linebreak" },
-      headStyles: { fillColor: [124, 92, 255], fontSize: 8 },
-      footStyles: { fillColor: [230, 230, 245], textColor: [30, 30, 30], fontStyle: "bold", fontSize: 8 },
+      styles: { fontSize: 7.5, cellPadding: 2, valign: "middle", overflow: "linebreak" },
+      headStyles: { fillColor: [124, 92, 255], fontSize: 7.5 },
+      footStyles: { fillColor: [230, 230, 245], textColor: [30, 30, 30], fontStyle: "bold", fontSize: 7.5 },
       columnStyles: {
         0: { cellWidth: 32 }, // Cliente
-        1: { cellWidth: 24 }, // Solicitado por
-        2: { cellWidth: 24 }, // Migrado por
-        3: { cellWidth: 18 }, // Data
-        4: { cellWidth: 24 }, // Banco migrado
-        5: { cellWidth: 44 }, // O que foi migrado
-        6: { cellWidth: 22, halign: "right" }, // Valor
+        1: { cellWidth: 20 }, // Solicitado por
+        2: { cellWidth: 20 }, // Migrado por
+        3: { cellWidth: 20, halign: "center" }, // Data
+        4: { cellWidth: 22 }, // Banco migrado
+        5: { cellWidth: 38 }, // O que foi migrado
+        6: { cellWidth: 20, halign: "center" }, // Valor
         7: { cellWidth: 20 }, // Status
-        8: { cellWidth: 18 }, // Conclusão
+        8: { cellWidth: 20, halign: "center" }, // Conclusão
         9: { cellWidth: "auto" }, // Observações
       },
       margin: { left: 14, right: 14 },

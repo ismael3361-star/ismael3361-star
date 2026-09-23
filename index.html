@@ -141,7 +141,7 @@ function rgba(hex, alpha) {
 }
 const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
-  comercial: ["clientes", "propostas", "romaneio"],
+  comercial: ["clientes", "propostas", "romaneio", "agenda"],
   financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes", "caixa"],
   operacional: ["compra_tag_rfid", "venda_tag_rfid", "fechamento_rfid", "implantacao_tecnica", "escala"],
   migracao: ["migracoes"],
@@ -1511,6 +1511,65 @@ function quintoDiaUtil(year, month) {
   }
   if (d.getDay() === 6) d.setDate(d.getDate() - 1);
   return d.toISOString().slice(0, 10);
+}
+
+function PresentationForm({ initial, onSave, onCancel }) {
+  const [storeName, setStoreName] = useState(initial?.store_name || "");
+  const [contactName, setContactName] = useState(initial?.contact_name || "");
+  const [phone, setPhone] = useState(initial?.phone || "");
+  const [type, setType] = useState(initial?.type || "presencial");
+  const [address, setAddress] = useState(initial?.address || "");
+  const [meetingLink, setMeetingLink] = useState(initial?.meeting_link || "");
+  const [date, setDate] = useState(initial?.date || "");
+  const [time, setTime] = useState(initial?.time || "");
+  const [notes, setNotes] = useState(initial?.notes || "");
+
+  const canSave = storeName.trim() && date && time;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar apresentação" : "Nova apresentação"}</div>
+
+      <div className="flex gap-2">
+        <button type="button" onClick={() => setType("presencial")} className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: type === "presencial" ? COLORS.brandLight : COLORS.cardBorder, color: type === "presencial" ? COLORS.brandLight : COLORS.inkMuted, background: type === "presencial" ? "rgba(124,92,255,0.1)" : "transparent" }}>🏢 Presencial</button>
+        <button type="button" onClick={() => setType("remota")} className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: type === "remota" ? COLORS.brandLight : COLORS.cardBorder, color: type === "remota" ? COLORS.brandLight : COLORS.inkMuted, background: type === "remota" ? "rgba(124,92,255,0.1)" : "transparent" }}>💻 Remota</button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TextField label="Nome da loja / cliente" value={storeName} onChange={setStoreName} placeholder="Ex: Loja Matriz" required />
+        <TextField label="Contato" value={contactName} onChange={setContactName} placeholder="Nome de quem vai receber" />
+        <TextField label="Telefone" value={phone} onChange={(v) => setPhone(maskPhone(v))} placeholder="(11) 99999-9999" />
+        {type === "presencial" ? (
+          <TextField label="Endereço" value={address} onChange={setAddress} placeholder="Rua, número, bairro, cidade" />
+        ) : (
+          <TextField label="Link da reunião" value={meetingLink} onChange={setMeetingLink} placeholder="Ex: link do Google Meet / Zoom" />
+        )}
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Horário</span>
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#16233D", color: COLORS.ink }} />
+        </label>
+      </div>
+      <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Observação (opcional)" />
+
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({
+            id: initial?.id || uid(), store_name: storeName.trim(), contact_name: contactName.trim() || null, phone: phone.trim() || null,
+            type, address: type === "presencial" ? (address.trim() || null) : null, meeting_link: type === "remota" ? (meetingLink.trim() || null) : null,
+            date: date || null, time: time || null, notes: notes.trim() || null, status: initial?.status || "agendada",
+          })}
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar apresentação
+        </button>
+        <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
 }
 
 function ExpenseForm({ initial, onSave, onCancel }) {
@@ -3893,6 +3952,10 @@ function App() {
   const [userRole, setUserRole] = useState(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(null);
+  const [presentations, setPresentations] = useState([]);
+  const [showPresentationForm, setShowPresentationForm] = useState(false);
+  const [editingPresentation, setEditingPresentation] = useState(null);
+  const [presentationFilter, setPresentationFilter] = useState("proximas");
   const mKey = monthKey(monthDate);
 
   useEffect(() => {
@@ -4215,6 +4278,35 @@ function App() {
     const { data } = await supa.from("company_expenses").select("*").order("due_date", { ascending: true });
     setExpenses(data || []);
   }, []);
+  const loadPresentations = useCallback(async () => {
+    const { data } = await supa.from("presentations").select("*").order("date", { ascending: true }).order("time", { ascending: true });
+    setPresentations(data || []);
+  }, []);
+  async function handleSavePresentation(p) {
+    const { error } = await supa.from("presentations").upsert(p);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadPresentations();
+    setShowPresentationForm(false); setEditingPresentation(null);
+    logActivity(`Apresentação agendada: ${p.store_name} — ${p.date ? new Date(p.date + "T00:00:00").toLocaleDateString("pt-BR") : ""} ${p.time || ""}`);
+    showToast("Apresentação salva.");
+  }
+  async function handleDeletePresentation(id) {
+    if (!confirm("Remover esta apresentação da agenda?")) return;
+    await supa.from("presentations").delete().eq("id", id);
+    await loadPresentations();
+    showToast("Apresentação removida.");
+  }
+  async function handleSetPresentationStatus(p, status) {
+    await supa.from("presentations").update({ status }).eq("id", p.id);
+    await loadPresentations();
+    showToast(status === "realizada" ? "Marcada como realizada." : status === "cancelada" ? "Apresentação cancelada." : "Apresentação reagendada.");
+  }
+  function sendPresentationReminder(p) {
+    const dataFmt = p.date ? new Date(p.date + "T00:00:00").toLocaleDateString("pt-BR") : "-";
+    const local = p.type === "remota" ? (p.meeting_link || "link a confirmar") : (p.address || "endereço a confirmar");
+    const msg = `Olá${p.contact_name ? ", " + p.contact_name : ""}! Confirmando nossa apresentação do sistema MireData${p.store_name ? " para " + p.store_name : ""} no dia ${dataFmt} às ${p.time || "-"} (${p.type === "remota" ? "remota" : "presencial"}).\n${p.type === "remota" ? "Link" : "Local"}: ${local}`;
+    window.open(`https://web.whatsapp.com/send?phone=${waNumber(p.phone)}&text=${encodeURIComponent(msg)}`, "_blank");
+  }
   async function handleSaveExpense(e) {
     const { error } = await supa.from("company_expenses").upsert(e);
     if (error) { showToast(`Erro: ${error.message}`); return; }
@@ -5481,7 +5573,7 @@ function App() {
     doc.save(`almoco-quinta-${monthLabelStr.replace("/", "-")}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadPettyCashEntries(); loadLunchEntries(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
 
   async function computeMonthTotals(monthDefs) {
@@ -6758,6 +6850,7 @@ function App() {
               { group: "Comercial", items: [
                 { id: "clientes", label: "Clientes", icon: "👥" },
                 { id: "propostas", label: "Propostas", icon: "📝" },
+                { id: "agenda", label: "Agenda de Apresentações", icon: "🗓️" },
               ]},
               { group: "Etiqueta", items: [
                 { id: "pedidos_etiquetas", label: "Compra de etiqueta", icon: "🏷️" },
@@ -6895,6 +6988,7 @@ function App() {
                 {effectiveTab === "migracoes" && "Migração de Banco de Dados"}
                 {effectiveTab === "comissao_representantes" && "Comissão de Representantes"}
                 {effectiveTab === "caixa" && "Caixa"}
+                {effectiveTab === "agenda" && "Agenda de Apresentações"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
                 {effectiveTab === "dashboard" ? "Visão geral do controle de mensalidade" : ["clientes", "boletos", "calendario"].includes(effectiveTab) ? `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}` : ""}
@@ -9188,6 +9282,113 @@ function App() {
                         <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.ink }}>Despesas por categoria</div>
                         <DonutExpensesByCategory expenses={expenses} />
                       </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {effectiveTab === "agenda" && (
+            <div>
+              {(() => {
+                const today = todayStr();
+                const in7days = new Date(); in7days.setDate(in7days.getDate() + 7);
+                const in7 = in7days.toISOString().slice(0, 10);
+                const hoje = presentations.filter((p) => p.status === "agendada" && p.date === today);
+                const semana = presentations.filter((p) => p.status === "agendada" && p.date && p.date >= today && p.date <= in7);
+                const agendadas = presentations.filter((p) => p.status === "agendada");
+                const realizadas = presentations.filter((p) => p.status === "realizada");
+                const filtered = presentations.filter((p) => {
+                  if (presentationFilter === "todas") return true;
+                  if (presentationFilter === "proximas") return p.status === "agendada";
+                  return p.status === presentationFilter;
+                }).sort((a, b) => {
+                  const da = `${a.date || "9999"}T${a.time || "00:00"}`, db = `${b.date || "9999"}T${b.time || "00:00"}`;
+                  return da.localeCompare(db);
+                });
+                return (
+                  <>
+                    {hoje.length > 0 && (
+                      <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.danger, background: "rgba(239,68,68,0.12)" }}>
+                        <span className="text-2xl">🗓️</span>
+                        <div className="flex-1">
+                          <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{hoje.length} apresentação(ões) hoje</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{hoje.map((p) => `${p.store_name} às ${p.time || "-"}`).join(", ")}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>Hoje</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{hoje.length}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Próximos 7 dias</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{semana.length}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Agendadas</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{agendadas.length}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Realizadas</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{realizadas.length}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {["proximas", "todas", "agendada", "realizada", "cancelada"].map((f) => (
+                          <button key={f} onClick={() => setPresentationFilter(f)} className="text-xs font-semibold px-2.5 py-1.5 rounded-full border" style={{ borderColor: presentationFilter === f ? COLORS.brandLight : COLORS.cardBorder, color: presentationFilter === f ? COLORS.brandLight : COLORS.inkMuted, background: presentationFilter === f ? "rgba(124,92,255,0.1)" : "transparent" }}>
+                            {f === "proximas" ? "Próximas" : f === "todas" ? "Todas" : f === "agendada" ? "Agendadas" : f === "realizada" ? "Realizadas" : "Canceladas"}
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => { setEditingPresentation(null); setShowPresentationForm(true); }} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova apresentação</button>
+                    </div>
+
+                    {showPresentationForm && <div className="mb-4"><PresentationForm initial={editingPresentation} onSave={handleSavePresentation} onCancel={() => { setShowPresentationForm(false); setEditingPresentation(null); }} /></div>}
+
+                    {!showPresentationForm && (
+                      filtered.length === 0 ? (
+                        <div className="rounded-2xl border p-8 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.inkMuted }}>Nenhuma apresentação nesse filtro.</div>
+                      ) : (
+                        <div className="space-y-3">
+                          {filtered.map((p) => {
+                            const dataFmt = p.date ? new Date(p.date + "T00:00:00").toLocaleDateString("pt-BR") : "-";
+                            const statusColor = p.status === "realizada" ? COLORS.success : p.status === "cancelada" ? COLORS.danger : COLORS.brandLight;
+                            const statusLabel = p.status === "realizada" ? "Realizada" : p.status === "cancelada" ? "Cancelada" : "Agendada";
+                            return (
+                              <div key={p.id} className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})` }}>
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                                      <span className="text-sm font-bold" style={{ color: COLORS.ink }}>{p.store_name}</span>
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: statusColor, background: `${statusColor}22` }}>{statusLabel}</span>
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.inkMuted, background: "rgba(138,151,172,0.15)" }}>{p.type === "remota" ? "💻 Remota" : "🏢 Presencial"}</span>
+                                    </div>
+                                    <div className="text-xs" style={{ color: COLORS.inkMuted }}>📅 {dataFmt} às {p.time || "-"}</div>
+                                    {p.contact_name && <div className="text-xs" style={{ color: COLORS.inkMuted }}>👤 {p.contact_name}{p.phone ? ` · ${p.phone}` : ""}</div>}
+                                    {p.type === "presencial" && p.address && <div className="text-xs" style={{ color: COLORS.inkMuted }}>📍 {p.address}</div>}
+                                    {p.type === "remota" && p.meeting_link && <div className="text-xs truncate" style={{ color: COLORS.inkMuted }}>🔗 {p.meeting_link}</div>}
+                                    {p.notes && <div className="text-xs mt-1" style={{ color: COLORS.inkFaint }}>{p.notes}</div>}
+                                  </div>
+                                  <div className="flex flex-wrap gap-1.5 shrink-0">
+                                    {p.phone && <button onClick={() => sendPresentationReminder(p)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: COLORS.wa }}>💬 Lembrete</button>}
+                                    {p.status === "agendada" && <button onClick={() => handleSetPresentationStatus(p, "realizada")} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>✓ Realizada</button>}
+                                    {p.status === "agendada" && <button onClick={() => handleSetPresentationStatus(p, "cancelada")} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.danger, color: COLORS.danger }}>✕ Cancelar</button>}
+                                    {p.status !== "agendada" && <button onClick={() => handleSetPresentationStatus(p, "agendada")} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>↺ Reagendar</button>}
+                                    <button onClick={() => { setEditingPresentation(p); setShowPresentationForm(true); }} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
+                                    <button onClick={() => handleDeletePresentation(p.id)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.danger, color: COLORS.danger }}>🗑️</button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )
                     )}
                   </>
                 );

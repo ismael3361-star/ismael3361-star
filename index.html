@@ -2744,6 +2744,7 @@ function TechImplementationViewer({ t, onClose }) {
           </div>
 
           <ViewField label="Técnico responsável" value={t.technician_name || t.technician_email} />
+          <ViewField label="WhatsApp do técnico" value={t.technician_phone} />
           <ViewField label="Tipo de atendimento" value={t.tipo_atendimento} />
           <ViewField label="Data de início" value={fmtDate(t.data_inicio)} />
           <ViewField label="Data de conclusão" value={fmtDate(t.data_conclusao)} />
@@ -2819,6 +2820,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
   const [dataFicha, setDataFicha] = useState(initial?.created_at?.slice(0, 10) || todayStr());
   const [technicianName, setTechnicianName] = useState(initial?.technician_name || "");
   const [technicianEmail, setTechnicianEmail] = useState(initial?.technician_email || "");
+  const [technicianPhone, setTechnicianPhone] = useState(initial?.technician_phone || "");
   const [versaoSistema, setVersaoSistema] = useState(initial?.versao_sistema || "");
 
   const [clientName, setClientName] = useState(initial?.client_name || "");
@@ -2901,7 +2903,7 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
   function buildPayload() {
     return {
       id: initial?.id || uid(), client_name: clientName.trim(), numero: numero.trim() || null, versao_sistema: versaoSistema.trim() || null,
-      technician_name: technicianName.trim() || null, technician_email: technicianEmail.trim() || null,
+      technician_name: technicianName.trim() || null, technician_email: technicianEmail.trim() || null, technician_phone: technicianPhone.trim() || null,
       razao_social: razaoSocial.trim() || null, nome_fantasia: nomeFantasia.trim() || null, cnpj: cnpj.trim() || null, state_registration: stateRegistration.trim() || null,
       responsavel_atendimento: responsavelAtendimento.trim() || null, telefone: telefone.trim() || null, whatsapp: whatsapp.trim() || null,
       email: email.trim() || null, endereco: endereco.trim() || null,
@@ -2948,7 +2950,10 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
         <TextField label="Técnico/consultor responsável" value={technicianName} onChange={setTechnicianName} placeholder="Nome" />
         <TextField label="Versão do sistema" value={versaoSistema} onChange={setVersaoSistema} placeholder="Ex: 2026.3" />
       </div>
-      <TextField label="E-mail do técnico (login de acesso, se aplicável)" value={technicianEmail} onChange={setTechnicianEmail} placeholder="tecnico@email.com" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TextField label="E-mail do técnico (login de acesso, se aplicável)" value={technicianEmail} onChange={setTechnicianEmail} placeholder="tecnico@email.com" />
+        <TextField label="WhatsApp do técnico" value={technicianPhone} onChange={(v) => setTechnicianPhone(maskPhone(v))} placeholder="(11) 91234-5678" />
+      </div>
 
       <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
         <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.ink }}>1. Dados do cliente</div>
@@ -4557,6 +4562,26 @@ function App() {
     logActivity(`Ficha técnica salva: ${t.client_name}`);
     showToast("Implantação técnica salva.");
   }
+  function sendTechImplementationToTechnician(t) {
+    const linhas = [
+      `🛠️ Nova implantação técnica${t.technician_name ? " — " + t.technician_name : ""}`,
+      ``,
+      `Cliente: ${t.client_name}`,
+      t.cnpj ? `CNPJ: ${t.cnpj}` : null,
+      t.endereco ? `Endereço: ${t.endereco}` : null,
+      (t.telefone || t.whatsapp) ? `Telefone: ${t.whatsapp || t.telefone}` : null,
+      t.responsavel_atendimento ? `Contato no cliente: ${t.responsavel_atendimento}` : null,
+      t.tipo_atendimento ? `Tipo de atendimento: ${t.tipo_atendimento}` : null,
+      t.numero ? `Nº da implantação: ${t.numero}` : null,
+      `Ficha completa disponível na aba "Implantação Técnica" do sistema.`,
+    ].filter(Boolean).join("\n");
+    if (t.technician_phone) {
+      window.open(`https://web.whatsapp.com/send?phone=${waNumber(t.technician_phone)}&text=${encodeURIComponent(linhas)}`, "_blank");
+    } else {
+      window.open(`https://web.whatsapp.com/send?text=${encodeURIComponent(linhas)}`, "_blank");
+      showToast("Técnico ainda não tem WhatsApp cadastrado nesta ficha — abrindo sem número.");
+    }
+  }
   async function handleDeleteTechImplementation(id) {
     if (!confirm("Remover esta implantação técnica?")) return;
     await supa.from("tech_implementations").delete().eq("id", id);
@@ -5968,7 +5993,19 @@ function App() {
       });
       await loadImplantacoes();
     }
-    showToast(`${prospect.name} agora é cliente!`);
+
+    // Cria automaticamente a ficha de implantação técnica, já com os dados do cliente,
+    // pra equipe técnica só precisar atribuir o técnico e preencher o checklist.
+    await supa.from("tech_implementations").upsert({
+      id: uid(), numero: p.number || null, client_name: prospect.name,
+      cnpj: prospect.cnpj || null, endereco: addressLine(prospect) || null,
+      telefone: prospect.phone || null, whatsapp: prospect.phone || null, email: prospect.email || null,
+      responsavel_atendimento: prospect.contact_name || null,
+      updated_at: new Date().toISOString(), updated_by: session?.user?.email || "desconhecido",
+    });
+    await loadTechImplementations();
+
+    showToast(`${prospect.name} agora é cliente! Ficha de implantação técnica criada — atribua um técnico na aba "Implantação Técnica".`);
   }
 
   async function handleUpdateProposalStage(p, stage) {
@@ -8744,6 +8781,9 @@ function App() {
                                 <div className="flex gap-1.5">
                                   <button onClick={() => setViewingTech(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>👁️ Visualizar</button>
                                   <button onClick={() => previewTechImplementationPDF(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📄 Ver PDF</button>
+                                  {!isTech && (
+                                    <button onClick={() => sendTechImplementationToTechnician(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.wa, color: COLORS.wa }}>💬 Enviar p/ técnico</button>
+                                  )}
                                   <button onClick={() => { setEditingTech(t); setShowTechForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ {isTech ? "Preencher" : "Editar"}</button>
                                   {!isTech && (
                                     <button onClick={() => handleDeleteTechImplementation(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>

@@ -624,6 +624,7 @@ const DEFAULT_SETTINGS = {
   implantacao_pix_key: "", implantacao_pix_favorecido: "",
   romaneio_pix_key: "", romaneio_pix_favorecido: "",
   romaneio_next_number: 1441, romaneio_next_year: 2026,
+  proposal_next_number: 1, proposal_next_year: 2026,
   expenses_alert_phone: "",
   payroll_company_name: "MIRE SYSTEM LTDA", payroll_company_cnpj: "43.389.247/0001-54",
 };
@@ -1121,10 +1122,12 @@ function RomaneioClientPicker({ romaneioClients, value, onSelect }) {
   );
 }
 
-function ProposalForm({ initial, prospects, clients, onSaveProspect, onSave, onPreview, onCancel }) {
+function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, onSave, onPreview, onCancel }) {
   const [prospectId, setProspectId] = useState(initial?.prospect_id || "");
   const [showNewProspect, setShowNewProspect] = useState(false);
-  const [number, setNumber] = useState(initial?.number || `${String(new Date().getFullYear()).slice(2)}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(Date.now()).slice(-2)}`);
+  const currentYear = new Date().getFullYear();
+  const nextProposalNumberPreview = (settings?.proposal_next_year === currentYear) ? (settings?.proposal_next_number || 1) : 1;
+  const [number, setNumber] = useState(initial?.number || `${nextProposalNumberPreview}/${currentYear}`);
   const [installationValue, setInstallationValue] = useState(initial?.installation_value ?? "");
   const [trainingValue, setTrainingValue] = useState(initial?.training_value ?? "");
   const [dbTransferValue, setDbTransferValue] = useState(initial?.db_transfer_value ?? "");
@@ -5931,6 +5934,7 @@ function App() {
 
   async function handleSaveProposal(p) {
     const prospect = prospects.find((c) => c.id === p.prospect_id);
+    const isNew = !editingProposal;
     try {
       const doc = generateProposalPDF(p, prospect);
       const blob = doc.output("blob");
@@ -5942,6 +5946,12 @@ function App() {
       const { error: dbError } = await supa.from("proposals").upsert(record);
       if (dbError) throw dbError;
       await loadProposals();
+      if (isNew) {
+        const currentYear = new Date().getFullYear();
+        const usedYear = settings.proposal_next_year === currentYear ? settings.proposal_next_year : currentYear;
+        const usedNumber = settings.proposal_next_year === currentYear ? (settings.proposal_next_number || 1) : 1;
+        await saveSettings({ ...settings, proposal_next_number: usedNumber + 1, proposal_next_year: usedYear });
+      }
       setShowProposalForm(false);
       setEditingProposal(null);
       showToast("Proposta gerada e salva.");
@@ -6455,6 +6465,7 @@ function App() {
       implantacao_pix_key: next.implantacao_pix_key || null, implantacao_pix_favorecido: next.implantacao_pix_favorecido || null,
       romaneio_pix_key: next.romaneio_pix_key || null, romaneio_pix_favorecido: next.romaneio_pix_favorecido || null,
       romaneio_next_number: next.romaneio_next_number || 1, romaneio_next_year: next.romaneio_next_year || new Date().getFullYear(),
+      proposal_next_number: next.proposal_next_number || 1, proposal_next_year: next.proposal_next_year || new Date().getFullYear(),
     });
   }
   async function upsertBoleto(clientId, patch) {
@@ -7715,7 +7726,7 @@ function App() {
 
               {showProposalForm && (
                 <div className="mb-4">
-                  <ProposalForm initial={editingProposal} prospects={prospects} clients={clients} onSaveProspect={handleSaveProspect} onSave={handleSaveProposal} onPreview={previewProposalPDF} onCancel={() => { setShowProposalForm(false); setEditingProposal(null); }} />
+                  <ProposalForm initial={editingProposal} prospects={prospects} clients={clients} settings={settings} onSaveProspect={handleSaveProspect} onSave={handleSaveProposal} onPreview={previewProposalPDF} onCancel={() => { setShowProposalForm(false); setEditingProposal(null); }} />
                 </div>
               )}
 
@@ -8771,10 +8782,10 @@ function App() {
                           const pendAbertas = (t.pendencias || []).filter((p) => p.status !== "concluida").length;
                           return (
                             <div key={t.id} className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                                <div className="flex items-center gap-3">
+                              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-3">
+                                <div className="flex items-center gap-3 min-w-0">
                                   <Avatar name={t.client_name} size={34} />
-                                  <div>
+                                  <div className="min-w-0">
                                     <div className="font-bold text-sm flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
                                       {t.client_name}
                                       {t.numero && <span className="text-[10px]" style={{ color: COLORS.inkFaint }}>Nº {t.numero}</span>}
@@ -8795,7 +8806,7 @@ function App() {
                                     )}
                                   </div>
                                 </div>
-                                <div className="flex gap-1.5">
+                                <div className="flex flex-wrap gap-1.5 lg:justify-end lg:shrink-0">
                                   <button onClick={() => setViewingTech(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>👁️ Visualizar</button>
                                   <button onClick={() => previewTechImplementationPDF(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📄 Ver PDF</button>
                                   {!isTech && (

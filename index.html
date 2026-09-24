@@ -5996,6 +5996,12 @@ function App() {
 
     // Cria automaticamente a ficha de implantação técnica, já com os dados do cliente,
     // pra equipe técnica só precisar atribuir o técnico e preencher o checklist.
+    await createTechImplementationFromProposal(p, prospect);
+
+    showToast(`${prospect.name} agora é cliente! Ficha de implantação técnica criada — atribua um técnico na aba "Implantação Técnica".`);
+  }
+
+  async function createTechImplementationFromProposal(p, prospect) {
     await supa.from("tech_implementations").upsert({
       id: uid(), numero: p.number || null, client_name: prospect.name,
       cnpj: prospect.cnpj || null, endereco: addressLine(prospect) || null,
@@ -6004,8 +6010,15 @@ function App() {
       updated_at: new Date().toISOString(), updated_by: session?.user?.email || "desconhecido",
     });
     await loadTechImplementations();
+  }
 
-    showToast(`${prospect.name} agora é cliente! Ficha de implantação técnica criada — atribua um técnico na aba "Implantação Técnica".`);
+  async function handleCreateTechFromProposal(p) {
+    const prospect = prospects.find((x) => x.id === p.prospect_id);
+    if (!prospect) { showToast("Cliente da proposta não encontrado."); return; }
+    const already = techImplementations.some((t) => t.numero && p.number && t.numero === p.number);
+    if (already && !confirm(`Já existe uma ficha técnica com o nº ${p.number}. Criar outra mesmo assim?`)) return;
+    await createTechImplementationFromProposal(p, prospect);
+    showToast(`Ficha de implantação técnica criada para ${prospect.name}.`);
   }
 
   async function handleUpdateProposalStage(p, stage) {
@@ -7746,7 +7759,11 @@ function App() {
                         <button onClick={() => sendProposalWhatsApp(p)} disabled={!prospect?.phone} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.wa }}>💬 Enviar WhatsApp</button>
                         <button onClick={() => sendProposalEmail(p)} disabled={!prospect?.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.brand }}>📧 Enviar e-mail</button>
                         <button onClick={() => { setEditingProposal(p); setShowProposalForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
-                        <button onClick={() => handleCloseProposal(p)} disabled={!prospect} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition disabled:opacity-30" style={{ borderColor: COLORS.success, color: COLORS.success }} title="Fechar proposta e virar cliente">✅ Fechado</button>
+                        {p.stage === "fechada" ? (
+                          <button onClick={() => handleCreateTechFromProposal(p)} disabled={!prospect} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition disabled:opacity-30" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }} title="Criar/recriar a ficha de implantação técnica pra essa proposta">🛠️ Criar ficha técnica</button>
+                        ) : (
+                          <button onClick={() => handleCloseProposal(p)} disabled={!prospect} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition disabled:opacity-30" style={{ borderColor: COLORS.success, color: COLORS.success }} title="Fechar proposta e virar cliente">✅ Fechado</button>
+                        )}
                         <button onClick={() => handleDeleteProposal(p.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ Excluir</button>
                       </div>
                     </div>

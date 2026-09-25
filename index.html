@@ -2763,6 +2763,24 @@ function TechImplementationViewer({ t, onClose }) {
           <ViewField label="Quantidade de computadores" value={t.computers_count} />
           <ViewField label="Cloud" value={t.cloud === true ? "Sim" : t.cloud === false ? "Não" : null} />
 
+          {(t.quest_qtd_lojas != null || t.quest_usa_sistema_atual != null || t.quest_qtd_terminais != null) && (
+            <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+              <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>📝 Questionário de levantamento (orçamento)</div>
+              <ViewField label="Quantidade de lojas" value={t.quest_qtd_lojas} />
+              <ViewField label="Usa sistema atualmente" value={t.quest_usa_sistema_atual === true ? `Sim — ${t.quest_qual_sistema_atual || "não informado"}` : t.quest_usa_sistema_atual === false ? "Não" : null} />
+              <ViewField label="Deseja migrar" value={[t.quest_migrar_produtos && "Produtos", t.quest_migrar_clientes && "Clientes", t.quest_migrar_estoque && "Estoque", t.quest_migrar_historico && "Histórico de vendas", t.quest_migrar_outros].filter(Boolean).join(", ") || null} />
+              <ViewField label="Usa marketplace/e-commerce" value={t.quest_usa_marketplace === true ? `Sim — ${t.quest_qual_marketplace || "não informado"}` : t.quest_usa_marketplace === false ? "Não" : null} />
+              <ViewField label="Usa módulo de produção" value={t.quest_usa_producao === true ? "Sim" : t.quest_usa_producao === false ? "Não" : null} />
+              <ViewField label="Qtd. de terminais" value={t.quest_qtd_terminais} />
+              <ViewField label="Qtd. de usuários" value={t.quest_qtd_usuarios} />
+              <ViewField label="Mais de um estoque/depósito" value={t.quest_multi_estoque === true ? `Sim — ${t.quest_qtd_estoques || "?"}` : t.quest_multi_estoque === false ? "Não" : null} />
+              <ViewField label="Documentos fiscais emitidos" value={[t.quest_doc_nfce && "NFC-e", t.quest_doc_nfe && "NF-e", t.quest_doc_nfse && "NFS-e", t.quest_doc_outros].filter(Boolean).join(", ") || null} />
+              <ViewField label="Integrações (marketplaces/transportadoras/pagamento)" value={t.quest_usa_integracoes === true ? `Sim — ${t.quest_quais_integracoes || "não informado"}` : t.quest_usa_integracoes === false ? "Não" : null} />
+              <ViewField label="Trabalha com grade (cor/tamanho)" value={t.quest_trabalha_grade === true ? "Sim" : t.quest_trabalha_grade === false ? "Não" : null} />
+              <ViewField label="Controla ficha técnica/matéria-prima" value={t.quest_ficha_tecnica === true ? "Sim" : t.quest_ficha_tecnica === false ? "Não" : null} />
+            </div>
+          )}
+
           <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
             <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>📦 Migração de dados</div>
             <ViewChecklist items={t.checklist_migracao_dados} />
@@ -2900,6 +2918,31 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
   const [statusFinal, setStatusFinal] = useState(initial?.status_final || "");
   const [obsFinal, setObsFinal] = useState(initial?.obs_final || "");
 
+  const [questQtdLojas, setQuestQtdLojas] = useState(initial?.quest_qtd_lojas ?? "");
+  const [questUsaSistemaAtual, setQuestUsaSistemaAtual] = useState(initial?.quest_usa_sistema_atual === true ? "sim" : initial?.quest_usa_sistema_atual === false ? "nao" : "");
+  const [questQualSistemaAtual, setQuestQualSistemaAtual] = useState(initial?.quest_qual_sistema_atual || "");
+  const [questMigrarProdutos, setQuestMigrarProdutos] = useState(initial?.quest_migrar_produtos || false);
+  const [questMigrarClientes, setQuestMigrarClientes] = useState(initial?.quest_migrar_clientes || false);
+  const [questMigrarEstoque, setQuestMigrarEstoque] = useState(initial?.quest_migrar_estoque || false);
+  const [questMigrarHistorico, setQuestMigrarHistorico] = useState(initial?.quest_migrar_historico || false);
+  const [questMigrarOutros, setQuestMigrarOutros] = useState(initial?.quest_migrar_outros || "");
+  const [questUsaMarketplace, setQuestUsaMarketplace] = useState(initial?.quest_usa_marketplace === true ? "sim" : initial?.quest_usa_marketplace === false ? "nao" : "");
+  const [questQualMarketplace, setQuestQualMarketplace] = useState(initial?.quest_qual_marketplace || "");
+  const [cloud, setCloud] = useState(initial?.cloud === true ? "sim" : initial?.cloud === false ? "nao" : "");
+  const [questUsaProducao, setQuestUsaProducao] = useState(initial?.quest_usa_producao === true ? "sim" : initial?.quest_usa_producao === false ? "nao" : "");
+  const [questQtdTerminais, setQuestQtdTerminais] = useState(initial?.quest_qtd_terminais ?? "");
+  const [questQtdUsuarios, setQuestQtdUsuarios] = useState(initial?.quest_qtd_usuarios ?? "");
+  const [questMultiEstoque, setQuestMultiEstoque] = useState(initial?.quest_multi_estoque === true ? "sim" : initial?.quest_multi_estoque === false ? "nao" : "");
+  const [questQtdEstoques, setQuestQtdEstoques] = useState(initial?.quest_qtd_estoques ?? "");
+  const [questDocNfce, setQuestDocNfce] = useState(initial?.quest_doc_nfce || false);
+  const [questDocNfe, setQuestDocNfe] = useState(initial?.quest_doc_nfe || false);
+  const [questDocNfse, setQuestDocNfse] = useState(initial?.quest_doc_nfse || false);
+  const [questDocOutros, setQuestDocOutros] = useState(initial?.quest_doc_outros || "");
+  const [questUsaIntegracoes, setQuestUsaIntegracoes] = useState(initial?.quest_usa_integracoes === true ? "sim" : initial?.quest_usa_integracoes === false ? "nao" : "");
+  const [questQuaisIntegracoes, setQuestQuaisIntegracoes] = useState(initial?.quest_quais_integracoes || "");
+  const [questTrabalhaGrade, setQuestTrabalhaGrade] = useState(initial?.quest_trabalha_grade === true ? "sim" : initial?.quest_trabalha_grade === false ? "nao" : "");
+  const [questFichaTecnica, setQuestFichaTecnica] = useState(initial?.quest_ficha_tecnica === true ? "sim" : initial?.quest_ficha_tecnica === false ? "nao" : "");
+
   const [clienteRespNome, setClienteRespNome] = useState(initial?.cliente_resp_nome || "");
   const [clienteRespCargo, setClienteRespCargo] = useState(initial?.cliente_resp_cargo || "");
   const [aceiteData, setAceiteData] = useState(initial?.aceite_data || "");
@@ -2943,6 +2986,26 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
       status_final: statusFinal || null, obs_final: obsFinal.trim() || null,
       cliente_resp_nome: clienteRespNome.trim() || null, cliente_resp_cargo: clienteRespCargo.trim() || null,
       aceite_data: aceiteData || null, aceite_assinatura: aceiteAssinatura || null, tecnico_assinatura: tecnicoAssinatura || null,
+      quest_qtd_lojas: questQtdLojas !== "" ? Number(questQtdLojas) : null,
+      quest_usa_sistema_atual: questUsaSistemaAtual === "sim" ? true : questUsaSistemaAtual === "nao" ? false : null,
+      quest_qual_sistema_atual: questQualSistemaAtual.trim() || null,
+      quest_migrar_produtos: !!questMigrarProdutos, quest_migrar_clientes: !!questMigrarClientes,
+      quest_migrar_estoque: !!questMigrarEstoque, quest_migrar_historico: !!questMigrarHistorico,
+      quest_migrar_outros: questMigrarOutros.trim() || null,
+      quest_usa_marketplace: questUsaMarketplace === "sim" ? true : questUsaMarketplace === "nao" ? false : null,
+      quest_qual_marketplace: questQualMarketplace.trim() || null,
+      cloud: cloud === "sim" ? true : cloud === "nao" ? false : null,
+      quest_usa_producao: questUsaProducao === "sim" ? true : questUsaProducao === "nao" ? false : null,
+      quest_qtd_terminais: questQtdTerminais !== "" ? Number(questQtdTerminais) : null,
+      quest_qtd_usuarios: questQtdUsuarios !== "" ? Number(questQtdUsuarios) : null,
+      quest_multi_estoque: questMultiEstoque === "sim" ? true : questMultiEstoque === "nao" ? false : null,
+      quest_qtd_estoques: questQtdEstoques !== "" ? Number(questQtdEstoques) : null,
+      quest_doc_nfce: !!questDocNfce, quest_doc_nfe: !!questDocNfe, quest_doc_nfse: !!questDocNfse,
+      quest_doc_outros: questDocOutros.trim() || null,
+      quest_usa_integracoes: questUsaIntegracoes === "sim" ? true : questUsaIntegracoes === "nao" ? false : null,
+      quest_quais_integracoes: questQuaisIntegracoes.trim() || null,
+      quest_trabalha_grade: questTrabalhaGrade === "sim" ? true : questTrabalhaGrade === "nao" ? false : null,
+      quest_ficha_tecnica: questFichaTecnica === "sim" ? true : questFichaTecnica === "nao" ? false : null,
     };
   }
 
@@ -2981,6 +3044,109 @@ function TechImplementationForm({ initial, onSave, onCancel }) {
           <TextField label="E-mail" value={email} onChange={setEmail} placeholder="contato@cliente.com" />
         </div>
         <TextField label="Endereço" value={endereco} onChange={setEndereco} placeholder="Endereço completo" />
+      </div>
+
+      <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>📝 Questionário de levantamento (respostas do cliente para orçamento)</div>
+
+        <TextField label="Quantas lojas vocês têm?" value={questQtdLojas} onChange={setQuestQtdLojas} type="number" placeholder="Ex: 2" />
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Vocês utilizam algum sistema atualmente?</span>
+          <div className="flex gap-2 mb-2">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questUsaSistema" checked={questUsaSistemaAtual === "sim"} onChange={() => setQuestUsaSistemaAtual("sim")} /> Sim</label>
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questUsaSistema" checked={questUsaSistemaAtual === "nao"} onChange={() => setQuestUsaSistemaAtual("nao")} /> Não</label>
+          </div>
+          {questUsaSistemaAtual === "sim" && <TextField label="Se sim, qual sistema?" value={questQualSistemaAtual} onChange={setQuestQualSistemaAtual} placeholder="Nome do sistema atual" />}
+        </div>
+
+        {questUsaSistemaAtual === "sim" && (
+          <div>
+            <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Caso optem por migrar para o MIRE, o que gostariam de migrar?</span>
+            <div className="flex gap-3 flex-wrap mb-2">
+              <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={questMigrarProdutos} onChange={(e) => setQuestMigrarProdutos(e.target.checked)} /> Cadastro de produtos</label>
+              <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={questMigrarClientes} onChange={(e) => setQuestMigrarClientes(e.target.checked)} /> Cadastro de clientes</label>
+              <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={questMigrarEstoque} onChange={(e) => setQuestMigrarEstoque(e.target.checked)} /> Estoque</label>
+              <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={questMigrarHistorico} onChange={(e) => setQuestMigrarHistorico(e.target.checked)} /> Histórico de vendas</label>
+            </div>
+            <TextField label="Outros" value={questMigrarOutros} onChange={setQuestMigrarOutros} placeholder="Opcional" />
+          </div>
+        )}
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Vocês utilizam algum marketplace ou plataforma de e-commerce? (Ex.: Vesti, Nuvemshop, Mooda, etc.)</span>
+          <div className="flex gap-2 mb-2">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questUsaMkt" checked={questUsaMarketplace === "sim"} onChange={() => setQuestUsaMarketplace("sim")} /> Sim</label>
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questUsaMkt" checked={questUsaMarketplace === "nao"} onChange={() => setQuestUsaMarketplace("nao")} /> Não</label>
+          </div>
+          {questUsaMarketplace === "sim" && <TextField label="Se sim, qual?" value={questQualMarketplace} onChange={setQuestQualMarketplace} placeholder="Ex: Nuvemshop" />}
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Vocês desejam utilizar o sistema em Cloud (nuvem)?</span>
+          <div className="text-[11px] mb-1.5" style={{ color: COLORS.inkFaint }}>Obs: para uso em nuvem é necessário conexão de internet estável e de boa qualidade.</div>
+          <div className="flex gap-2">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questCloud" checked={cloud === "sim"} onChange={() => setCloud("sim")} /> Sim</label>
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questCloud" checked={cloud === "nao"} onChange={() => setCloud("nao")} /> Não</label>
+          </div>
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Vocês irão utilizar o módulo de produção (confecção/fabricação)?</span>
+          <div className="flex gap-2">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questProducao" checked={questUsaProducao === "sim"} onChange={() => setQuestUsaProducao("sim")} /> Sim</label>
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questProducao" checked={questUsaProducao === "nao"} onChange={() => setQuestUsaProducao("nao")} /> Não</label>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TextField label="Quantos terminais (computadores, caixas ou usuários simultâneos)?" value={questQtdTerminais} onChange={setQuestQtdTerminais} type="number" placeholder="Ex: 3" />
+          <TextField label="Quantos usuários utilizarão o sistema?" value={questQtdUsuarios} onChange={setQuestQtdUsuarios} type="number" placeholder="Ex: 5" />
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>A empresa possui mais de um estoque ou depósito?</span>
+          <div className="flex gap-2 mb-2">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questMultiEstoque" checked={questMultiEstoque === "sim"} onChange={() => setQuestMultiEstoque("sim")} /> Sim</label>
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questMultiEstoque" checked={questMultiEstoque === "nao"} onChange={() => setQuestMultiEstoque("nao")} /> Não</label>
+          </div>
+          {questMultiEstoque === "sim" && <TextField label="Se sim, quantos?" value={questQtdEstoques} onChange={setQuestQtdEstoques} type="number" placeholder="Ex: 2" />}
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>A empresa emite quais documentos fiscais?</span>
+          <div className="flex gap-3 flex-wrap mb-2">
+            <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={questDocNfce} onChange={(e) => setQuestDocNfce(e.target.checked)} /> NFC-e</label>
+            <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={questDocNfe} onChange={(e) => setQuestDocNfe(e.target.checked)} /> NF-e</label>
+            <label className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={questDocNfse} onChange={(e) => setQuestDocNfse(e.target.checked)} /> NFS-e</label>
+          </div>
+          <TextField label="Outros" value={questDocOutros} onChange={setQuestDocOutros} placeholder="Opcional" />
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Utiliza alguma integração com marketplaces, transportadoras, Correios ou meios de pagamento?</span>
+          <div className="flex gap-2 mb-2">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questIntegracoes" checked={questUsaIntegracoes === "sim"} onChange={() => setQuestUsaIntegracoes("sim")} /> Sim</label>
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questIntegracoes" checked={questUsaIntegracoes === "nao"} onChange={() => setQuestUsaIntegracoes("nao")} /> Não</label>
+          </div>
+          {questUsaIntegracoes === "sim" && <TextField label="Quais?" value={questQuaisIntegracoes} onChange={setQuestQuaisIntegracoes} placeholder="Ex: Correios, Mercado Pago" />}
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>A empresa trabalha com grade (cor e tamanho)?</span>
+          <div className="flex gap-2">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questGrade" checked={questTrabalhaGrade === "sim"} onChange={() => setQuestTrabalhaGrade("sim")} /> Sim</label>
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questGrade" checked={questTrabalhaGrade === "nao"} onChange={() => setQuestTrabalhaGrade("nao")} /> Não</label>
+          </div>
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Necessita controlar ficha técnica e consumo de matéria-prima?</span>
+          <div className="flex gap-2">
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questFicha" checked={questFichaTecnica === "sim"} onChange={() => setQuestFichaTecnica("sim")} /> Sim</label>
+            <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer"><input type="radio" name="questFicha" checked={questFichaTecnica === "nao"} onChange={() => setQuestFichaTecnica("nao")} /> Não</label>
+          </div>
+        </div>
       </div>
 
       <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>

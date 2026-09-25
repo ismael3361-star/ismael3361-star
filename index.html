@@ -2766,6 +2766,7 @@ function TechImplementationViewer({ t, onClose }) {
           {(t.quest_qtd_lojas != null || t.quest_usa_sistema_atual != null || t.quest_qtd_terminais != null) && (
             <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
               <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>📝 Questionário de levantamento (orçamento)</div>
+              <ViewField label="Respondido por" value={t.quest_respondente_nome ? `${t.quest_respondente_nome}${t.quest_respondido_em ? " em " + new Date(t.quest_respondido_em).toLocaleString("pt-BR") : ""}` : null} />
               <ViewField label="Quantidade de lojas" value={t.quest_qtd_lojas} />
               <ViewField label="Usa sistema atualmente" value={t.quest_usa_sistema_atual === true ? `Sim — ${t.quest_qual_sistema_atual || "não informado"}` : t.quest_usa_sistema_atual === false ? "Não" : null} />
               <ViewField label="Deseja migrar" value={[t.quest_migrar_produtos && "Produtos", t.quest_migrar_clientes && "Clientes", t.quest_migrar_estoque && "Estoque", t.quest_migrar_historico && "Histórico de vendas", t.quest_migrar_outros].filter(Boolean).join(", ") || null} />
@@ -4039,6 +4040,265 @@ function Login() {
   );
 }
 
+function PublicQuestionnaireForm({ token }) {
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [clientName, setClientName] = useState("");
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const [respondenteNome, setRespondenteNome] = useState("");
+  const [cnpj, setCnpj] = useState("");
+  const [qtdLojas, setQtdLojas] = useState("");
+  const [usaSistemaAtual, setUsaSistemaAtual] = useState("");
+  const [qualSistemaAtual, setQualSistemaAtual] = useState("");
+  const [migrarProdutos, setMigrarProdutos] = useState(false);
+  const [migrarClientes, setMigrarClientes] = useState(false);
+  const [migrarEstoque, setMigrarEstoque] = useState(false);
+  const [migrarHistorico, setMigrarHistorico] = useState(false);
+  const [migrarOutros, setMigrarOutros] = useState("");
+  const [usaMarketplace, setUsaMarketplace] = useState("");
+  const [qualMarketplace, setQualMarketplace] = useState("");
+  const [cloud, setCloud] = useState("");
+  const [usaProducao, setUsaProducao] = useState("");
+  const [qtdTerminais, setQtdTerminais] = useState("");
+  const [qtdUsuarios, setQtdUsuarios] = useState("");
+  const [multiEstoque, setMultiEstoque] = useState("");
+  const [qtdEstoques, setQtdEstoques] = useState("");
+  const [docNfce, setDocNfce] = useState(false);
+  const [docNfe, setDocNfe] = useState(false);
+  const [docNfse, setDocNfse] = useState(false);
+  const [docOutros, setDocOutros] = useState("");
+  const [usaIntegracoes, setUsaIntegracoes] = useState("");
+  const [quaisIntegracoes, setQuaisIntegracoes] = useState("");
+  const [trabalhaGrade, setTrabalhaGrade] = useState("");
+  const [fichaTecnica, setFichaTecnica] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supa.rpc("get_questionnaire_client", { p_token: token });
+      if (error || !data || !data.length || !data[0]?.client_name) { setNotFound(true); setLoading(false); return; }
+      setClientName(data[0].client_name);
+      setLoading(false);
+    })();
+  }, [token]);
+
+  const canSend = respondenteNome.trim().length > 0;
+
+  async function handleSubmit() {
+    setErr("");
+    if (!canSend) { setErr("Por favor, informe seu nome antes de enviar."); return; }
+    setBusy(true);
+    const payload = {
+      cnpj: cnpj.trim() || null,
+      quest_respondente_nome: respondenteNome.trim(),
+      quest_qtd_lojas: qtdLojas !== "" ? Number(qtdLojas) : null,
+      quest_usa_sistema_atual: usaSistemaAtual === "sim" ? true : usaSistemaAtual === "nao" ? false : null,
+      quest_qual_sistema_atual: qualSistemaAtual.trim() || null,
+      quest_migrar_produtos: !!migrarProdutos, quest_migrar_clientes: !!migrarClientes,
+      quest_migrar_estoque: !!migrarEstoque, quest_migrar_historico: !!migrarHistorico,
+      quest_migrar_outros: migrarOutros.trim() || null,
+      quest_usa_marketplace: usaMarketplace === "sim" ? true : usaMarketplace === "nao" ? false : null,
+      quest_qual_marketplace: qualMarketplace.trim() || null,
+      cloud: cloud === "sim" ? true : cloud === "nao" ? false : null,
+      quest_usa_producao: usaProducao === "sim" ? true : usaProducao === "nao" ? false : null,
+      quest_qtd_terminais: qtdTerminais !== "" ? Number(qtdTerminais) : null,
+      quest_qtd_usuarios: qtdUsuarios !== "" ? Number(qtdUsuarios) : null,
+      quest_multi_estoque: multiEstoque === "sim" ? true : multiEstoque === "nao" ? false : null,
+      quest_qtd_estoques: qtdEstoques !== "" ? Number(qtdEstoques) : null,
+      quest_doc_nfce: !!docNfce, quest_doc_nfe: !!docNfe, quest_doc_nfse: !!docNfse,
+      quest_doc_outros: docOutros.trim() || null,
+      quest_usa_integracoes: usaIntegracoes === "sim" ? true : usaIntegracoes === "nao" ? false : null,
+      quest_quais_integracoes: quaisIntegracoes.trim() || null,
+      quest_trabalha_grade: trabalhaGrade === "sim" ? true : trabalhaGrade === "nao" ? false : null,
+      quest_ficha_tecnica: fichaTecnica === "sim" ? true : fichaTecnica === "nao" ? false : null,
+    };
+    const { error } = await supa.rpc("submit_questionnaire", { p_token: token, p_data: payload });
+    setBusy(false);
+    if (error) { setErr(`Erro ao enviar: ${error.message}`); return; }
+    setSent(true);
+  }
+
+  const cardStyle = { background: "#FFFFFF", borderColor: "#DCE3F5" };
+  const inputStyle = { borderColor: "#DCE3F5", background: "#F7F9FE", color: "#1E293B" };
+  const labelStyle = { color: "#475569" };
+
+  const Radio = ({ name, checked, onChange, label }) => (
+    <label className="flex items-center gap-1.5 text-sm px-3 py-2 rounded-lg border cursor-pointer" style={{ borderColor: checked ? "#7C5CFF" : "#DCE3F5", color: checked ? "#7C5CFF" : "#1E293B" }}>
+      <input type="radio" name={name} checked={checked} onChange={onChange} /> {label}
+    </label>
+  );
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center" style={{ background: "#F0F3FA" }}><div style={{ color: "#64748B" }}>Carregando...</div></div>;
+  }
+  if (notFound) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#F0F3FA" }}>
+        <div className="rounded-2xl p-6 border max-w-sm w-full text-center" style={cardStyle}>
+          <div className="text-2xl mb-2">🔗</div>
+          <div className="font-bold mb-1" style={{ color: "#1E293B" }}>Link inválido ou expirado</div>
+          <div className="text-sm" style={{ color: "#64748B" }}>Entre em contato com quem te enviou este link para receber um novo.</div>
+        </div>
+      </div>
+    );
+  }
+  if (sent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4" style={{ background: "#F0F3FA" }}>
+        <div className="rounded-2xl p-6 border max-w-sm w-full text-center" style={cardStyle}>
+          <div className="text-3xl mb-2">✅</div>
+          <div className="font-bold mb-1" style={{ color: "#1E293B" }}>Respostas enviadas!</div>
+          <div className="text-sm" style={{ color: "#64748B" }}>Obrigado, {respondenteNome}. Já recebemos suas respostas e em breve retornaremos com o orçamento.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen p-4 sm:p-6" style={{ background: "#F0F3FA" }}>
+      <div className="max-w-xl mx-auto rounded-2xl p-5 sm:p-6 border space-y-4" style={cardStyle}>
+        <div>
+          <div className="text-lg font-extrabold" style={{ color: "#1E293B" }}>Questionário para orçamento</div>
+          <div className="text-sm" style={{ color: "#64748B" }}>{clientName ? `Empresa: ${clientName}` : ""}</div>
+          <div className="text-xs mt-1" style={{ color: "#64748B" }}>Para que possamos montar um orçamento adequado para sua empresa, responda as perguntas abaixo.</div>
+        </div>
+
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>Seu nome *</span>
+          <input value={respondenteNome} onChange={(e) => setRespondenteNome(e.target.value)} placeholder="Quem está respondendo" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+        </label>
+
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>CNPJ da empresa</span>
+          <input value={cnpj} onChange={(e) => setCnpj(maskCNPJ(e.target.value))} placeholder="00.000.000/0000-00" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+        </label>
+
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>1️⃣ Quantas lojas vocês têm?</span>
+          <input type="number" value={qtdLojas} onChange={(e) => setQtdLojas(e.target.value)} placeholder="Ex: 2" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+        </label>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>2️⃣ Vocês utilizam algum sistema atualmente?</span>
+          <div className="flex gap-2 mb-2">
+            <Radio name="usaSistema" checked={usaSistemaAtual === "sim"} onChange={() => setUsaSistemaAtual("sim")} label="Sim" />
+            <Radio name="usaSistema" checked={usaSistemaAtual === "nao"} onChange={() => setUsaSistemaAtual("nao")} label="Não" />
+          </div>
+          {usaSistemaAtual === "sim" && (
+            <input value={qualSistemaAtual} onChange={(e) => setQualSistemaAtual(e.target.value)} placeholder="Se sim, qual sistema?" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          )}
+        </div>
+
+        {usaSistemaAtual === "sim" && (
+          <div>
+            <span className="block text-xs font-semibold mb-1" style={labelStyle}>3️⃣ Caso optem por migrar para o MIRE, o que gostariam de migrar?</span>
+            <div className="flex gap-3 flex-wrap mb-2">
+              <label className="flex items-center gap-1.5 text-sm" style={{ color: "#1E293B" }}><input type="checkbox" checked={migrarProdutos} onChange={(e) => setMigrarProdutos(e.target.checked)} /> Cadastro de produtos</label>
+              <label className="flex items-center gap-1.5 text-sm" style={{ color: "#1E293B" }}><input type="checkbox" checked={migrarClientes} onChange={(e) => setMigrarClientes(e.target.checked)} /> Cadastro de clientes</label>
+              <label className="flex items-center gap-1.5 text-sm" style={{ color: "#1E293B" }}><input type="checkbox" checked={migrarEstoque} onChange={(e) => setMigrarEstoque(e.target.checked)} /> Estoque</label>
+              <label className="flex items-center gap-1.5 text-sm" style={{ color: "#1E293B" }}><input type="checkbox" checked={migrarHistorico} onChange={(e) => setMigrarHistorico(e.target.checked)} /> Histórico de vendas</label>
+            </div>
+            <input value={migrarOutros} onChange={(e) => setMigrarOutros(e.target.value)} placeholder="Outros (opcional)" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          </div>
+        )}
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>4️⃣ Vocês utilizam algum marketplace ou plataforma de e-commerce? (Ex.: Vesti, Nuvemshop, Mooda, etc.)</span>
+          <div className="flex gap-2 mb-2">
+            <Radio name="usaMkt" checked={usaMarketplace === "sim"} onChange={() => setUsaMarketplace("sim")} label="Sim" />
+            <Radio name="usaMkt" checked={usaMarketplace === "nao"} onChange={() => setUsaMarketplace("nao")} label="Não" />
+          </div>
+          {usaMarketplace === "sim" && (
+            <input value={qualMarketplace} onChange={(e) => setQualMarketplace(e.target.value)} placeholder="Se sim, qual?" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          )}
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>5️⃣ Vocês desejam utilizar o sistema em Cloud (nuvem)?</span>
+          <div className="text-[11px] mb-1.5" style={{ color: "#94A3B8" }}>Obs: para uso em nuvem é necessário conexão de internet estável e de boa qualidade.</div>
+          <div className="flex gap-2">
+            <Radio name="cloud" checked={cloud === "sim"} onChange={() => setCloud("sim")} label="Sim" />
+            <Radio name="cloud" checked={cloud === "nao"} onChange={() => setCloud("nao")} label="Não" />
+          </div>
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>6️⃣ Vocês irão utilizar o módulo de produção (confecção/fabricação)?</span>
+          <div className="flex gap-2">
+            <Radio name="producao" checked={usaProducao === "sim"} onChange={() => setUsaProducao("sim")} label="Sim" />
+            <Radio name="producao" checked={usaProducao === "nao"} onChange={() => setUsaProducao("nao")} label="Não" />
+          </div>
+        </div>
+
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>7️⃣ Quantos terminais (computadores, caixas ou usuários simultâneos) pretendem utilizar?</span>
+          <input type="number" value={qtdTerminais} onChange={(e) => setQtdTerminais(e.target.value)} placeholder="Ex: 3" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+        </label>
+
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>8️⃣ Quantos usuários utilizarão o sistema?</span>
+          <input type="number" value={qtdUsuarios} onChange={(e) => setQtdUsuarios(e.target.value)} placeholder="Ex: 5" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+        </label>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>9️⃣ A empresa possui mais de um estoque ou depósito?</span>
+          <div className="flex gap-2 mb-2">
+            <Radio name="multiEstoque" checked={multiEstoque === "sim"} onChange={() => setMultiEstoque("sim")} label="Sim" />
+            <Radio name="multiEstoque" checked={multiEstoque === "nao"} onChange={() => setMultiEstoque("nao")} label="Não" />
+          </div>
+          {multiEstoque === "sim" && (
+            <input type="number" value={qtdEstoques} onChange={(e) => setQtdEstoques(e.target.value)} placeholder="Se sim, quantos?" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          )}
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>🔟 A empresa emite quais documentos fiscais?</span>
+          <div className="flex gap-3 flex-wrap mb-2">
+            <label className="flex items-center gap-1.5 text-sm" style={{ color: "#1E293B" }}><input type="checkbox" checked={docNfce} onChange={(e) => setDocNfce(e.target.checked)} /> NFC-e</label>
+            <label className="flex items-center gap-1.5 text-sm" style={{ color: "#1E293B" }}><input type="checkbox" checked={docNfe} onChange={(e) => setDocNfe(e.target.checked)} /> NF-e</label>
+            <label className="flex items-center gap-1.5 text-sm" style={{ color: "#1E293B" }}><input type="checkbox" checked={docNfse} onChange={(e) => setDocNfse(e.target.checked)} /> NFS-e</label>
+          </div>
+          <input value={docOutros} onChange={(e) => setDocOutros(e.target.value)} placeholder="Outros (opcional)" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>1️⃣1️⃣ Utiliza alguma integração com marketplaces, transportadoras, Correios ou meios de pagamento?</span>
+          <div className="flex gap-2 mb-2">
+            <Radio name="integracoes" checked={usaIntegracoes === "sim"} onChange={() => setUsaIntegracoes("sim")} label="Sim" />
+            <Radio name="integracoes" checked={usaIntegracoes === "nao"} onChange={() => setUsaIntegracoes("nao")} label="Não" />
+          </div>
+          {usaIntegracoes === "sim" && (
+            <input value={quaisIntegracoes} onChange={(e) => setQuaisIntegracoes(e.target.value)} placeholder="Quais?" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={inputStyle} />
+          )}
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>1️⃣2️⃣ A empresa trabalha com grade (cor e tamanho)?</span>
+          <div className="flex gap-2">
+            <Radio name="grade" checked={trabalhaGrade === "sim"} onChange={() => setTrabalhaGrade("sim")} label="Sim" />
+            <Radio name="grade" checked={trabalhaGrade === "nao"} onChange={() => setTrabalhaGrade("nao")} label="Não" />
+          </div>
+        </div>
+
+        <div>
+          <span className="block text-xs font-semibold mb-1" style={labelStyle}>1️⃣3️⃣ Necessita controlar ficha técnica e consumo de matéria-prima?</span>
+          <div className="flex gap-2">
+            <Radio name="ficha" checked={fichaTecnica === "sim"} onChange={() => setFichaTecnica("sim")} label="Sim" />
+            <Radio name="ficha" checked={fichaTecnica === "nao"} onChange={() => setFichaTecnica("nao")} label="Não" />
+          </div>
+        </div>
+
+        {err && <div className="text-xs" style={{ color: "#DC2626" }}>{err}</div>}
+        <button disabled={busy} onClick={handleSubmit} className="w-full py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50" style={{ background: "linear-gradient(135deg, #7C5CFF, #6D4FE0)" }}>
+          {busy ? "Enviando..." : "Enviar respostas"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState(undefined);
   const [clients, setClients] = useState([]);
@@ -4771,6 +5031,30 @@ function App() {
     await supa.from("tech_implementations").delete().eq("id", id);
     await loadTechImplementations();
     showToast("Removida.");
+  }
+  async function sendQuestionnaireToClient(t) {
+    let token = t.quest_token;
+    if (!token) {
+      token = uid() + uid();
+      const { error } = await supa.from("tech_implementations").update({ quest_token: token }).eq("id", t.id);
+      if (error) { showToast(`Erro ao gerar link: ${error.message}`); return; }
+      await loadTechImplementations();
+    }
+    const link = `${window.location.origin}${window.location.pathname}?questionario=${token}`;
+    const msg = [
+      `Olá${t.responsavel_atendimento ? " " + t.responsavel_atendimento : ""}! Para que possamos montar um orçamento adequado para sua empresa, poderia responder um questionário rápido pelo link abaixo?`,
+      ``,
+      link,
+      ``,
+      `Assim que recebermos essas informações, prepararemos o orçamento para vocês.`,
+    ].join("\n");
+    const phone = t.whatsapp || t.telefone;
+    if (phone) {
+      window.open(`https://web.whatsapp.com/send?phone=${waNumber(phone)}&text=${encodeURIComponent(msg)}`, "_blank");
+    } else {
+      window.open(`https://web.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
+      showToast("Cliente ainda não tem WhatsApp cadastrado nesta ficha — abrindo sem número.");
+    }
   }
 
   function generateTechImplementationPDF(t) {
@@ -9003,6 +9287,9 @@ function App() {
                                   {!isTech && (
                                     <button onClick={() => sendTechImplementationToTechnician(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.wa, color: COLORS.wa }}>💬 Enviar p/ técnico</button>
                                   )}
+                                  {!isTech && (
+                                    <button onClick={() => sendQuestionnaireToClient(t)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brand, color: COLORS.brand }}>🔗 Enviar questionário</button>
+                                  )}
                                   <button onClick={() => { setEditingTech(t); setShowTechForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ {isTech ? "Preencher" : "Editar"}</button>
                                   {!isTech && (
                                     <button onClick={() => handleDeleteTechImplementation(t.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
@@ -10567,7 +10854,11 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+(function renderRoot() {
+  const questToken = new URLSearchParams(window.location.search).get("questionario");
+  const root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(questToken ? <PublicQuestionnaireForm token={questToken} /> : <App />);
+})();
 </script>
 </body>
 </html>

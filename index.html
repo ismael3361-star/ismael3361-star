@@ -415,6 +415,15 @@ async function fetchCNPJData(rawCnpj) {
 function computeStatus(client, b, monthDate) {
   if (b?.paid) return "pago";
   const today = new Date();
+  // Se o cliente tem uma "próxima data de vencimento" marcada para um mês
+  // ainda futuro (ex: cliente novo cadastrado hoje, mas a 1ª cobrança é só
+  // no mês que vem), ele ainda não pode estar atrasado neste mês exibido.
+  if (client.next_due_date) {
+    const nd = new Date(client.next_due_date + "T00:00:00");
+    const ndKey = nd.getFullYear() * 12 + nd.getMonth();
+    const monthKey = monthDate.getFullYear() * 12 + monthDate.getMonth();
+    if (ndKey > monthKey) return (b?.sent_whatsapp || b?.sent_email) ? "enviado" : "pendente";
+  }
   if (client.due_day) {
     const due = new Date(monthDate.getFullYear(), monthDate.getMonth(), client.due_day);
     due.setHours(23, 59, 59, 0);

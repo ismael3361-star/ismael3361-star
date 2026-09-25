@@ -7007,7 +7007,7 @@ function App() {
             return [{ group: userRole.charAt(0).toUpperCase() + userRole.slice(1), items: flatItems }];
           })().map((g, gi) => (
             <div key={g.group} className="mb-2">
-              <div className="hidden sm:block text-[9px] font-extrabold uppercase tracking-[0.12em] px-3 mb-1.5" style={{ color: COLORS.inkFaint }}>{g.group}</div>
+              <div className="hidden sm:block text-[12px] font-extrabold uppercase tracking-[0.12em] px-3 mb-1.5" style={{ color: COLORS.inkFaint }}>{g.group}</div>
               <div className="flex flex-col gap-0.5">
                 {g.items.map((t) => {
                   const active = tab === t.id;
@@ -7019,7 +7019,7 @@ function App() {
                       onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
                       onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}>
                       <span className="flex items-center justify-center rounded-xl shrink-0 transition-all" style={{ width: 30, height: 30, background: active ? `linear-gradient(135deg, ${accent}, ${rgba(accent, 0.75)})` : "rgba(255,255,255,0.05)", fontSize: 15, boxShadow: active ? `0 3px 10px ${rgba(accent, 0.4)}` : "none" }}>{t.icon}</span>
-                      <span className="text-[9px] sm:text-[13px] leading-tight text-center sm:text-left mt-0.5 sm:mt-0" style={{ color: active ? COLORS.ink : COLORS.inkMuted }}>{t.label}</span>
+                      <span className="text-[8px] sm:text-[11px] leading-tight text-center sm:text-left mt-0.5 sm:mt-0" style={{ color: active ? COLORS.ink : COLORS.inkMuted }}>{t.label}</span>
                     </button>
                   );
                 })}

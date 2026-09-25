@@ -3780,8 +3780,8 @@ function ChangePasswordModal({ onClose, showToast }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
-      <div className="rounded-2xl p-4 max-w-xs w-full" style={{ background: COLORS.card }} onClick={(e) => e.stopPropagation()}>
-        <div className="text-xs font-bold mb-3" style={{ color: COLORS.ink }}>🔑 Trocar senha</div>
+      <div className="rounded-2xl p-3 w-full" style={{ background: COLORS.card, maxWidth: 260 }} onClick={(e) => e.stopPropagation()}>
+        <div className="text-xs font-bold mb-2" style={{ color: COLORS.ink }}>🔑 Trocar senha</div>
         <div className="space-y-1.5 mb-2">
           <label className="block">
             <span className="block text-[10px] font-semibold mb-0.5" style={{ color: COLORS.inkMuted }}>Nova senha</span>

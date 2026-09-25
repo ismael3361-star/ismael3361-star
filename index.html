@@ -3170,6 +3170,7 @@ function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabe
   const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "0.31");
   const [labelModel, setLabelModel] = useState(initial?.label_model || "");
   const [ribbon, setRibbon] = useState(initial?.ribbon || "");
+  const [faturado, setFaturado] = useState(initial?.faturado || false);
 
   const totalValue = (Number(quantity) || 0) * (Number(unitValue) || 0);
   const canSave = clientName.trim() && orderNumber !== "" && Number(quantity) > 0;
@@ -3230,6 +3231,10 @@ function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabe
             className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
           <datalist id="itag-order-ribbons">{existingRibbons.map((r) => <option key={r} value={r} />)}</datalist>
         </label>
+        <label className="flex items-center gap-2 mt-1 sm:mt-6">
+          <input type="checkbox" checked={faturado} onChange={(e) => setFaturado(e.target.checked)} />
+          <span className="text-xs font-semibold" style={{ color: COLORS.inkMuted }}>Faturado (sai da lista de fechamento)</span>
+        </label>
       </div>
       <div className="flex gap-2 flex-wrap">
         <button onClick={previewPDF} disabled={!canSave} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
@@ -3240,7 +3245,7 @@ function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabe
           onClick={() => onSave({
             id: initial?.id || uid(), client_name: clientName.trim(), order_number: Number(orderNumber), order_date: orderDate,
             quantity: Number(quantity) || 0, unit_value: Number(unitValue) || 0, total_value: totalValue,
-            label_model: labelModel.trim(), ribbon: ribbon.trim(),
+            label_model: labelModel.trim(), ribbon: ribbon.trim(), faturado: !!faturado,
           })}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
           Salvar pedido
@@ -3921,6 +3926,7 @@ function App() {
   const [fechamentoClientId, setFechamentoClientId] = useState("");
   const [fechamentoMonth, setFechamentoMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedItagOrderIds, setSelectedItagOrderIds] = useState(new Set());
+  const [showFaturados, setShowFaturados] = useState(false);
   const [pettyCashEntries, setPettyCashEntries] = useState([]);
   const [showPettyCashForm, setShowPettyCashForm] = useState(false);
   const [editingPettyCash, setEditingPettyCash] = useState(null);
@@ -8042,6 +8048,7 @@ function App() {
                 const nextOrderNumber = itagOrders.length ? Math.max(...itagOrders.map((o) => Number(o.order_number) || 0)) + 1 : 184;
 
                 const filteredOrders = itagOrders
+                  .filter((o) => showFaturados || !o.faturado)
                   .filter((o) => !fechamentoClientId || o.client_name === fechamentoClientId)
                   .filter((o) => !fechamentoMonth || (o.order_date || "").slice(0, 7) === fechamentoMonth)
                   .sort((a, b) => (Number(a.order_number) || 0) - (Number(b.order_number) || 0));
@@ -8083,6 +8090,10 @@ function App() {
                         <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Mês</span>
                         <input type="month" value={fechamentoMonth} onChange={(e) => setFechamentoMonth(e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }} />
                       </label>
+                      <label className="flex items-center gap-2 sm:mb-2">
+                        <input type="checkbox" checked={showFaturados} onChange={(e) => setShowFaturados(e.target.checked)} />
+                        <span className="text-xs font-semibold" style={{ color: COLORS.inkMuted }}>Mostrar faturados</span>
+                      </label>
                     </div>
 
                     <div className="rounded-xl border p-2.5 flex items-center gap-2 flex-wrap mb-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.015)" }}>
@@ -8117,12 +8128,13 @@ function App() {
                               <th className="text-left p-3 font-bold uppercase">Vr. total</th>
                               <th className="text-left p-3 font-bold uppercase">Etiqueta</th>
                               <th className="text-left p-3 font-bold uppercase">Ribbon</th>
+                              <th className="text-center p-3 font-bold uppercase">Faturado</th>
                               <th className="text-left p-3 font-bold uppercase"></th>
                             </tr>
                           </thead>
                           <tbody>
                             {filteredOrders.map((o, i) => (
-                              <tr key={o.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", background: selectedItagOrderIds.has(o.id) ? "rgba(124,92,255,0.08)" : "transparent" }}>
+                              <tr key={o.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", background: selectedItagOrderIds.has(o.id) ? "rgba(124,92,255,0.08)" : "transparent", opacity: o.faturado ? 0.55 : 1 }}>
                                 <td className="p-3"><input type="checkbox" checked={selectedItagOrderIds.has(o.id)} onChange={() => toggleSelectOne(o.id)} /></td>
                                 <td className="p-3 font-bold">{o.order_number}</td>
                                 <td className="p-3 font-semibold">{o.client_name}</td>
@@ -8132,6 +8144,9 @@ function App() {
                                 <td className="p-3 font-bold">{money(o.total_value)}</td>
                                 <td className="p-3">{o.label_model || "-"}</td>
                                 <td className="p-3">{o.ribbon || "-"}</td>
+                                <td className="p-3 text-center">
+                                  <input type="checkbox" checked={!!o.faturado} onChange={() => handleSaveItagOrder({ ...o, faturado: !o.faturado })} title="Marcar como faturado (some da lista)" />
+                                </td>
                                 <td className="p-3">
                                   <button onClick={() => { setEditingItagOrder(o); setShowItagOrderForm(true); }} className="mr-2">✏️</button>
                                   <button onClick={() => handleDeleteItagOrder(o.id)} style={{ color: COLORS.danger }}>🗑️</button>
@@ -8146,6 +8161,7 @@ function App() {
                               <td className="p-3">{money(unitMedio)}</td>
                               <td className="p-3">{money(somaTotal)}</td>
                               <td className="p-3" colSpan={2}></td>
+                              <td className="p-3"></td>
                               <td className="p-3"></td>
                             </tr>
                           </tfoot>

@@ -6901,6 +6901,31 @@ function App() {
     XLSX.writeFile(wb, `mensalidade-consultas-${monthKey(new Date())}.xlsx`);
   }
 
+  function exportPaymentMethodExcel() {
+    const paidList = clients
+      .filter((c) => !c.cancelled && isInCurrentMonthCycle(c, monthDate) && boletos[c.id]?.paid)
+      .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const rows = paidList.map((c) => {
+      const b = boletos[c.id];
+      const pv = Number(b?.paid_value);
+      return {
+        "Cliente": c.name,
+        "Banco": c.bank_number || "-",
+        "Forma de pagamento": b?.payment_method === "pix" ? "PIX" : b?.payment_method === "boleto" ? "Boleto" : "-",
+        "Valor pago": pv > 0 ? pv : effectiveValue(c, b),
+        "Data do pagamento": b?.paid_date ? fmtDate(b.paid_date) : "-",
+      };
+    });
+    const totalBoleto = paidList.filter((c) => boletos[c.id]?.payment_method === "boleto").reduce((s, c) => { const b = boletos[c.id]; const pv = Number(b?.paid_value); return s + (pv > 0 ? pv : effectiveValue(c, b)); }, 0);
+    const totalPix = paidList.filter((c) => boletos[c.id]?.payment_method === "pix").reduce((s, c) => { const b = boletos[c.id]; const pv = Number(b?.paid_value); return s + (pv > 0 ? pv : effectiveValue(c, b)); }, 0);
+    rows.push({ "Cliente": "TOTAL BOLETO", "Banco": "", "Forma de pagamento": "", "Valor pago": totalBoleto, "Data do pagamento": "" });
+    rows.push({ "Cliente": "TOTAL PIX", "Banco": "", "Forma de pagamento": "", "Valor pago": totalPix, "Data do pagamento": "" });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Boleto x PIX");
+    XLSX.writeFile(wb, `pagamentos-boleto-pix-${monthKey(monthDate)}.xlsx`);
+  }
+
   const vtVrByEmployee = useMemo(() => {
     const map = {};
     vtVrRecords.forEach((r) => {
@@ -10212,7 +10237,7 @@ function App() {
                   const pct = previstoMes > 0 ? Math.round((recebidoMes / previstoMes) * 100) : 0;
                   const kpis = [
                     { label: "Recebido no mês", value: money(recebidoMes), sub: `${pct}% do previsto`, icon: "💰", color: COLORS.success },
-                    { label: "Em aberto", value: money(previstoMes - recebidoMes), sub: `${inadimplentes.length} em atraso`, icon: "⏳", color: COLORS.warn },
+                    { label: "Em aberto", value: money(pendingValue), sub: `${inadimplentes.length} em atraso`, icon: "⏳", color: COLORS.warn },
                     { label: "Clientes ativos", value: String(stats.count), sub: `${stats.countAnnual} anuais`, icon: "👥", color: COLORS.info },
                     { label: "Ticket médio", value: money(stats.count > 0 ? previstoMes / stats.count : 0), sub: "por cliente/mês", icon: "📊", color: COLORS.brandLight },
                   ];
@@ -10450,6 +10475,88 @@ function App() {
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>etiqueta de composição</div>
                 </div>
               </div>
+
+              {(() => {
+                const paidList = clients
+                  .filter((c) => !c.cancelled && isInCurrentMonthCycle(c, monthDate) && boletos[c.id]?.paid)
+                  .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+                const valorPago = (c) => { const b = boletos[c.id]; const pv = Number(b?.paid_value); return pv > 0 ? pv : effectiveValue(c, b); };
+                const boletoList = paidList.filter((c) => boletos[c.id]?.payment_method === "boleto");
+                const pixList = paidList.filter((c) => boletos[c.id]?.payment_method === "pix");
+                const semFormaList = paidList.filter((c) => !boletos[c.id]?.payment_method);
+                const totalBoleto = boletoList.reduce((s, c) => s + valorPago(c), 0);
+                const totalPix = pixList.reduce((s, c) => s + valorPago(c), 0);
+                return (
+                  <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                    <div className="flex items-center justify-between px-4 py-3 flex-wrap gap-2" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                      <div className="text-sm font-bold" style={{ color: COLORS.ink }}>💳 Relatório de Pagamentos — Boleto x PIX — {MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()}</div>
+                      <button onClick={exportPaymentMethodExcel} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4">
+                      <div className="rounded-xl p-3 border" style={{ background: "rgba(59,130,246,0.08)", borderColor: COLORS.info }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>📄 Boleto</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalBoleto)}</div>
+                        <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{boletoList.length} cliente{boletoList.length === 1 ? "" : "s"}</div>
+                      </div>
+                      <div className="rounded-xl p-3 border" style={{ background: "rgba(34,197,94,0.08)", borderColor: COLORS.success }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>📱 PIX</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalPix)}</div>
+                        <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{pixList.length} cliente{pixList.length === 1 ? "" : "s"}</div>
+                      </div>
+                      {semFormaList.length > 0 && (
+                        <div className="rounded-xl p-3 border" style={{ background: "rgba(255,255,255,0.03)", borderColor: COLORS.cardBorder }}>
+                          <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.inkMuted }}>❔ Sem forma definida</div>
+                          <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{semFormaList.length}</div>
+                          <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>pago(s), forma não informada</div>
+                        </div>
+                      )}
+                    </div>
+                    {paidList.length === 0 ? (
+                      <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente pago nesse mês ainda.</div>
+                    ) : (
+                      <table className="w-full text-sm" style={{ color: COLORS.ink }}>
+                        <thead>
+                          <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                            <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                            <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Forma</th>
+                            <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Valor pago</th>
+                            <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Data</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paidList.map((c, i) => {
+                            const b = boletos[c.id];
+                            return (
+                              <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                <td className="px-3 py-2 font-semibold">{c.name}</td>
+                                <td className="px-3 py-2">
+                                  {b?.payment_method === "pix" ? (
+                                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>📱 PIX</span>
+                                  ) : b?.payment_method === "boleto" ? (
+                                    <span className="text-xs font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.info, background: "rgba(59,130,246,0.15)" }}>📄 Boleto</span>
+                                  ) : (
+                                    <span className="text-xs" style={{ color: COLORS.inkFaint }}>-</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 font-bold">{money(valorPago(c))}</td>
+                                <td className="px-3 py-2" style={{ color: COLORS.inkMuted }}>{b?.paid_date ? fmtDate(b.paid_date) : "-"}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                            <td className="px-3 py-2 font-bold">TOTAL</td>
+                            <td className="px-3 py-2"></td>
+                            <td className="px-3 py-2 font-bold">{money(totalBoleto + totalPix + semFormaList.reduce((s, c) => s + valorPago(c), 0))}</td>
+                            <td className="px-3 py-2"></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 <div className="px-4 py-3" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>

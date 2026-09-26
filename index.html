@@ -3940,6 +3940,29 @@ function ClientHistoryModal({ client, onClose }) {
   );
 }
 
+function QuickQuestionnaireModal({ onClose, onSend }) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const canSend = name.trim().length > 0 && phone.trim().length > 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="rounded-2xl p-5 max-w-sm w-full" style={{ background: COLORS.card }} onClick={(e) => e.stopPropagation()}>
+        <div className="text-sm font-bold mb-4" style={{ color: COLORS.ink }}>🔗 Enviar questionário</div>
+        <div className="space-y-2 mb-2">
+          <TextField label="Nome" value={name} onChange={setName} placeholder="Nome do cliente" required />
+          <TextField label="Telefone" value={phone} onChange={(v) => setPhone(maskPhone(v))} placeholder="(11) 91234-5678" required />
+        </div>
+        <div className="flex gap-2 mt-3">
+          <button disabled={!canSend} onClick={() => onSend({ name, phone, contactName: "" })} className="flex-1 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>
+            Enviar
+          </button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function ChangePasswordModal({ onClose, showToast }) {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -4406,6 +4429,7 @@ function App() {
   const [showTechForm, setShowTechForm] = useState(false);
   const [viewingTech, setViewingTech] = useState(null);
   const [editingTech, setEditingTech] = useState(null);
+  const [showQuickQuestModal, setShowQuickQuestModal] = useState(false);
   const [showImplantacaoForm, setShowImplantacaoForm] = useState(false);
   const [editingImplantacao, setEditingImplantacao] = useState(null);
   const [searchImplantacao, setSearchImplantacao] = useState("");
@@ -5055,6 +5079,19 @@ function App() {
       window.open(`https://web.whatsapp.com/send?text=${encodeURIComponent(msg)}`, "_blank");
       showToast("Cliente ainda não tem WhatsApp cadastrado nesta ficha — abrindo sem número.");
     }
+  }
+  async function handleQuickQuestionnaire({ name, phone, contactName }) {
+    const token = uid() + uid();
+    const payload = {
+      id: uid(), client_name: name.trim(), whatsapp: phone.trim() || null, responsavel_atendimento: contactName.trim() || null,
+      quest_token: token, updated_at: new Date().toISOString(), updated_by: session?.user?.email || "desconhecido",
+    };
+    const { error } = await supa.from("tech_implementations").upsert(payload);
+    if (error) { showToast(`Erro ao criar: ${error.message}`); return; }
+    await loadTechImplementations();
+    setShowQuickQuestModal(false);
+    sendQuestionnaireToClient(payload);
+    showToast("Ficha criada e questionário pronto para envio.");
   }
 
   function generateTechImplementationPDF(t) {
@@ -9232,7 +9269,8 @@ function App() {
                 return (
                   <>
                     {!isTech && (
-                      <div className="flex justify-end mb-3">
+                      <div className="flex justify-end gap-2 mb-3">
+                        <button onClick={() => setShowQuickQuestModal(true)} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.brand, color: COLORS.brand }}>🔗 Enviar questionário</button>
                         <button onClick={() => { setEditingTech(null); setShowTechForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova ficha técnica</button>
                       </div>
                     )}
@@ -10796,6 +10834,7 @@ function App() {
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-lg" style={{ background: COLORS.card, border: `1px solid ${COLORS.cardBorder}` }}>{toast}</div>}
       {pixModal && <PixQRModal {...pixModal} onClose={() => setPixModal(null)} />}
       {viewingTech && <TechImplementationViewer t={viewingTech} onClose={() => setViewingTech(null)} />}
+      {showQuickQuestModal && <QuickQuestionnaireModal onClose={() => setShowQuickQuestModal(false)} onSend={handleQuickQuestionnaire} />}
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} showToast={showToast} />}
       {selectedCalendarDay && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setSelectedCalendarDay(null)}>

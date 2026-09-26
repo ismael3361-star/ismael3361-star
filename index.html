@@ -357,15 +357,18 @@ function romaneioComissao(r) {
 
 function clientDueDisplay(c, monthDate) {
   // "next_due_date" é uma data fixa (usada normalmente só pro 1º vencimento do cliente).
-  // Só deve valer como exibição quando for realmente do mês que está sendo visto na tela —
-  // senão ela ficaria travada mostrando sempre o mesmo mês/ano, mesmo depois que ele já passou.
+  const ref = monthDate || new Date();
   if (c?.next_due_date) {
     const nd = new Date(c.next_due_date + "T00:00:00");
-    const ref = monthDate || new Date();
-    if (nd.getFullYear() === ref.getFullYear() && nd.getMonth() === ref.getMonth()) return fmtDate(c.next_due_date);
+    const ndKey = nd.getFullYear() * 12 + nd.getMonth();
+    const refKey = ref.getFullYear() * 12 + ref.getMonth();
+    // Se a 1ª cobrança é no mês exibido, ou ainda está por vir (mês futuro), mostra a data real dela —
+    // nunca "inventa" uma data neste mês a partir do dia de vencimento, senão parece que um cliente
+    // novo (cuja 1ª cobrança só é mês que vem, por exemplo) já venceria agora.
+    if (ndKey >= refKey) return fmtDate(c.next_due_date);
+    // Se o mês da 1ª cobrança já passou, a cobrança agora é recorrente pelo dia de vencimento cadastrado.
   }
   if (c?.due_day) {
-    const ref = monthDate || new Date();
     const dia = String(c.due_day).padStart(2, "0");
     const mes = String(ref.getMonth() + 1).padStart(2, "0");
     return `${dia}/${mes}/${ref.getFullYear()}`;
@@ -7218,8 +7221,12 @@ function App() {
     const activeClients = filteredClients.filter((c) => !c.cancelled && !c.annual && (c.bank_number || (Number(c.value) || 0) > 0));
     let arr;
     if (statusFilter === "todos") arr = activeClients;
-    else if (statusFilter === "em_breve") arr = activeClients.filter((c) => isDueSoon(c, boletos[c.id], monthDate));
-    else arr = activeClients.filter((c) => computeStatus(c, boletos[c.id], monthDate) === statusFilter);
+    // Nos demais filtros (Em aberto, Atrasados, Vence em breve, Enviados, Pagos), um cliente cuja
+    // 1ª cobrança só começa num mês futuro (next_due_date à frente do mês exibido) ainda não entrou
+    // no ciclo deste mês — não deve aparecer nesses filtros, senão parece que ele já venceu/está em
+    // aberto sem nunca ter tido uma cobrança de fato neste mês.
+    else if (statusFilter === "em_breve") arr = activeClients.filter((c) => isInCurrentMonthCycle(c, monthDate) && isDueSoon(c, boletos[c.id], monthDate));
+    else arr = activeClients.filter((c) => isInCurrentMonthCycle(c, monthDate) && computeStatus(c, boletos[c.id], monthDate) === statusFilter);
     return [...arr].sort((a, b) => (a.bank_number || "").localeCompare(b.bank_number || "", "pt-BR", { numeric: true }));
   }, [filteredClients, boletos, statusFilter, monthDate]);
   useEffect(() => { setBoletosPage(1); }, [search, statusFilter, monthDate]);
@@ -7259,7 +7266,7 @@ function App() {
   }, [clients, boletos, monthDate]);
 
   const dueSoonNotSent = useMemo(() => {
-    return clients.filter((c) => !c.cancelled && !c.annual && isDueSoon(c, boletos[c.id], monthDate) && !boletos[c.id]?.sent_whatsapp && !boletos[c.id]?.sent_email);
+    return clients.filter((c) => !c.cancelled && !c.annual && isInCurrentMonthCycle(c, monthDate) && isDueSoon(c, boletos[c.id], monthDate) && !boletos[c.id]?.sent_whatsapp && !boletos[c.id]?.sent_email);
   }, [clients, boletos, monthDate]);
 
   const paidValue = useMemo(() => clients
@@ -7385,10 +7392,10 @@ function App() {
     { id: "todos", label: "Todos" }, { id: "pendente", label: "Em aberto" }, { id: "atrasado", label: "Atrasados" },
     { id: "em_breve", label: "Vence em breve" }, { id: "enviado", label: "Enviados" }, { id: "pago", label: "Pagos" },
   ];
-  const bulkTargets = filteredByStatus.filter((c) => c.phone && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
-  const bulkTargetsEmail = filteredByStatus.filter((c) => c.email && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
-  const quickWaTargets = clients.filter((c) => c.phone && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
-  const quickEmailTargets = clients.filter((c) => c.email && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
+  const bulkTargets = filteredByStatus.filter((c) => c.phone && isInCurrentMonthCycle(c, monthDate) && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
+  const bulkTargetsEmail = filteredByStatus.filter((c) => c.email && isInCurrentMonthCycle(c, monthDate) && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
+  const quickWaTargets = clients.filter((c) => c.phone && isInCurrentMonthCycle(c, monthDate) && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
+  const quickEmailTargets = clients.filter((c) => c.email && isInCurrentMonthCycle(c, monthDate) && ["pendente", "atrasado"].includes(computeStatus(c, boletos[c.id], monthDate)));
 
   return (
     <div className="h-screen w-full flex overflow-hidden" style={{ background: "transparent", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif" }}>

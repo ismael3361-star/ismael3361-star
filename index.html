@@ -7569,11 +7569,11 @@ function App() {
         )}
 
         <div className="rounded-2xl p-2.5 flex items-center gap-2.5" style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.12), rgba(155,130,255,0.06))", border: `1px solid ${COLORS.cardBorder}` }}>
-          <Avatar name={ROLE_LABELS[userRole] || "Usuário"} size={36} />
-          <div className="hidden sm:block min-w-0 flex-1">
-            <div className="text-xs font-bold truncate" style={{ color: COLORS.ink }}>{ROLE_LABELS[userRole] || "Usuário"}</div>
+          <Avatar name={ROLE_LABELS[userRole] || "Usuário"} size={32} />
+          <div className="hidden sm:flex min-w-0 flex-1 flex-col justify-center gap-0.5">
+            <div className="text-[11px] font-bold truncate leading-tight" style={{ color: COLORS.ink }}>{ROLE_LABELS[userRole] || "Usuário"}</div>
             {!["tecnico", "migracao"].includes(userRole) && (
-              <button onClick={() => setShowChangePassword(true)} className="text-[10px] font-semibold flex items-center gap-1 hover:underline" style={{ color: COLORS.brandLight }}>🔑 Trocar senha</button>
+              <button onClick={() => setShowChangePassword(true)} className="text-[10px] font-semibold flex items-center gap-1 hover:underline leading-tight self-start" style={{ color: COLORS.brandLight }}>🔑 Trocar senha</button>
             )}
           </div>
           <button onClick={() => supa.auth.signOut()} className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: "rgba(239,68,68,0.12)", color: COLORS.danger, fontSize: 14 }} title="Sair do sistema"

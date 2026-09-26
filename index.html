@@ -7573,7 +7573,7 @@ function App() {
           <div className="hidden sm:flex min-w-0 flex-1 flex-col justify-center gap-0.5">
             <div className="text-[11px] font-bold truncate leading-tight" style={{ color: COLORS.ink }}>{ROLE_LABELS[userRole] || "Usuário"}</div>
             {!["tecnico", "migracao"].includes(userRole) && (
-              <button onClick={() => setShowChangePassword(true)} className="text-[10px] font-semibold flex items-center gap-1 hover:underline leading-tight self-start" style={{ color: COLORS.brandLight }}>🔑 Trocar senha</button>
+              <button onClick={() => setShowChangePassword(true)} className="text-[9px] font-semibold hover:underline leading-tight self-start whitespace-nowrap" style={{ color: COLORS.brandLight }}>Trocar senha</button>
             )}
           </div>
           <button onClick={() => supa.auth.signOut()} className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: "rgba(239,68,68,0.12)", color: COLORS.danger, fontSize: 14 }} title="Sair do sistema"

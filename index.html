@@ -7288,7 +7288,9 @@ function App() {
       return s + (pv > 0 ? pv : effectiveValue(c, b));
     }, 0), [clients, boletos, monthDate]);
   const totalPrevisto = stats.totalMonthly;
-  const pendingValue = totalPrevisto - paidValue;
+  const pendingValue = useMemo(() => clients
+    .filter((c) => isInCurrentMonthCycle(c, monthDate) && !boletos[c.id]?.paid)
+    .reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos, monthDate]);
   const yearTotal = useMemo(() => yearHistory.reduce((s, h) => s + (h.pago || 0), 0), [yearHistory]);
   const momChange = prevMonthPaid > 0 ? ((paidValue - prevMonthPaid) / prevMonthPaid) * 100 : (paidValue > 0 ? 100 : 0);
   const overdueValue = useMemo(() => clients.filter((c) => isInCurrentMonthCycle(c, monthDate) && computeStatus(c, boletos[c.id], monthDate) === "atrasado").reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0), [clients, boletos, monthDate]);
@@ -8033,11 +8035,16 @@ function App() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <input type="checkbox"
-                  checked={filteredByStatus.length > 0 && filteredByStatus.every((c) => selectedIds.has(c.id))}
-                  onChange={(e) => setSelectedIds(e.target.checked ? new Set(filteredByStatus.map((c) => c.id)) : new Set())} />
-                <span className="text-xs font-semibold" style={{ color: COLORS.inkMuted }}>Selecionar todos deste filtro</span>
+              <div className="flex items-center justify-between gap-2 mb-3 px-1 flex-wrap">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox"
+                    checked={filteredByStatus.length > 0 && filteredByStatus.every((c) => selectedIds.has(c.id))}
+                    onChange={(e) => setSelectedIds(e.target.checked ? new Set(filteredByStatus.map((c) => c.id)) : new Set())} />
+                  <span className="text-xs font-semibold" style={{ color: COLORS.inkMuted }}>Selecionar todos deste filtro</span>
+                </label>
+                <span className="text-xs font-bold" style={{ color: COLORS.ink }}>
+                  Total do filtro ({filteredByStatus.length} cliente{filteredByStatus.length === 1 ? "" : "s"}): {money(filteredByStatus.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}
+                </span>
               </div>
 
               <div className="rounded-2xl border divide-y overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>

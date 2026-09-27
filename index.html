@@ -3499,32 +3499,40 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
   const [quantity, setQuantity] = useState(initial?.quantity ?? "");
   const [installments, setInstallments] = useState(initial?.installments?.length ? initial.installments : [{ due_date: "", value: "" }]);
   const [showExtraInstallments, setShowExtraInstallments] = useState((initial?.installments?.length || 1) > 1);
-  const [paidValue, setPaidValue] = useState(initial?.paid_value ?? "");
-  const [paymentDate, setPaymentDate] = useState(initial?.payment_date || "");
+  const [totalFaturado, setTotalFaturado] = useState(initial?.total_faturado ?? initial?.paid_value ?? initial?.boleto_value ?? "");
+  const [dataFaturamento, setDataFaturamento] = useState(initial?.data_faturamento || initial?.payment_date || "");
+  const [numParcelas, setNumParcelas] = useState(initial?.num_parcelas || (initial?.installments?.length || 1));
+  const [diasEntreParcelas, setDiasEntreParcelas] = useState(initial?.dias_entre_parcelas ?? 15);
   const [status, setStatus] = useState(initial?.status || "ABERTO");
 
   function updateInst(i, field, val) { setInstallments((prev) => prev.map((it, idx) => (idx === i ? { ...it, [field]: val } : it))); }
   function addInst() { setInstallments((prev) => [...prev, { due_date: "", value: "", paid: false }]); }
   function removeInst(i) { setInstallments((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev)); }
-  function toggleInstPaid(i) {
-    setInstallments((prev) => {
-      const next = prev.map((it, idx) => (idx === i ? { ...it, paid: !it.paid } : it));
-      const paidSum = next.filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
-      setPaidValue(paidSum.toFixed(2));
-      return next;
-    });
-  }
-  function fillFromQty() {
-    const total = (Number(quantity) || 0) * (Number(unitValue) || 0);
-    setInstallments((prev) => {
-      if (prev.length === 1) return [{ ...prev[0], value: total.toFixed(2) }];
-      const each = total / prev.length;
-      return prev.map((it) => ({ ...it, value: each.toFixed(2) }));
-    });
+  function toggleInstPaid(i) { setInstallments((prev) => prev.map((it, idx) => (idx === i ? { ...it, paid: !it.paid } : it))); }
+  function fillFromQty() { setTotalFaturado(((Number(quantity) || 0) * (Number(unitValue) || 0)).toFixed(2)); }
+
+  function gerarParcelas() {
+    const n = Math.max(1, Number(numParcelas) || 1);
+    const dias = Math.max(0, Number(diasEntreParcelas) || 0);
+    const total = Number(totalFaturado) || 0;
+    const base = dataFaturamento ? new Date(dataFaturamento + "T00:00:00") : new Date();
+    const each = Math.floor((total / n) * 100) / 100;
+    const rows = [];
+    let acumulado = 0;
+    for (let i = 0; i < n; i++) {
+      const d = new Date(base);
+      d.setDate(d.getDate() + i * dias);
+      const val = i === n - 1 ? Math.round((total - acumulado) * 100) / 100 : each;
+      acumulado += val;
+      rows.push({ due_date: d.toISOString().slice(0, 10), value: val.toFixed(2), paid: false });
+    }
+    setInstallments(rows);
+    setShowExtraInstallments(n > 1);
   }
 
   const boletoValue = installments.reduce((s, it) => s + (Number(it.value) || 0), 0);
-  const openValue = Math.max(0, boletoValue - (Number(paidValue) || 0));
+  const paidValue = installments.filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
+  const openValue = Math.max(0, boletoValue - paidValue);
   const dueDate = installments[0]?.due_date || "";
   const canSave = clientName.trim() && Number(quantity) > 0;
 
@@ -3535,10 +3543,10 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
         <TextField label="Cliente" value={clientName} onChange={setClientName} placeholder="Ex: Melanina" required />
         <TextField label="Valor unitário de venda" value={unitValue} onChange={setUnitValue} type="number" placeholder="0.31" />
         <TextField label="Quantidade" value={quantity} onChange={setQuantity} type="number" placeholder="2654" />
-        <TextField label="Valor pago (soma das parcelas marcadas)" value={paidValue} onChange={setPaidValue} type="number" placeholder="0" />
+        <TextField label="Valor total faturado" value={totalFaturado} onChange={setTotalFaturado} type="number" placeholder="0" />
         <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pagamento</span>
-          <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do faturamento</span>
+          <input type="date" value={dataFaturamento} onChange={(e) => setDataFaturamento(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
         </label>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Situação</span>
@@ -3546,6 +3554,21 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
             {ITAG_STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </label>
+      </div>
+
+      <div className="rounded-lg p-2.5" style={{ background: "rgba(124,92,255,0.08)" }}>
+        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Gerar parcelas automaticamente</div>
+        <div className="flex gap-2 items-end flex-wrap">
+          <div className="w-32">
+            <TextField label="Qtd. de parcelas" value={numParcelas} onChange={setNumParcelas} type="number" placeholder="3" />
+          </div>
+          <div className="w-40">
+            <TextField label="Dias entre parcelas" value={diasEntreParcelas} onChange={setDiasEntreParcelas} type="number" placeholder="15" />
+          </div>
+          <button type="button" onClick={gerarParcelas} disabled={!(Number(totalFaturado) > 0)} className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>🔄 Gerar parcelas</button>
+          <button type="button" onClick={fillFromQty} className="px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Calcular valor total (qtd × unitário)</button>
+        </div>
+        <div className="text-[11px] mt-1.5" style={{ color: COLORS.inkFaint }}>Divide o "Valor total faturado" em partes iguais, com vencimentos espaçados a partir da "Data do faturamento".</div>
       </div>
 
       <div>
@@ -3566,6 +3589,7 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
           <div className="space-y-2">
             {installments.map((it, i) => (
               <div key={i} className="flex gap-2 items-center flex-wrap">
+                <span className="text-xs font-bold w-6 shrink-0" style={{ color: COLORS.inkMuted }}>{i + 1}ª</span>
                 <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
                 <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor da parcela" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
                 <button type="button" onClick={() => toggleInstPaid(i)} className="text-xs font-bold px-3 py-2 rounded-lg border shrink-0" style={{ borderColor: it.paid ? COLORS.success : COLORS.cardBorder, color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.12)" : "transparent" }}>
@@ -3581,15 +3605,15 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
           {!showExtraInstallments ? (
             <button type="button" onClick={() => { setShowExtraInstallments(true); addInst(); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📑 Tem mais de uma parcela? Clique aqui</button>
           ) : (
-            <>
-              <button type="button" onClick={addInst} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar parcela</button>
-              <button type="button" onClick={fillFromQty} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Calcular (qtd × unitário) e dividir nas parcelas</button>
-            </>
+            <button type="button" onClick={addInst} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar parcela manualmente</button>
           )}
         </div>
       </div>
 
-      <div className="text-sm font-bold pt-2 border-t" style={{ borderColor: COLORS.cardBorder, color: COLORS.warn }}>Em aberto: {fmtMoney(openValue)}</div>
+      <div className="flex items-center justify-between text-sm font-bold pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <span style={{ color: COLORS.success }}>Pago: {fmtMoney(paidValue)}</span>
+        <span style={{ color: COLORS.warn }}>Em aberto: {fmtMoney(openValue)}</span>
+      </div>
 
       <div className="flex gap-2">
         <button
@@ -3597,8 +3621,11 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
           onClick={() => onSave({
             id: initial?.id || uid(), client_name: clientName.trim(), due_date: dueDate || null,
             unit_value: Number(unitValue) || 0, quantity: Number(quantity) || 0,
-            installments: installments.filter((it) => it.due_date || Number(it.value) > 0).map((it) => ({ due_date: it.due_date || null, value: Number(it.value) || 0 })),
-            boleto_value: boletoValue, paid_value: Number(paidValue) || 0, open_value: openValue, payment_date: paymentDate || null, status,
+            installments: installments.filter((it) => it.due_date || Number(it.value) > 0).map((it) => ({ due_date: it.due_date || null, value: Number(it.value) || 0, paid: !!it.paid })),
+            boleto_value: boletoValue, paid_value: paidValue, open_value: openValue,
+            total_faturado: Number(totalFaturado) || 0, data_faturamento: dataFaturamento || null,
+            num_parcelas: Number(numParcelas) || 1, dias_entre_parcelas: Number(diasEntreParcelas) || 0,
+            payment_date: dataFaturamento || null, status,
           })}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
           Salvar faturamento

@@ -454,16 +454,24 @@ function isDueSoon(client, b, monthDate) {
   const d = daysUntilDue(client, monthDate);
   return d !== null && d >= 0 && d <= 3;
 }
-// Um cliente só "conta" no previsto/em aberto/atrasado deste mês se: não é anual, não está cancelado,
-// tem dia de vencimento cadastrado, e (se tiver "próxima data de vencimento") ela não cai num mês futuro.
+// Um cliente só "conta" no previsto/em aberto/atrasado deste mês se: não é anual,
+// tem dia de vencimento cadastrado, (se tiver "próxima data de vencimento") ela não cai num mês futuro,
+// e — se foi cancelado — o mês exibido não é posterior ao mês do cancelamento (cancelamento só deixa de
+// contar a PARTIR do mês seguinte, pra não sumir com meses já pagos antes de cancelar).
 // Usado para manter os totais do Dashboard (previsto, pago, em aberto, atrasados) todos batendo entre si.
 function isInCurrentMonthCycle(client, monthDate) {
-  if (client.annual || client.cancelled) return false;
+  if (client.annual) return false;
   if (!client.due_day) return false;
+  const monthKey = monthDate.getFullYear() * 12 + monthDate.getMonth();
+  if (client.cancelled) {
+    if (!client.cancelled_at) return false; // cancelado sem data registrada: mantém o comportamento antigo
+    const ca = new Date(client.cancelled_at + "T00:00:00");
+    const cancelKey = ca.getFullYear() * 12 + ca.getMonth();
+    if (monthKey > cancelKey) return false; // só some a partir do mês seguinte ao cancelamento
+  }
   if (client.next_due_date) {
     const nd = new Date(client.next_due_date + "T00:00:00");
     const ndKey = nd.getFullYear() * 12 + nd.getMonth();
-    const monthKey = monthDate.getFullYear() * 12 + monthDate.getMonth();
     if (ndKey > monthKey) return false;
   }
   return true;
@@ -7322,18 +7330,7 @@ function App() {
   }, [clients, boletos, monthDate]);
 
   const paidValue = useMemo(() => clients
-    .filter((c) => {
-      if (c.annual || c.cancelled) return false;
-      if (!boletos[c.id]?.paid) return false;
-      if (!c.due_day) return false;
-      if (c.next_due_date) {
-        const nd = new Date(c.next_due_date + "T00:00:00");
-        const ndKey = nd.getFullYear() * 12 + nd.getMonth();
-        const monthKey = monthDate.getFullYear() * 12 + monthDate.getMonth();
-        if (ndKey > monthKey) return false;
-      }
-      return true;
-    })
+    .filter((c) => isInCurrentMonthCycle(c, monthDate) && boletos[c.id]?.paid)
     .reduce((s, c) => {
       const b = boletos[c.id];
       const pv = Number(b?.paid_value);

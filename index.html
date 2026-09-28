@@ -9324,7 +9324,7 @@ function App() {
           {effectiveTab === "implantacao_tecnica" && (
             <div>
               {(() => {
-                const isTech = userRole === "tecnico" || userRole === "tecnico_migracao";
+                const isTech = userRole === "tecnico";
                 const list = isTech ? techImplementations.filter((t) => t.technician_email === session?.user?.email) : techImplementations;
                 const statusLabel = { concluida: "Concluída", concluida_pendencias: "Concluída c/ pendências", nao_concluida: "Não concluída" };
                 return (

@@ -3518,19 +3518,19 @@ function ConsultationForm({ initial, clients, onSave, onCancel }) {
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
       <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar consulta" : "Nova consulta de CNPJ"}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <TextField label="CNPJ consultado" value={cnpj} onChange={(v) => setCnpj(maskCNPJ(v))} placeholder="00.000.000/0000-00" />
         <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da consulta</span>
-          <input type="date" value={queryDate} onChange={(e) => setQueryDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
-        </label>
-        <TextField label="Valor da consulta" value={value} onChange={setValue} type="number" placeholder="0.00" required />
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Loja (cliente) — quem fez a consulta</span>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente (loja) que fez a consulta</span>
           <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
             <option value="">— associar depois —</option>
             {sortedClients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da consulta</span>
+          <input type="date" value={queryDate} onChange={(e) => setQueryDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+        </label>
+        <TextField label="CNPJ consultado" value={cnpj} onChange={(v) => setCnpj(maskCNPJ(v))} placeholder="00.000.000/0000-00" />
+        <TextField label="Valor da consulta" value={value} onChange={setValue} type="number" placeholder="0.00" required />
         <div className="sm:col-span-2">
           <TextField label="Obs." value={notes} onChange={setNotes} placeholder="opcional" />
         </div>
@@ -4434,6 +4434,7 @@ function App() {
   const [showConsultationForm, setShowConsultationForm] = useState(false);
   const [editingConsultation, setEditingConsultation] = useState(null);
   const [consultationsFilter, setConsultationsFilter] = useState("nao_associadas");
+  const [consultationsClosingMonth, setConsultationsClosingMonth] = useState(() => todayStr().slice(0, 7));
   const [busyId, setBusyId] = useState(null);
   const [toast, setToast] = useState(null);
   const [history, setHistory] = useState([]);
@@ -8421,10 +8422,59 @@ function App() {
                 const totalNaoAssociadas = naoAssociadas.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
                 const lag = consultationsLagMonth(monthDate);
                 const listShown = consultationsFilter === "nao_associadas" ? naoAssociadas : consultationsFilter === "associadas" ? associadas : consultations;
+                const clientName = (id) => clients.find((c) => c.id === id)?.name || null;
+                const closingRows = consultations.filter((cq) => (cq.query_date || "").slice(0, 7) === consultationsClosingMonth);
+                const closingByClient = {};
+                closingRows.forEach((cq) => {
+                  const key = cq.client_id || "__sem_cliente__";
+                  if (!closingByClient[key]) closingByClient[key] = { client_id: cq.client_id, name: cq.client_id ? clientName(cq.client_id) : "— sem associação —", count: 0, total: 0 };
+                  closingByClient[key].count += 1;
+                  closingByClient[key].total += Number(cq.value) || 0;
+                });
+                const closingList = Object.values(closingByClient).sort((a, b) => b.total - a.total);
+                const closingTotal = closingList.reduce((s, r) => s + r.total, 0);
                 return (
                   <>
                     <div className="rounded-xl p-3 mb-4 text-xs" style={{ background: "rgba(124,92,255,0.08)", border: `1px solid ${COLORS.cardBorder}`, color: COLORS.inkMuted }}>
                       💡 O boleto com vencimento em <b style={{ color: COLORS.ink }}>{MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()}</b> cobra as consultas de <b style={{ color: COLORS.ink }}>{MONTHS_PT[lag.getMonth()]}/{lag.getFullYear()}</b> (defasagem de 2 meses, já que o boleto é gerado antes do fechamento do mês anterior).
+                    </div>
+
+                    <div className="rounded-2xl border p-4 mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                        <div className="text-sm font-bold" style={{ color: COLORS.ink }}>📊 Fechamento do mês — quanto cada cliente consultou</div>
+                        <input type="month" value={consultationsClosingMonth} onChange={(e) => setConsultationsClosingMonth(e.target.value)} className="rounded-lg border px-3 py-1.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+                      </div>
+                      {closingList.length === 0 ? (
+                        <div className="text-xs py-4 text-center" style={{ color: COLORS.inkMuted }}>Nenhuma consulta lançada nesse mês.</div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr style={{ color: COLORS.inkMuted }}>
+                                <th className="text-left px-2 py-1.5 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-xs uppercase tracking-wide">Qtd. consultas</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-xs uppercase tracking-wide">Valor total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {closingList.map((r) => (
+                                <tr key={r.client_id || "sem"} style={{ borderTop: `1px solid ${COLORS.cardBorder}` }}>
+                                  <td className="px-2 py-1.5" style={{ color: r.client_id ? COLORS.ink : COLORS.warn }}>{r.name}</td>
+                                  <td className="px-2 py-1.5" style={{ color: COLORS.inkMuted }}>{r.count}</td>
+                                  <td className="px-2 py-1.5 font-semibold" style={{ color: COLORS.brandLight }}>{money(r.total)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                            <tfoot>
+                              <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                                <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.ink }}>TOTAL</td>
+                                <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.ink }}>{closingRows.length}</td>
+                                <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.brandLight }}>{money(closingTotal)}</td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
@@ -8459,8 +8509,9 @@ function App() {
                           <div key={cq.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                             <div>
                               <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
-                                {cq.cnpj || "CNPJ não informado"}
+                                {cq.client_id ? clientName(cq.client_id) : <span style={{ color: COLORS.warn }}>— sem associação —</span>}
                                 <span className="text-[11px] font-normal" style={{ color: COLORS.inkMuted }}>{fmtDate(cq.query_date)}</span>
+                                <span className="text-[11px] font-normal" style={{ color: COLORS.inkMuted }}>{cq.cnpj || "CNPJ não informado"}</span>
                                 <span className="text-xs font-bold" style={{ color: COLORS.brandLight }}>{money(cq.value)}</span>
                               </div>
                               {cq.notes && <div className="text-xs mt-0.5" style={{ color: COLORS.inkMuted }}>{cq.notes}</div>}

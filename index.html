@@ -5698,7 +5698,8 @@ function App() {
       window.open(url, "_blank");
     } catch (e) { showToast("Erro ao gerar o recibo."); console.error(e); }
   }
-  function exportPayrollExcel(list) {
+  function exportPayrollExcel(fullList) {
+    const list = [...fullList].sort((a, b) => (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
     const rows = list.map((r) => ({
       "Funcionário": r.employee_name, "Cargo": r.employee_cargo || "-", "Tipo": r.is_advance ? "Vale" : "Folha",
       "Referência": r.reference_month || "-", "Pagamento": fmtDate(r.payment_date),
@@ -5713,7 +5714,11 @@ function App() {
     XLSX.writeFile(wb, `folha-pagamento-${todayStr()}.xlsx`);
   }
   function exportPayrollPDF(fullList) {
-    const list = fullList.filter((r) => !r.paid);
+    const list = fullList.filter((r) => !r.paid).sort((a, b) => (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
+    if (list.length === 0) {
+      alert("Não há pagamentos em aberto para gerar o PDF.");
+      return;
+    }
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape" });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
@@ -9629,10 +9634,11 @@ function App() {
           {effectiveTab === "folha" && (
             <div>
               {(() => {
-                const pagamentos = payrollRecords.filter((r) => !r.is_advance);
-                const vales = payrollRecords.filter((r) => r.is_advance);
-                const totalPendente = payrollRecords.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.net_total) || 0), 0);
-                const totalPago = payrollRecords.filter((r) => r.paid).reduce((s, r) => s + (Number(r.net_total) || 0), 0);
+                const payrollRecordsSorted = [...payrollRecords].sort((a, b) => (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
+                const pagamentos = payrollRecordsSorted.filter((r) => !r.is_advance);
+                const vales = payrollRecordsSorted.filter((r) => r.is_advance);
+                const totalPendente = payrollRecordsSorted.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.net_total) || 0), 0);
+                const totalPago = payrollRecordsSorted.filter((r) => r.paid).reduce((s, r) => s + (Number(r.net_total) || 0), 0);
                 const mask = money;
                 const activeEmployees = employees.filter((e) => e.active !== false);
                 return (
@@ -9660,10 +9666,10 @@ function App() {
                       <button onClick={() => setPayrollSubTab("pagamentos")} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: payrollSubTab === "pagamentos" ? COLORS.brand : "transparent", color: payrollSubTab === "pagamentos" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>💼 Pagamentos</button>
                       <button onClick={() => setPayrollSubTab("funcionarios")} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: payrollSubTab === "funcionarios" ? COLORS.brand : "transparent", color: payrollSubTab === "funcionarios" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>👥 Funcionários</button>
                       <div className="ml-auto flex gap-2">
-                        {payrollSubTab === "pagamentos" && payrollRecords.length > 0 && (
+                        {payrollSubTab === "pagamentos" && payrollRecordsSorted.length > 0 && (
                           <>
-                            <button onClick={() => exportPayrollExcel(payrollRecords)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
-                            <button onClick={() => exportPayrollPDF(payrollRecords)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                            <button onClick={() => exportPayrollExcel(payrollRecordsSorted)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
+                            <button onClick={() => exportPayrollPDF(payrollRecordsSorted)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                           </>
                         )}
                         <button onClick={() => { if (payrollSubTab === "pagamentos") { setEditingPayroll(null); setShowPayrollForm(true); } else { setEditingEmployee(null); setShowEmployeeForm(true); } }}
@@ -9678,9 +9684,9 @@ function App() {
                         {showPayrollForm && <div className="mb-4"><PayrollForm initial={editingPayroll} employees={employees} onSave={handleSavePayroll} onCancel={() => { setShowPayrollForm(false); setEditingPayroll(null); }} /></div>}
                         {!showPayrollForm && (
                           <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                            {payrollRecords.length === 0 ? (
+                            {payrollRecordsSorted.length === 0 ? (
                               <div className="p-10 text-center"><div className="text-3xl mb-2">👥</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pagamento lançado ainda.</div></div>
-                            ) : payrollRecords.map((r, i) => (
+                            ) : payrollRecordsSorted.map((r, i) => (
                               <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                                 <div className="flex items-center gap-3">
                                   <Avatar name={r.employee_name || "?"} size={34} />

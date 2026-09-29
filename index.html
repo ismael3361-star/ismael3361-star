@@ -142,7 +142,7 @@ function rgba(hex, alpha) {
 const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
   comercial: ["clientes", "propostas", "romaneio", "agenda"],
-  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes", "caixa"],
+  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes", "caixa", "consultas"],
   operacional: ["compra_tag_rfid", "venda_tag_rfid", "fechamento_rfid", "implantacao_tecnica", "escala"],
   migracao: ["migracoes"],
   tecnico_migracao: ["implantacao_tecnica", "migracoes", "agenda"],
@@ -3505,6 +3505,48 @@ function LunchForm({ initial, onSave, onCancel }) {
     </div>
   );
 }
+function ConsultationForm({ initial, clients, onSave, onCancel }) {
+  const [cnpj, setCnpj] = useState(initial?.cnpj || "");
+  const [queryDate, setQueryDate] = useState(initial?.query_date || todayStr());
+  const [value, setValue] = useState(initial?.value ?? "");
+  const [clientId, setClientId] = useState(initial?.client_id || "");
+  const [notes, setNotes] = useState(initial?.notes || "");
+  const canSave = queryDate && Number(value) > 0;
+  const sortedClients = [...clients].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar consulta" : "Nova consulta de CNPJ"}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TextField label="CNPJ consultado" value={cnpj} onChange={(v) => setCnpj(maskCNPJ(v))} placeholder="00.000.000/0000-00" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da consulta</span>
+          <input type="date" value={queryDate} onChange={(e) => setQueryDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+        </label>
+        <TextField label="Valor da consulta" value={value} onChange={setValue} type="number" placeholder="0.00" required />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Loja (cliente) — quem fez a consulta</span>
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
+            <option value="">— associar depois —</option>
+            {sortedClients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        <div className="sm:col-span-2">
+          <TextField label="Obs." value={notes} onChange={setNotes} placeholder="opcional" />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={() => onSave({ id: initial?.id || uid(), cnpj: cnpj.trim() || null, query_date: queryDate, value: Number(value) || 0, client_id: clientId || null, notes: notes.trim() || null })}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar
+        </button>
+        <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      </div>
+    </div>
+  );
+}
 function ItagBillingForm({ initial, onSave, onCancel }) {
   const [clientName, setClientName] = useState(initial?.client_name || "");
   const [unitValue, setUnitValue] = useState(initial?.unit_value ?? "");
@@ -4388,6 +4430,10 @@ function App() {
   useEffect(() => { if (showForm && clientFormRef.current) clientFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); }, [showForm]);
   const [monthDate, setMonthDate] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [boletos, setBoletos] = useState({});
+  const [consultations, setConsultations] = useState([]);
+  const [showConsultationForm, setShowConsultationForm] = useState(false);
+  const [editingConsultation, setEditingConsultation] = useState(null);
+  const [consultationsFilter, setConsultationsFilter] = useState("nao_associadas");
   const [busyId, setBusyId] = useState(null);
   const [toast, setToast] = useState(null);
   const [history, setHistory] = useState([]);
@@ -4539,6 +4585,45 @@ function App() {
     (data || []).forEach((b) => { map[b.client_id] = b; });
     setBoletos(map);
   }, []);
+  const loadConsultations = useCallback(async () => {
+    const { data } = await supa.from("consultations").select("*").order("query_date", { ascending: false });
+    setConsultations(data || []);
+  }, []);
+  async function handleSaveConsultation(rec) {
+    const { error } = await supa.from("consultations").upsert(rec);
+    if (error) { showToast(`Erro ao salvar consulta: ${error.message}`); throw error; }
+    await loadConsultations();
+    setShowConsultationForm(false); setEditingConsultation(null);
+    showToast("Consulta salva.");
+  }
+  async function handleDeleteConsultation(id) {
+    if (!confirm("Excluir esta consulta?")) return;
+    await supa.from("consultations").delete().eq("id", id);
+    await loadConsultations();
+  }
+  async function handleAssociateConsultation(id, clientId) {
+    await supa.from("consultations").update({ client_id: clientId || null }).eq("id", id);
+    await loadConsultations();
+  }
+  // Regra de cobrança: o boleto com vencimento no mês M cobra as consultas do mês M-2
+  // (ex.: boleto de outubro cobra consultas de agosto), pois o boleto é gerado antes
+  // do fechamento do mês anterior (dia 30).
+  function consultationsLagMonth(monthDate) {
+    const d = new Date(monthDate.getFullYear(), monthDate.getMonth() - 2, 1);
+    return d;
+  }
+  function consultationsValueForClient(clientId, monthDate) {
+    if (!clientId) return 0;
+    const lag = consultationsLagMonth(monthDate);
+    const lagKey = lag.getFullYear() * 12 + lag.getMonth();
+    return consultations
+      .filter((cq) => cq.client_id === clientId && cq.query_date)
+      .filter((cq) => {
+        const d = new Date(cq.query_date + "T00:00:00");
+        return (d.getFullYear() * 12 + d.getMonth()) === lagKey;
+      })
+      .reduce((s, cq) => s + (Number(cq.value) || 0), 0);
+  }
   const loadProposals = useCallback(async () => {
     const { data } = await supa.from("proposals").select("*").order("created_at", { ascending: false });
     setProposals(data || []);
@@ -6221,8 +6306,23 @@ function App() {
     doc.save(`almoco-quinta-${monthLabelStr.replace("/", "-")}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); loadConsultations(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
+  // Preenche automaticamente o valor de "Consultas" de cada boleto do mês com a soma das
+  // consultas já associadas àquele cliente (respeitando a defasagem de 2 meses), mas só
+  // quando o campo ainda está vazio e o boleto não foi pago — pra nunca sobrescrever um
+  // valor que já foi conferido/pago. Depois disso, o ajuste manual (ou o botão "aplicar")
+  // segue disponível normalmente.
+  useEffect(() => {
+    if (!session || !clients.length || !consultations.length) return;
+    clients.forEach((c) => {
+      const b = boletos[c.id];
+      if (b?.paid) return;
+      if (Number(b?.consultations_value || 0) > 0) return;
+      const sugestao = consultationsValueForClient(c.id, monthDate);
+      if (sugestao > 0) upsertBoleto(c.id, { consultations_value: sugestao });
+    });
+  }, [session, clients, consultations, boletos, monthDate]);
 
   async function computeMonthTotals(monthDefs) {
     const mks = monthDefs.map((w) => w.mk);
@@ -7562,6 +7662,7 @@ function App() {
               ]},
               { group: "Financeiro", items: [
                 { id: "boletos", label: "Mensalidades", icon: "📄" },
+                { id: "consultas", label: "Consultas", icon: "📞" },
                 { id: "implantacoes", label: "Implantações", icon: "🏗️" },
                 { id: "vtvr", label: "VR e VA", icon: "🎫" },
                 { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
@@ -7672,6 +7773,7 @@ function App() {
                 {effectiveTab === "dashboard" && <>{greetingByHour()}, {displayNameFromEmail(session?.user?.email)}! <span>👋</span></>}
                 {effectiveTab === "clientes" && "Seus clientes"}
                 {effectiveTab === "boletos" && "Mensalidades do mês"}
+                {effectiveTab === "consultas" && "Consultas de CNPJ"}
                 {effectiveTab === "propostas" && "Propostas comerciais"}
                 {effectiveTab === "romaneio" && "Pedido de Etiqueta"}
                 {effectiveTab === "compra_tag_rfid" && "Compra Tag RFID"}
@@ -8164,12 +8266,22 @@ function App() {
                       </div>
 
                       {/* LINHA 2: valores em grade alinhada */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 pl-[54px]">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-1 pl-[54px]">
                         <MiniMoneyField label="Mensalidade" value={c.value} fieldKey={`val-${c.id}`} onSave={(v) => handleUpdateClientValue(c.id, v)} />
                         <MiniMoneyField label="Consultas" value={b?.consultations_value} fieldKey={`cons-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { consultations_value: v })} />
                         <MiniMoneyField label="VPN" value={b?.vpn_value} fieldKey={`vpn-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { vpn_value: v })} title="Cobrança de VPN nesse mês" />
                         <MiniMoneyField label="Troca servidor" value={b?.server_change_value} fieldKey={`srv-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { server_change_value: v })} title="Cobrança de troca de servidor nesse mês" />
                       </div>
+                      {(() => {
+                        const sugestaoConsultas = consultationsValueForClient(c.id, monthDate);
+                        if (sugestaoConsultas <= 0 || Number(b?.consultations_value || 0) === sugestaoConsultas) return null;
+                        return (
+                          <div className="pl-[54px] mb-3 -mt-1 flex items-center gap-1.5 text-[11px]" style={{ color: COLORS.brandLight }}>
+                            🔄 Consultas lançadas para este mês: <b>{money(sugestaoConsultas)}</b>
+                            <button onClick={() => upsertBoleto(c.id, { consultations_value: sugestaoConsultas })} className="underline font-semibold">aplicar</button>
+                          </div>
+                        );
+                      })()}
 
                       {/* LINHA 3: bloco de pagamento */}
                       <div className="rounded-lg p-2.5 mb-3 ml-[54px]" style={{ background: b?.paid ? "rgba(34,197,94,0.08)" : "rgba(255,255,255,0.03)" }}>
@@ -8297,6 +8409,77 @@ function App() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {effectiveTab === "consultas" && (
+            <div>
+              {(() => {
+                const naoAssociadas = consultations.filter((cq) => !cq.client_id);
+                const associadas = consultations.filter((cq) => !!cq.client_id);
+                const totalGeral = consultations.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
+                const totalNaoAssociadas = naoAssociadas.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
+                const lag = consultationsLagMonth(monthDate);
+                const listShown = consultationsFilter === "nao_associadas" ? naoAssociadas : consultationsFilter === "associadas" ? associadas : consultations;
+                return (
+                  <>
+                    <div className="rounded-xl p-3 mb-4 text-xs" style={{ background: "rgba(124,92,255,0.08)", border: `1px solid ${COLORS.cardBorder}`, color: COLORS.inkMuted }}>
+                      💡 O boleto com vencimento em <b style={{ color: COLORS.ink }}>{MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()}</b> cobra as consultas de <b style={{ color: COLORS.ink }}>{MONTHS_PT[lag.getMonth()]}/{lag.getFullYear()}</b> (defasagem de 2 meses, já que o boleto é gerado antes do fechamento do mês anterior).
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total lançado</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalGeral)}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Sem associação</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{naoAssociadas.length} · {money(totalNaoAssociadas)}</div>
+                      </div>
+                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Associadas</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{associadas.length}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+                      <button onClick={() => setConsultationsFilter("nao_associadas")} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: consultationsFilter === "nao_associadas" ? COLORS.brand : "transparent", color: consultationsFilter === "nao_associadas" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>🟡 Sem associação ({naoAssociadas.length})</button>
+                      <button onClick={() => setConsultationsFilter("associadas")} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: consultationsFilter === "associadas" ? COLORS.brand : "transparent", color: consultationsFilter === "associadas" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>✅ Associadas</button>
+                      <button onClick={() => setConsultationsFilter("todas")} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: consultationsFilter === "todas" ? COLORS.brand : "transparent", color: consultationsFilter === "todas" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>📋 Todas</button>
+                      <button onClick={() => { setEditingConsultation(null); setShowConsultationForm(true); }} className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova consulta</button>
+                    </div>
+
+                    {showConsultationForm && <div className="mb-4"><ConsultationForm initial={editingConsultation} clients={clients} onSave={handleSaveConsultation} onCancel={() => { setShowConsultationForm(false); setEditingConsultation(null); }} /></div>}
+
+                    {!showConsultationForm && (
+                      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        {listShown.length === 0 ? (
+                          <div className="p-10 text-center"><div className="text-3xl mb-2">📞</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma consulta por aqui.</div></div>
+                        ) : listShown.map((cq, i) => (
+                          <div key={cq.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <div>
+                              <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
+                                {cq.cnpj || "CNPJ não informado"}
+                                <span className="text-[11px] font-normal" style={{ color: COLORS.inkMuted }}>{fmtDate(cq.query_date)}</span>
+                                <span className="text-xs font-bold" style={{ color: COLORS.brandLight }}>{money(cq.value)}</span>
+                              </div>
+                              {cq.notes && <div className="text-xs mt-0.5" style={{ color: COLORS.inkMuted }}>{cq.notes}</div>}
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <select value={cq.client_id || ""} onChange={(e) => handleAssociateConsultation(cq.id, e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: cq.client_id ? COLORS.cardBorder : COLORS.warn, background: "#1C2B48", color: COLORS.ink, minWidth: 160 }}>
+                                <option value="">— associar loja —</option>
+                                {[...clients].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              </select>
+                              <button onClick={() => { setEditingConsultation(cq); setShowConsultationForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
+                              <button onClick={() => handleDeleteConsultation(cq.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 

@@ -8427,10 +8427,12 @@ function App() {
                 const closingByClient = {};
                 closingRows.forEach((cq) => {
                   const key = cq.client_id || "__sem_cliente__";
-                  if (!closingByClient[key]) closingByClient[key] = { client_id: cq.client_id, name: cq.client_id ? clientName(cq.client_id) : "— sem associação —", count: 0, total: 0 };
+                  if (!closingByClient[key]) closingByClient[key] = { client_id: cq.client_id, name: cq.client_id ? clientName(cq.client_id) : "— sem associação —", count: 0, total: 0, dates: [] };
                   closingByClient[key].count += 1;
                   closingByClient[key].total += Number(cq.value) || 0;
+                  closingByClient[key].dates.push(cq.query_date);
                 });
+                Object.values(closingByClient).forEach((r) => r.dates.sort());
                 const closingList = Object.values(closingByClient).sort((a, b) => b.total - a.total);
                 const closingTotal = closingList.reduce((s, r) => s + r.total, 0);
                 return (
@@ -8452,6 +8454,7 @@ function App() {
                             <thead>
                               <tr style={{ color: COLORS.inkMuted }}>
                                 <th className="text-left px-2 py-1.5 font-bold text-xs uppercase tracking-wide">Cliente</th>
+                                <th className="text-left px-2 py-1.5 font-bold text-xs uppercase tracking-wide">Datas da consulta</th>
                                 <th className="text-left px-2 py-1.5 font-bold text-xs uppercase tracking-wide">Qtd. consultas</th>
                                 <th className="text-left px-2 py-1.5 font-bold text-xs uppercase tracking-wide">Valor total</th>
                               </tr>
@@ -8460,6 +8463,7 @@ function App() {
                               {closingList.map((r) => (
                                 <tr key={r.client_id || "sem"} style={{ borderTop: `1px solid ${COLORS.cardBorder}` }}>
                                   <td className="px-2 py-1.5" style={{ color: r.client_id ? COLORS.ink : COLORS.warn }}>{r.name}</td>
+                                  <td className="px-2 py-1.5 text-xs" style={{ color: COLORS.inkMuted }}>{r.dates.map((d) => fmtDate(d)).join(", ")}</td>
                                   <td className="px-2 py-1.5" style={{ color: COLORS.inkMuted }}>{r.count}</td>
                                   <td className="px-2 py-1.5 font-semibold" style={{ color: COLORS.brandLight }}>{money(r.total)}</td>
                                 </tr>
@@ -8468,6 +8472,7 @@ function App() {
                             <tfoot>
                               <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
                                 <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.ink }}>TOTAL</td>
+                                <td></td>
                                 <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.ink }}>{closingRows.length}</td>
                                 <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.brandLight }}>{money(closingTotal)}</td>
                               </tr>

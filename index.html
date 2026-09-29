@@ -235,7 +235,7 @@ function generatePixPayload({ key, name, city, value, txid }) {
   let payload = emvField("00", "01") + emvField("01", "11") + merchantAccountInfo + emvField("52", "0000") + emvField("53", "986");
   if (value && Number(value) > 0) payload += emvField("54", Number(value).toFixed(2));
   payload += emvField("58", "BR") + emvField("59", merchantName || "MIREDATA") + emvField("60", merchantCity || "SAO PAULO");
-  const cleanTxid = (txid || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").substring(0, 25);
+  const cleanTxid = String(txid || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").substring(0, 25);
   payload += emvField("62", emvField("05", cleanTxid || "***"));
   payload += "6304";
   return payload + crc16Pix(payload);
@@ -4461,6 +4461,7 @@ function App() {
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [payrollSubTab, setPayrollSubTab] = useState("pagamentos");
+  const [showPaidPayroll, setShowPaidPayroll] = useState(false);
   const [supplierOrders, setSupplierOrders] = useState([]);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
@@ -5678,7 +5679,7 @@ function App() {
 
     if (emp?.pix_key) {
       if (cursorY > 230) { doc.addPage(); cursorY = 20; }
-      const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: rec.net_total, txid: (rec.id || "folha").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
+      const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: rec.net_total, txid: String(rec.id || "folha").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
       const qrData = generatePixQRDataURL(qrPayload, 150);
       if (qrData) {
         try { doc.addImage(qrData, "PNG", 14, cursorY, 22, 22); } catch (e) {}
@@ -5714,7 +5715,8 @@ function App() {
     XLSX.writeFile(wb, `folha-pagamento-${todayStr()}.xlsx`);
   }
   function exportPayrollPDF(fullList) {
-    const list = fullList.filter((r) => !r.paid).sort((a, b) => (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
+    try {
+    const list = (fullList || []).filter((r) => !r.paid).sort((a, b) => (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
     if (list.length === 0) {
       alert("Não há pagamentos em aberto para gerar o PDF.");
       return;
@@ -5748,23 +5750,30 @@ function App() {
       margin: { left: 14, right: 14 },
       columnStyles: { [qrColIndex]: { minCellHeight: 34, cellWidth: 32 } },
       didDrawCell: (data) => {
-        if (data.section !== "body" || data.column.index !== qrColIndex) return;
-        const r = list[data.row.index];
-        const emp = employees.find((e) => e.id === r.employee_id);
-        if (!emp?.pix_key) {
-          doc.setFontSize(7);
-          doc.setTextColor(150);
-          doc.text("sem PIX", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: "center" });
-          return;
-        }
-        const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: r.net_total, txid: (r.id || "folha").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
-        const qrData = generatePixQRDataURL(qrPayload, 150);
-        if (qrData) {
-          try { doc.addImage(qrData, "PNG", data.cell.x + (data.cell.width - 26) / 2, data.cell.y + (data.cell.height - 26) / 2, 26, 26); } catch (e) {}
-        }
+        try {
+          if (data.section !== "body" || data.column.index !== qrColIndex) return;
+          const r = list[data.row.index];
+          if (!r) return;
+          const emp = employees.find((e) => e.id === r.employee_id);
+          if (!emp?.pix_key) {
+            doc.setFontSize(7);
+            doc.setTextColor(150);
+            doc.text("sem PIX", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: "center" });
+            return;
+          }
+          const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: r.net_total, txid: String(r.id || "folha").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
+          const qrData = generatePixQRDataURL(qrPayload, 150);
+          if (qrData) {
+            try { doc.addImage(qrData, "PNG", data.cell.x + (data.cell.width - 26) / 2, data.cell.y + (data.cell.height - 26) / 2, 26, 26); } catch (e) {}
+          }
+        } catch (e) { console.error("Erro ao desenhar QR PIX na folha:", e); }
       },
     });
     doc.save(`folha-pagamento-${todayStr()}.pdf`);
+    } catch (e) {
+      console.error("Erro ao gerar PDF da folha:", e);
+      alert("Não foi possível gerar o PDF: " + (e?.message || e));
+    }
   }
   async function handleSaveVtVr(rec) {
     const { error } = await supa.from("vt_vr_records").upsert(rec);
@@ -5837,7 +5846,7 @@ function App() {
           doc.text("sem PIX", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: "center" });
           return;
         }
-        const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: r.total_value, txid: (r.id || "vtvr").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
+        const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: r.total_value, txid: String(r.id || "vtvr").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
         const qrData = generatePixQRDataURL(qrPayload, 150);
         if (qrData) {
           try { doc.addImage(qrData, "PNG", data.cell.x + (data.cell.width - 26) / 2, data.cell.y + (data.cell.height - 26) / 2, 26, 26); } catch (e) {}
@@ -9682,37 +9691,54 @@ function App() {
                     {payrollSubTab === "pagamentos" && (
                       <>
                         {showPayrollForm && <div className="mb-4"><PayrollForm initial={editingPayroll} employees={employees} onSave={handleSavePayroll} onCancel={() => { setShowPayrollForm(false); setEditingPayroll(null); }} /></div>}
-                        {!showPayrollForm && (
-                          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                            {payrollRecordsSorted.length === 0 ? (
-                              <div className="p-10 text-center"><div className="text-3xl mb-2">👥</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pagamento lançado ainda.</div></div>
-                            ) : payrollRecordsSorted.map((r, i) => (
-                              <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                                <div className="flex items-center gap-3">
-                                  <Avatar name={r.employee_name || "?"} size={34} />
-                                  <div>
-                                    <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
-                                      {r.employee_name}
-                                      {r.employee_cargo && <span className="text-[11px] font-normal" style={{ color: COLORS.inkMuted }}>{r.employee_cargo}</span>}
-                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: r.is_advance ? COLORS.warn : COLORS.brandLight, background: r.is_advance ? "rgba(245,158,11,0.15)" : "rgba(124,92,255,0.15)" }}>{r.is_advance ? "💵 VALE" : "💼 FOLHA"}</span>
-                                    </div>
-                                    <div className="text-xs" style={{ color: COLORS.inkMuted }}>
-                                      Ref. {r.reference_month || "-"} · pagamento {fmtDate(r.payment_date)} · líquido <b style={{ color: COLORS.ink }}>{mask(r.net_total)}</b>
-                                    </div>
+                        {!showPayrollForm && (() => {
+                          const abertoList = payrollRecordsSorted.filter((r) => !r.paid);
+                          const pagoList = payrollRecordsSorted.filter((r) => r.paid);
+                          const renderRow = (r, i) => (
+                            <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                              <div className="flex items-center gap-3">
+                                <Avatar name={r.employee_name || "?"} size={34} />
+                                <div>
+                                  <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
+                                    {r.employee_name}
+                                    {r.employee_cargo && <span className="text-[11px] font-normal" style={{ color: COLORS.inkMuted }}>{r.employee_cargo}</span>}
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: r.is_advance ? COLORS.warn : COLORS.brandLight, background: r.is_advance ? "rgba(245,158,11,0.15)" : "rgba(124,92,255,0.15)" }}>{r.is_advance ? "💵 VALE" : "💼 FOLHA"}</span>
+                                  </div>
+                                  <div className="text-xs" style={{ color: COLORS.inkMuted }}>
+                                    Ref. {r.reference_month || "-"} · pagamento {fmtDate(r.payment_date)} · líquido <b style={{ color: COLORS.ink }}>{mask(r.net_total)}</b>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <button onClick={() => previewReciboPDF(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📄 Recibo</button>
-                                  <button onClick={() => handleTogglePayrollPaid(r)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: r.paid ? COLORS.success : COLORS.cardBorder, color: r.paid ? COLORS.success : COLORS.inkMuted, background: r.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
-                                    {r.paid ? "✓ Pago" : "○ Marcar como pago"}
-                                  </button>
-                                  <button onClick={() => { setEditingPayroll(r); setShowPayrollForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
-                                  <button onClick={() => handleDeletePayroll(r.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
-                                </div>
                               </div>
-                            ))}
-                          </div>
-                        )}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <button onClick={() => previewReciboPDF(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📄 Recibo</button>
+                                <button onClick={() => handleTogglePayrollPaid(r)} className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: r.paid ? COLORS.success : COLORS.cardBorder, color: r.paid ? COLORS.success : COLORS.inkMuted, background: r.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
+                                  {r.paid ? "✓ Pago" : "○ Marcar como pago"}
+                                </button>
+                                <button onClick={() => { setEditingPayroll(r); setShowPayrollForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
+                                <button onClick={() => handleDeletePayroll(r.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                              </div>
+                            </div>
+                          );
+                          return (
+                            <>
+                              <div className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                                <div className="px-4 py-2.5 text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.08)", borderBottom: `1px solid ${COLORS.cardBorder}` }}>🟡 Em aberto ({abertoList.length})</div>
+                                {abertoList.length === 0 ? (
+                                  <div className="p-10 text-center"><div className="text-3xl mb-2">👥</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pagamento em aberto.</div></div>
+                                ) : abertoList.map(renderRow)}
+                              </div>
+                              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                                <button onClick={() => setShowPaidPayroll((v) => !v)} className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.success, background: "rgba(34,197,94,0.08)" }}>
+                                  <span>✅ Pago ({pagoList.length})</span>
+                                  <span>{showPaidPayroll ? "▲ ocultar" : "▼ mostrar"}</span>
+                                </button>
+                                {showPaidPayroll && (pagoList.length === 0 ? (
+                                  <div className="p-10 text-center"><div className="text-3xl mb-2">👥</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pagamento já pago.</div></div>
+                                ) : pagoList.map(renderRow))}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </>
                     )}
 

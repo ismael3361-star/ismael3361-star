@@ -3469,30 +3469,36 @@ function PettyCashForm({ initial, onSave, onCancel }) {
   );
 }
 function LunchForm({ initial, onSave, onCancel }) {
+  const [entryType, setEntryType] = useState(initial?.type || "despesa");
   const [entryDate, setEntryDate] = useState(initial?.entry_date || todayStr());
-  const [amount, setAmount] = useState(initial?.amount ?? "30");
+  const [amount, setAmount] = useState(initial?.amount ?? (initial?.type === "entrada" ? "" : "30"));
   const [employeeCount, setEmployeeCount] = useState(initial?.employee_count ?? "7");
   const [notes, setNotes] = useState(initial?.notes || "");
+  const isEntrada = entryType === "entrada";
   const canSave = entryDate && Number(amount) > 0;
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
-      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar almoço" : "Novo almoço de quinta"}</div>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar lançamento" : "Novo lançamento — Almoço de quinta"}</div>
+      <div className="flex gap-1.5">
+        <button type="button" onClick={() => setEntryType("despesa")} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: !isEntrada ? COLORS.brand : COLORS.cardBorder, background: !isEntrada ? "rgba(124,92,255,0.15)" : "transparent", color: !isEntrada ? COLORS.brandLight : COLORS.inkMuted }}>🍽️ Despesa de almoço</button>
+        <button type="button" onClick={() => setEntryType("entrada")} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: isEntrada ? COLORS.success : COLORS.cardBorder, background: isEntrada ? "rgba(34,197,94,0.15)" : "transparent", color: isEntrada ? COLORS.success : COLORS.inkMuted }}>💵 Entrada de valor</button>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data (quinta-feira)</span>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>{isEntrada ? "Data" : "Data (quinta-feira)"}</span>
           <input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
         </label>
-        <TextField label="Valor" value={amount} onChange={setAmount} type="number" placeholder="30" />
-        <TextField label="Nº de funcionários" value={employeeCount} onChange={setEmployeeCount} type="number" placeholder="7" />
+        <TextField label={isEntrada ? "Valor recebido" : "Valor"} value={amount} onChange={setAmount} type="number" placeholder={isEntrada ? "300" : "30"} />
+        {!isEntrada && <TextField label="Nº de funcionários" value={employeeCount} onChange={setEmployeeCount} type="number" placeholder="7" />}
         <TextField label="Obs." value={notes} onChange={setNotes} placeholder="opcional" />
       </div>
       <div className="flex gap-2">
         <button
           disabled={!canSave}
-          onClick={() => onSave({ id: initial?.id || uid(), entry_date: entryDate, amount: Number(amount) || 0, employee_count: Number(employeeCount) || 0, notes: notes.trim() || null })}
+          onClick={() => onSave({ id: initial?.id || uid(), type: entryType, entry_date: entryDate, amount: Number(amount) || 0, employee_count: isEntrada ? 0 : (Number(employeeCount) || 0), notes: notes.trim() || null })}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
-          Salvar almoço
+          Salvar
         </button>
         <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
       </div>
@@ -6171,7 +6177,7 @@ function App() {
     doc.save(`caixa-${monthLabelStr.replace("/", "-")}.pdf`);
   }
 
-  function exportLunchPDF(rows, monthLabelStr, totalLunch) {
+  function exportLunchPDF(rows, monthLabelStr, totalLunch, totalEntrada, saldo) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
@@ -6180,7 +6186,10 @@ function App() {
     doc.text(`Almoço de quinta — ${monthLabelStr}`, 14, 32);
     doc.setFontSize(9);
     doc.setTextColor(100);
-    doc.text(`Total no mês: ${fmtMoney(totalLunch)}  ·  Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+    const linhaResumo = totalEntrada !== undefined
+      ? `Entrada: ${fmtMoney(totalEntrada)}  ·  Gasto no mês: ${fmtMoney(totalLunch)}  ·  Saldo: ${fmtMoney(saldo)}  ·  Emitido em ${new Date().toLocaleDateString("pt-BR")}`
+      : `Total no mês: ${fmtMoney(totalLunch)}  ·  Emitido em ${new Date().toLocaleDateString("pt-BR")}`;
+    doc.text(linhaResumo, 14, 38);
 
     const body = rows.map((e) => [fmtDate(e.entry_date), fmtMoney(e.amount), e.employee_count, e.notes || "-"]);
 
@@ -6188,7 +6197,7 @@ function App() {
       startY: 44,
       head: [["Data", "Valor", "Funcionários", "Obs."]],
       body,
-      foot: [["TOTAL", fmtMoney(totalLunch), "", ""]],
+      foot: [["TOTAL GASTO", fmtMoney(totalLunch), "", ""]],
       styles: { fontSize: 9 },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
@@ -9074,7 +9083,11 @@ function App() {
                 const saldoCaixa = orcamentoMes - totalSaidas;
 
                 const lunchOfMonth = lunchEntries.filter((e) => (e.entry_date || "").slice(0, 7) === caixaMonth).sort((a, b) => (a.entry_date || "").localeCompare(b.entry_date || ""));
-                const totalLunch = lunchOfMonth.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+                const lunchDespesas = lunchOfMonth.filter((e) => e.type !== "entrada");
+                const lunchEntradas = lunchOfMonth.filter((e) => e.type === "entrada");
+                const totalLunch = lunchDespesas.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+                const totalLunchEntrada = lunchEntradas.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+                const saldoLunch = totalLunchEntrada - totalLunch;
 
                 return (
                   <>
@@ -9165,39 +9178,56 @@ function App() {
 
                     {caixaSubTab === "almoco" && (
                       <div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                           <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                             <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Quintas no mês</div>
-                            <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{lunchOfMonth.length} de {thursdaysInMonth}</div>
+                            <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{lunchDespesas.length} de {thursdaysInMonth}</div>
+                          </div>
+                          <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                            <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Valor de entrada</div>
+                            <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(totalLunchEntrada)}</div>
                           </div>
                           <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                             <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Total gasto no mês</div>
                             <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(totalLunch)}</div>
                           </div>
+                          <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(saldoLunch < 0 ? COLORS.danger : COLORS.success, 0.08)})`, borderColor: COLORS.cardBorder }}>
+                            <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: saldoLunch < 0 ? COLORS.danger : COLORS.success }}>Saldo restante</div>
+                            <div className="text-lg font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{money(saldoLunch)}</div>
+                          </div>
                         </div>
 
                         <div className="flex justify-end gap-2 mb-3">
-                          <button onClick={() => exportLunchPDF(lunchOfMonth, monthLabelStr, totalLunch)} disabled={lunchOfMonth.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
-                          <button onClick={() => { setEditingLunch(null); setShowLunchForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo almoço</button>
+                          <button onClick={() => exportLunchPDF(lunchDespesas, monthLabelStr, totalLunch, totalLunchEntrada, saldoLunch)} disabled={lunchOfMonth.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                          <button onClick={() => { setEditingLunch(null); setShowLunchForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo lançamento</button>
                         </div>
                         {showLunchForm && <div className="mb-4"><LunchForm initial={editingLunch} onSave={handleSaveLunch} onCancel={() => { setShowLunchForm(false); setEditingLunch(null); }} /></div>}
 
                         <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                           {lunchOfMonth.length === 0 ? (
-                            <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum almoço registrado nesse mês.</div>
+                            <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum lançamento registrado nesse mês.</div>
                           ) : (
                             <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                               <thead>
                                 <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                                  <th className="text-left p-3">Data</th><th className="text-left p-3">Valor</th><th className="text-left p-3">Funcionários</th><th className="text-left p-3">Obs.</th><th className="text-left p-3">Comprovante</th><th className="text-left p-3"></th>
+                                  <th className="text-left p-3">Tipo</th><th className="text-left p-3">Data</th><th className="text-left p-3">Valor</th><th className="text-left p-3">Funcionários</th><th className="text-left p-3">Obs.</th><th className="text-left p-3">Comprovante</th><th className="text-left p-3"></th>
                                 </tr>
                               </thead>
                               <tbody>
-                                {lunchOfMonth.map((e, i) => (
-                                  <tr key={e.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                {lunchOfMonth.map((e, i) => {
+                                  const isEntrada = e.type === "entrada";
+                                  return (
+                                  <tr key={e.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", background: isEntrada ? "rgba(34,197,94,0.06)" : "transparent" }}>
+                                    <td className="p-3">
+                                      {isEntrada ? (
+                                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>💵 Entrada</span>
+                                      ) : (
+                                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.15)" }}>🍽️ Despesa</span>
+                                      )}
+                                    </td>
                                     <td className="p-3">{fmtDate(e.entry_date)}</td>
-                                    <td className="p-3 font-bold">{money(e.amount)}</td>
-                                    <td className="p-3">{e.employee_count}</td>
+                                    <td className="p-3 font-bold" style={{ color: isEntrada ? COLORS.success : COLORS.ink }}>{isEntrada ? "+ " : ""}{money(e.amount)}</td>
+                                    <td className="p-3">{isEntrada ? "-" : e.employee_count}</td>
                                     <td className="p-3">{e.notes || "-"}</td>
                                     <td className="p-3">
                                       {e.file_url ? (
@@ -9217,7 +9247,8 @@ function App() {
                                       <button onClick={() => handleDeleteLunch(e.id)} style={{ color: COLORS.danger }}>🗑️</button>
                                     </td>
                                   </tr>
-                                ))}
+                                  );
+                                })}
                               </tbody>
                             </table>
                           )}

@@ -5712,13 +5712,14 @@ function App() {
     XLSX.utils.book_append_sheet(wb, ws, "Folha de Pagamento");
     XLSX.writeFile(wb, `folha-pagamento-${todayStr()}.xlsx`);
   }
-  function exportPayrollPDF(list) {
+  function exportPayrollPDF(fullList) {
+    const list = fullList.filter((r) => !r.paid);
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape" });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
-    doc.text("Folha de Pagamento", 14, 32);
+    doc.text("Folha de Pagamento - Em aberto", 14, 32);
     doc.setFontSize(9);
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);

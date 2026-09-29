@@ -2120,7 +2120,7 @@ function SupplierOrderForm({ initial, onSave, onCancel }) {
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pedido</span>
           <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
         </label>
-        <TextField label="Obs." value={notes} onChange={setNotes} placeholder="Opcional" />
+        <TextField label="Nº da nota fiscal de entrada" value={notes} onChange={setNotes} placeholder="Ex: 21884" />
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Modelo</span>
           <select value={model} onChange={(e) => setModel(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
@@ -5507,7 +5507,7 @@ function App() {
       const pago = (o.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
       const aberto = (o.installments || []).filter((it) => !it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
       return {
-        "Data Pedido": fmtDate(o.order_date), "Obs": o.notes || "-", "Modelo": o.model || "-",
+        "Data Pedido": fmtDate(o.order_date), "Nº NF": o.notes || "-", "Modelo": o.model || "-",
         "Entrada": fmtDate(o.arrival_date), "Quantidade": o.quantity, "Valor Unitário": o.unit_value,
         "Total": o.total_value,
         "Vencimentos": (o.installments || []).map((it) => fmtDate(it.due_date)).join("  "),
@@ -9512,7 +9512,7 @@ function App() {
                                 <span className="flex items-center justify-center rounded-full shrink-0" style={{ width: 34, height: 34, background: "rgba(124,92,255,0.15)", fontSize: 16 }}>🏷️</span>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-bold text-sm" style={{ color: COLORS.ink }}>{o.notes || o.model || "Pedido de etiqueta"}</span>
+                                    <span className="font-bold text-sm" style={{ color: COLORS.ink }}>{o.notes ? `NF ${o.notes}` : (o.model || "Pedido de etiqueta")}</span>
                                     <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ color: tudoPago ? COLORS.success : aberto > 0 ? COLORS.warn : COLORS.inkFaint, background: tudoPago ? "rgba(34,197,94,0.15)" : aberto > 0 ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.05)" }}>
                                       {tudoPago ? "✓ Pago" : aberto > 0 ? "○ Em aberto" : "-"}
                                     </span>

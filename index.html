@@ -4731,6 +4731,7 @@ function App() {
   const [searchImplantacao, setSearchImplantacao] = useState("");
   const [showQuitadas, setShowQuitadas] = useState(false);
   const [pixModal, setPixModal] = useState(null);
+  const [signatureModal, setSignatureModal] = useState(null);
   const [editingNameId, setEditingNameId] = useState(null);
   const [showDetailedReports, setShowDetailedReports] = useState(false);
   const [reportTab, setReportTab] = useState("clientes");
@@ -10386,7 +10387,7 @@ function App() {
                                       {r.receipt_signed_file_url ? (
                                         <a href={r.receipt_signed_file_url} target="_blank" className="underline font-bold" style={{ color: COLORS.success }}>📄 ver recibo assinado</a>
                                       ) : r.receipt_signature && (
-                                        <a href={r.receipt_signature} target="_blank" className="underline font-semibold" style={{ color: COLORS.inkMuted }}>ver assinatura</a>
+                                        <button onClick={() => setSignatureModal(r.receipt_signature)} className="underline font-semibold" style={{ color: COLORS.inkMuted }}>ver assinatura</button>
                                       )}
                                     </>
                                   ) : (
@@ -11737,6 +11738,15 @@ function App() {
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-lg" style={{ background: COLORS.card, border: `1px solid ${COLORS.cardBorder}` }}>{toast}</div>}
       {pixModal && <PixQRModal {...pixModal} onClose={() => setPixModal(null)} />}
+      {signatureModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setSignatureModal(null)}>
+          <div className="rounded-2xl p-4 max-w-sm w-full" style={{ background: "#FFFFFF" }} onClick={(e) => e.stopPropagation()}>
+            <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: "#475569" }}>Assinatura do funcionário</div>
+            <img src={signatureModal} className="w-full rounded-lg border" style={{ borderColor: "#DCE3F5", background: "#F8FAFC" }} />
+            <button onClick={() => setSignatureModal(null)} className="mt-3 w-full px-3 py-2 rounded-lg text-sm font-semibold" style={{ background: "#F1F5F9", color: "#1E293B" }}>Fechar</button>
+          </div>
+        </div>
+      )}
       {viewingTech && <TechImplementationViewer t={viewingTech} onClose={() => setViewingTech(null)} />}
       {showQuickQuestModal && <QuickQuestionnaireModal onClose={() => setShowQuickQuestModal(false)} onSend={handleQuickQuestionnaire} />}
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} showToast={showToast} />}

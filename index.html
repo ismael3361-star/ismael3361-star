@@ -3519,37 +3519,29 @@ function LunchForm({ initial, onSave, onCancel }) {
   );
 }
 function ConsultationForm({ initial, clients, onSave, onCancel }) {
-  const [cnpj, setCnpj] = useState(initial?.cnpj || "");
+  // Cada consulta é de UMA loja só. Quando o mesmo CNPJ é consultado por mais
+  // de uma loja, cada loja gera sua PRÓPRIA linha (use "🔁 Duplicar p/ outra
+  // loja" na lista) — igual à planilha do usuário, nunca uma linha com vários
+  // nomes juntos.
+  const [clientId, setClientId] = useState(initial?.client_id || consultationClientIds(initial || {})[0] || "");
   const [queryDate, setQueryDate] = useState(initial?.query_date || todayStr());
+  const [cnpj, setCnpj] = useState(initial?.cnpj || "");
   const [value, setValue] = useState(initial?.value ?? "");
-  const [clientIds, setClientIds] = useState(() => consultationClientIds(initial || {}));
-  const [clientSearch, setClientSearch] = useState("");
   const [notes, setNotes] = useState(initial?.notes || "");
   const canSave = queryDate && Number(value) > 0;
   const sortedClients = [...clients].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
-  const filteredClients = clientSearch.trim() ? sortedClients.filter((c) => (c.name || "").toLowerCase().includes(clientSearch.trim().toLowerCase())) : sortedClients;
-  function toggleClient(id) {
-    setClientIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  }
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
-      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar consulta" : "Nova consulta de CNPJ"}</div>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial?.id ? "Editar consulta" : "Nova consulta de CNPJ"}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="sm:col-span-2">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Cliente(s) (loja) que fizeram essa consulta — marque mais de um se o mesmo CNPJ foi consultado por mais de uma loja</span>
-          <input value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} placeholder="buscar loja..." className="w-full rounded-lg border px-3 py-1.5 text-xs outline-none mb-1.5" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
-          <div className="rounded-lg border max-h-40 overflow-y-auto" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48" }}>
-            {filteredClients.length === 0 ? (
-              <div className="text-xs p-2" style={{ color: COLORS.inkMuted }}>Nenhuma loja encontrada.</div>
-            ) : filteredClients.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-white/5" style={{ color: COLORS.ink }}>
-                <input type="checkbox" checked={clientIds.includes(c.id)} onChange={() => toggleClient(c.id)} />
-                {c.name}
-              </label>
-            ))}
-          </div>
-          {clientIds.length === 0 && <div className="text-[11px] mt-1" style={{ color: COLORS.warn }}>Nenhuma loja marcada — vai ficar "sem associação" até você associar depois.</div>}
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Nome do cliente que fez a consulta</span>
+          <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
+            <option value="">— sem associação (definir depois) —</option>
+            {sortedClients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <div className="text-[11px] mt-1" style={{ color: COLORS.inkMuted }}>Se o mesmo CNPJ foi consultado por mais de uma loja, salve essa aqui e depois use "🔁 Duplicar p/ outra loja" na lista para lançar a próxima — cada loja fica na sua própria linha.</div>
         </div>
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data da consulta</span>
@@ -3564,7 +3556,7 @@ function ConsultationForm({ initial, clients, onSave, onCancel }) {
       <div className="flex gap-2">
         <button
           disabled={!canSave}
-          onClick={() => onSave({ id: initial?.id || uid(), cnpj: cnpj.trim() || null, query_date: queryDate, value: Number(value) || 0, client_ids: clientIds, client_id: clientIds[0] || null, notes: notes.trim() || null })}
+          onClick={() => onSave({ id: initial?.id || uid(), cnpj: cnpj.trim() || null, query_date: queryDate, value: Number(value) || 0, client_id: clientId || null, client_ids: clientId ? [clientId] : [], notes: notes.trim() || null })}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
           Salvar
         </button>
@@ -4503,6 +4495,8 @@ function App() {
   const [dbMigrations, setDbMigrations] = useState([]);
   const [showDbMigrationForm, setShowDbMigrationForm] = useState(false);
   const [editingDbMigration, setEditingDbMigration] = useState(null);
+  const [selectedMigrations, setSelectedMigrations] = useState(new Set());
+  const [showPaidMigrations, setShowPaidMigrations] = useState(false);
   const [clientCommissions, setClientCommissions] = useState([]);
   const [showClientCommissionForm, setShowClientCommissionForm] = useState(false);
   const [editingClientCommission, setEditingClientCommission] = useState(null);
@@ -4629,14 +4623,21 @@ function App() {
     await supa.from("consultations").delete().eq("id", id);
     await loadConsultations();
   }
-  // action "add" acrescenta esse cliente à lista de associados da consulta (sem remover os outros),
-  // action "remove" tira só esse cliente — assim dá pra associar o mesmo CNPJ a mais de uma loja
-  // quando mais de um cliente fez a mesma consulta.
-  async function handleAssociateConsultation(cq, clientId, action = "add") {
-    const current = consultationClientIds(cq);
-    const next = action === "remove" ? current.filter((x) => x !== clientId) : [...new Set([...current, clientId])];
-    await supa.from("consultations").update({ client_ids: next, client_id: next[0] || null }).eq("id", cq.id);
+  // Cada consulta pertence a UMA loja só. Associar aqui simplesmente define
+  // qual é essa loja (usado no atalho "— associar loja... —" da lista, para
+  // as consultas lançadas ainda sem associação).
+  async function handleAssociateConsultation(cq, clientId) {
+    await supa.from("consultations").update({ client_id: clientId || null, client_ids: clientId ? [clientId] : [] }).eq("id", cq.id);
     await loadConsultations();
+  }
+  // Quando o mesmo CNPJ foi consultado por mais de uma loja, cada loja precisa
+  // da sua própria linha (mesma regra da planilha do usuário: nunca uma linha
+  // "somando" duas lojas). Duplicar abre o formulário já preenchido com o
+  // mesmo CNPJ/data/valor, só falta escolher a outra loja e salvar — isso cria
+  // um registro NOVO (não altera o original).
+  function handleDuplicateConsultation(cq) {
+    setEditingConsultation({ id: null, cnpj: cq.cnpj, query_date: cq.query_date, value: cq.value, client_id: null, client_ids: [], notes: cq.notes });
+    setShowConsultationForm(true);
   }
   // Regra de cobrança: o boleto com vencimento no mês M cobra as consultas do mês M-2
   // (ex.: boleto de outubro cobra consultas de agosto), pois o boleto é gerado antes
@@ -4809,6 +4810,22 @@ function App() {
     await supa.from("db_migrations").delete().eq("id", id);
     await loadDbMigrations();
     showToast("Registro removido.");
+  }
+  async function handleToggleDbMigrationPaid(m) {
+    const willPay = !m.paid;
+    const { error } = await supa.from("db_migrations").update({ paid: willPay, paid_date: willPay ? todayStr() : null }).eq("id", m.id);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadDbMigrations();
+    if (willPay) logActivity(`Migração marcada como paga: ${m.client_name} (${m.migrated_by || "técnico"})`);
+  }
+  async function handleMarkSelectedMigrationsPaid(ids) {
+    if (!ids || ids.length === 0) return;
+    const { error } = await supa.from("db_migrations").update({ paid: true, paid_date: todayStr() }).in("id", ids);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    setSelectedMigrations(new Set());
+    await loadDbMigrations();
+    showToast(`${ids.length} migração(ões) marcada(s) como paga(s).`);
+    logActivity(`${ids.length} migração(ões) marcada(s) como paga(s) ao técnico`);
   }
   const loadClientCommissions = useCallback(async () => {
     const { data } = await supa.from("client_commissions").select("*");
@@ -5986,34 +6003,58 @@ function App() {
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
+    // Só existe um técnico responsável por essa migração, então mostra um
+    // único QR Code (PIX dele) com o valor total pendente de pagamento,
+    // em vez de repetir a chave em cada linha.
+    const pixKey = settings.migracao_pix_key || "";
+    const pixFav = settings.migracao_pix_favorecido || "";
+    const pendenteTecnico = dbMigrations.filter((m) => m.status === "concluida" && !m.paid).reduce((s, m) => s + (Number(m.value) || 0), 0);
+
+    let startY = 44;
+    if (pixKey && pendenteTecnico > 0) {
+      const qrPayload = generatePixPayload({ key: pixKey, name: pixFav || "TECNICO", city: settings.company_pix_city || "SAO PAULO", value: pendenteTecnico, txid: "MIGRACOES" });
+      const qrData = generatePixQRDataURL(qrPayload, 150);
+      doc.setFontSize(11);
+      doc.setTextColor(30);
+      doc.text("PIX do técnico — valor pendente de pagamento", 14, startY + 2);
+      if (qrData) {
+        try { doc.addImage(qrData, "PNG", 14, startY + 6, 28, 28); } catch (e) {}
+      }
+      doc.setFontSize(9);
+      doc.setTextColor(60);
+      doc.text(`Técnico: ${pixFav || "-"}`, 48, startY + 14);
+      doc.text(`Chave PIX: ${pixKey}`, 48, startY + 20);
+      doc.text(`Valor pendente: ${fmtMoney(pendenteTecnico)}`, 48, startY + 26);
+      startY += 38;
+    }
+
     const rows = dbMigrations.map((m) => {
       const itens = [
         m.migrated_clients && "Clientes", m.migrated_products && "Produtos", m.migrated_stock && "Estoque",
         m.migrated_sales && "Vendas", m.migrated_others && (m.others_description ? `Outros (${m.others_description})` : "Outros"),
       ].filter(Boolean).join(", ") || "-";
       const statusLabel = MIGRATION_STATUS_META[m.status || "pendente"].label;
-      const pixKey = m.pix_key || settings.migracao_pix_key || "-";
-      const pixFav = m.pix_favorecido || settings.migracao_pix_favorecido || "";
+      const paidLabel = m.paid ? `Pago${m.paid_date ? " " + new Date(m.paid_date + "T00:00:00").toLocaleDateString("pt-BR") : ""}` : "Pendente";
       return [
         m.client_name || "-", m.requested_by || "-", m.migrated_by || "-",
         m.request_date ? new Date(m.request_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
         m.migrated_bank || "-", itens, fmtMoney(m.value), statusLabel,
         m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
-        m.notes || "-", pixKey + (pixFav ? ` (${pixFav})` : ""),
+        m.notes || "-", paidLabel,
       ];
     });
     const totalValor = dbMigrations.reduce((s, m) => s + (Number(m.value) || 0), 0);
 
     doc.autoTable({
-      startY: 44,
-      head: [["Cliente", "Solicitado por", "Migrado por", "Data", "Banco migrado", "O que foi migrado", "Valor", "Status", "Conclusão", "Observações", "Chave PIX do técnico"]],
+      startY,
+      head: [["Cliente", "Solicitado por", "Migrado por", "Data", "Banco migrado", "O que foi migrado", "Valor", "Status", "Conclusão", "Observações", "Pago ao técnico"]],
       body: rows,
       foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalValor), "", "", "", ""]],
       styles: { fontSize: 7.5, cellPadding: 2, valign: "middle", overflow: "linebreak" },
       headStyles: { fillColor: [124, 92, 255], fontSize: 7.5 },
       footStyles: { fillColor: [230, 230, 245], textColor: [30, 30, 30], fontStyle: "bold", fontSize: 7.5 },
       columnStyles: {
-        0: { cellWidth: 30 }, // Cliente
+        0: { cellWidth: 28 }, // Cliente
         1: { cellWidth: 18 }, // Solicitado por
         2: { cellWidth: 18 }, // Migrado por
         3: { cellWidth: 18, halign: "center" }, // Data
@@ -6023,7 +6064,7 @@ function App() {
         7: { cellWidth: 18 }, // Status
         8: { cellWidth: 18, halign: "center" }, // Conclusão
         9: { cellWidth: "auto" }, // Observações
-        10: { cellWidth: 32 }, // Chave PIX do técnico
+        10: { cellWidth: 24 }, // Pago ao técnico
       },
       margin: { left: 14, right: 14 },
     });
@@ -7180,7 +7221,7 @@ function App() {
   }
   async function saveSettings(next) {
     setSettings(next);
-    await supa.from("settings").upsert({
+    const { error } = await supa.from("settings").upsert({
       id: "default", wa_template: next.wa_template, email_subject: next.email_subject, email_body: next.email_body,
       overdue_wa_template: next.overdue_wa_template || null, overdue_email_subject: next.overdue_email_subject || null, overdue_email_body: next.overdue_email_body || null,
       company_pix_city: next.company_pix_city || null, last_backup_at: next.last_backup_at || null,
@@ -7191,6 +7232,7 @@ function App() {
       romaneio_next_number: next.romaneio_next_number || 1, romaneio_next_year: next.romaneio_next_year || new Date().getFullYear(),
       proposal_next_number: next.proposal_next_number || 1, proposal_next_year: next.proposal_next_year || new Date().getFullYear(),
     });
+    if (error) showToast(`Erro ao salvar configuração: ${error.message}`);
   }
   async function upsertBoleto(clientId, patch) {
     const id = `${mKey}_${clientId}`;
@@ -8452,8 +8494,11 @@ function App() {
           {effectiveTab === "consultas" && (
             <div>
               {(() => {
-                const naoAssociadas = consultations.filter((cq) => consultationClientIds(cq).length === 0);
-                const associadas = consultations.filter((cq) => consultationClientIds(cq).length > 0);
+                // Cada consulta pertence a UMA loja só — se o mesmo CNPJ foi consultado por
+                // mais de uma loja, isso vira uma linha (registro) por loja, igual à planilha
+                // do usuário. Assim contagem e soma nunca duplicam nada.
+                const naoAssociadas = consultations.filter((cq) => !cq.client_id);
+                const associadas = consultations.filter((cq) => cq.client_id);
                 const totalGeral = consultations.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
                 const totalNaoAssociadas = naoAssociadas.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
                 const lag = consultationsLagMonth(monthDate);
@@ -8461,26 +8506,19 @@ function App() {
                 const clientName = (id) => clients.find((c) => c.id === id)?.name || null;
                 const closingRows = consultations.filter((cq) => (cq.query_date || "").slice(0, 7) === consultationsClosingMonth);
                 const closingByClient = {};
-                // Quando a mesma consulta está associada a mais de um cliente, cada cliente conta o valor
-                // integral (cada loja fez a própria consulta e deve o próprio valor), então entra uma vez
-                // no total de cada um.
                 closingRows.forEach((cq) => {
-                  const ids = consultationClientIds(cq);
-                  const keys = ids.length ? ids : ["__sem_cliente__"];
-                  keys.forEach((key) => {
-                    if (!closingByClient[key]) closingByClient[key] = { client_id: key === "__sem_cliente__" ? null : key, name: key === "__sem_cliente__" ? "— sem associação —" : clientName(key), count: 0, total: 0, dates: [] };
-                    closingByClient[key].count += 1;
-                    closingByClient[key].total += Number(cq.value) || 0;
-                    closingByClient[key].dates.push(cq.query_date);
-                  });
+                  const key = cq.client_id || "__sem_cliente__";
+                  if (!closingByClient[key]) closingByClient[key] = { client_id: cq.client_id || null, name: cq.client_id ? clientName(cq.client_id) : "— sem associação —", count: 0, total: 0, dates: [] };
+                  closingByClient[key].count += 1;
+                  closingByClient[key].total += Number(cq.value) || 0;
+                  closingByClient[key].dates.push(cq.query_date);
                 });
                 Object.values(closingByClient).forEach((r) => r.dates.sort());
                 const closingList = Object.values(closingByClient).sort((a, b) => b.total - a.total);
-                // Total "de verdade" lançado no mês — soma cada consulta uma única vez, mesmo quando
-                // ela está associada a mais de um cliente (senão dobraria o valor no rodapé da tabela).
-                const closingUniqueTotal = closingRows.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
+                const closingTotalQtd = closingRows.length;
+                const closingTotalValor = closingRows.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
                 const sortedClientsForFilter = [...clients].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
-                const listFiltered = consultationsClientFilter ? listShown.filter((cq) => consultationClientIds(cq).includes(consultationsClientFilter)) : listShown;
+                const listFiltered = consultationsClientFilter ? listShown.filter((cq) => cq.client_id === consultationsClientFilter) : listShown;
                 const filterTotal = listFiltered.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
                 return (
                   <>
@@ -8520,14 +8558,13 @@ function App() {
                               <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
                                 <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.ink }}>TOTAL</td>
                                 <td></td>
-                                <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.ink }}>{closingRows.length}</td>
-                                <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.brandLight }}>{money(closingUniqueTotal)}</td>
+                                <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.ink }}>{closingTotalQtd}</td>
+                                <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.brandLight }}>{money(closingTotalValor)}</td>
                               </tr>
                             </tfoot>
                           </table>
                         </div>
                       )}
-                      <p className="text-[11px] mt-2" style={{ color: COLORS.inkMuted }}>* Quando a mesma consulta está associada a mais de uma loja, ela entra no valor de cada uma — por isso a soma das linhas pode passar do TOTAL (que conta cada consulta lançada só uma vez).</p>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
@@ -8553,7 +8590,7 @@ function App() {
                     </div>
 
                     <div className="flex items-center gap-2 mb-3 flex-wrap">
-                      <span className="text-xs font-semibold" style={{ color: COLORS.inkMuted }}>🔎 Filtrar por cliente (ver quanto cada um consultou):</span>
+                      <span className="text-xs font-semibold" style={{ color: COLORS.inkMuted }}>🔎 Filtrar por cliente:</span>
                       <select value={consultationsClientFilter} onChange={(e) => setConsultationsClientFilter(e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink, minWidth: 180 }}>
                         <option value="">Todos os clientes</option>
                         {sortedClientsForFilter.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -8576,38 +8613,36 @@ function App() {
                                 <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Consultado por</th>
                                 <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Data consulta</th>
                                 <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">CPF/CNPJ</th>
-                                <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Valor</th>
+                                <th className="text-right px-3 py-2 font-bold text-xs uppercase tracking-wide">Valor</th>
                                 <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Ações</th>
                               </tr>
                             </thead>
                             <tbody>
-                              {listFiltered.map((cq, i) => {
-                                const ids = consultationClientIds(cq);
-                                return (
-                                  <tr key={cq.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                                    <td className="px-3 py-2">
-                                      {ids.length === 0 ? (
-                                        <select value="" onChange={(e) => e.target.value && handleAssociateConsultation(cq, e.target.value, "add")} className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.warn, background: "#1C2B48", color: COLORS.warn }}>
-                                          <option value="">— associar loja... —</option>
-                                          {sortedClientsForFilter.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                        </select>
-                                      ) : (
-                                        <span style={{ color: COLORS.ink }}>{ids.map((id) => clientName(id) || "(removido)").join(", ")}</span>
-                                      )}
-                                      {cq.notes && <div className="text-[11px] mt-0.5" style={{ color: COLORS.inkMuted }}>{cq.notes}</div>}
-                                    </td>
-                                    <td className="px-3 py-2" style={{ color: COLORS.inkMuted }}>{fmtDate(cq.query_date)}</td>
-                                    <td className="px-3 py-2" style={{ color: COLORS.inkMuted }}>{cq.cnpj || "-"}</td>
-                                    <td className="px-3 py-2 font-semibold" style={{ color: COLORS.brandLight }}>{money(cq.value)}</td>
-                                    <td className="px-3 py-2">
-                                      <div className="flex items-center gap-1">
-                                        <button onClick={() => { setEditingConsultation(cq); setShowConsultationForm(true); }} title="Editar (inclui associar mais de uma loja)" className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
-                                        <button onClick={() => handleDeleteConsultation(cq.id)} className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
+                              {listFiltered.map((cq, i) => (
+                                <tr key={cq.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                  <td className="px-3 py-2">
+                                    {cq.client_id ? (
+                                      <span style={{ color: COLORS.ink }}>{clientName(cq.client_id) || "(removido)"}</span>
+                                    ) : (
+                                      <select value="" onChange={(e) => e.target.value && handleAssociateConsultation(cq, e.target.value)} className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.warn, background: "#1C2B48", color: COLORS.warn }}>
+                                        <option value="">— associar loja... —</option>
+                                        {sortedClientsForFilter.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                      </select>
+                                    )}
+                                    {cq.notes && <div className="text-[11px] mt-0.5" style={{ color: COLORS.inkMuted }}>{cq.notes}</div>}
+                                  </td>
+                                  <td className="px-3 py-2" style={{ color: COLORS.inkMuted }}>{fmtDate(cq.query_date)}</td>
+                                  <td className="px-3 py-2" style={{ color: COLORS.inkMuted }}>{cq.cnpj || "-"}</td>
+                                  <td className="px-3 py-2 text-right font-semibold" style={{ color: COLORS.brandLight }}>{money(cq.value)}</td>
+                                  <td className="px-3 py-2">
+                                    <div className="flex items-center gap-1">
+                                      <button onClick={() => handleDuplicateConsultation(cq)} title="Duplicar — use quando o mesmo CNPJ foi consultado por outra loja também" className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.brandLight }}>🔁</button>
+                                      <button onClick={() => { setEditingConsultation(cq); setShowConsultationForm(true); }} title="Editar" className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
+                                      <button onClick={() => handleDeleteConsultation(cq.id)} title="Excluir" className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
                             </tbody>
                           </table>
                         )}
@@ -9067,7 +9102,7 @@ function App() {
 
           {effectiveTab === "migracoes" && (
             <div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.inkMuted }}>Pendentes</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => (m.status || "pendente") === "pendente").length}</div>
@@ -9084,64 +9119,135 @@ function App() {
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total (R$)</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(dbMigrations.reduce((s, m) => s + (Number(m.value) || 0), 0))}</div>
                 </div>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Pago ao técnico</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(dbMigrations.filter((m) => m.paid).reduce((s, m) => s + (Number(m.value) || 0), 0))}</div>
+                </div>
               </div>
               <div className="flex justify-end gap-2 mb-3">
                 <button onClick={exportDbMigrationsPDF} disabled={dbMigrations.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                 <button onClick={() => { setEditingDbMigration(null); setShowDbMigrationForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova migração</button>
               </div>
               {showDbMigrationForm && <div className="mb-4"><DbMigrationForm initial={editingDbMigration} settings={settings} onSave={handleSaveDbMigration} onCancel={() => { setShowDbMigrationForm(false); setEditingDbMigration(null); }} /></div>}
-              <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                {dbMigrations.length === 0 ? (
-                  <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma migração registrada ainda.</div>
-                ) : (
-                  <table className="w-full text-xs" style={{ color: COLORS.ink }}>
-                    <thead>
-                      <tr style={{ color: COLORS.inkMuted }}>
-                        <th className="text-left p-3">Cliente</th><th className="text-left p-3">Solicitado por</th><th className="text-left p-3">Migrado por</th><th className="text-left p-3">Data</th>
-                        <th className="text-left p-3">Banco migrado</th><th className="text-left p-3">O que foi migrado</th>
-                        <th className="text-right p-3">Valor</th>
-                        <th className="text-left p-3">Status</th><th className="text-left p-3">Conclusão</th><th className="text-left p-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dbMigrations.map((m, i) => {
-                        const itens = [
-                          m.migrated_clients && "Clientes", m.migrated_products && "Produtos", m.migrated_stock && "Estoque",
-                          m.migrated_sales && "Vendas", m.migrated_others && (m.others_description ? `Outros (${m.others_description})` : "Outros"),
-                        ].filter(Boolean);
-                        const sm = MIGRATION_STATUS_META[m.status || "pendente"];
-                        return (
-                          <tr key={m.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                            <td className="p-3 font-semibold">
-                              {m.client_name}
-                              {m.notes && <span title={m.notes} className="ml-1.5 cursor-help" style={{ color: COLORS.inkFaint }}>📝</span>}
-                            </td>
-                            <td className="p-3">{m.requested_by || "-"}</td>
-                            <td className="p-3">{m.migrated_by || "-"}</td>
-                            <td className="p-3">{m.request_date ? new Date(m.request_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                            <td className="p-3">{m.migrated_bank}</td>
-                            <td className="p-3">{itens.length > 0 ? itens.join(", ") : "-"}</td>
-                            <td className="p-3 text-right font-semibold">{fmtMoney(m.value)}</td>
-                            <td className="p-3"><span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ color: sm.color, background: sm.bg }}><span>{sm.icon}</span>{sm.label}</span></td>
-                            <td className="p-3">{m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                            <td className="p-3">
-                              <button onClick={() => { setEditingDbMigration(m); setShowDbMigrationForm(true); }} className="mr-2">✏️</button>
-                              <button onClick={() => handleDeleteDbMigration(m.id)} style={{ color: COLORS.danger }}>🗑️</button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
-                        <td className="p-3 font-bold" colSpan={6} style={{ color: COLORS.ink }}>TOTAL</td>
-                        <td className="p-3 text-right font-bold" style={{ color: COLORS.brandLight }}>{fmtMoney(dbMigrations.reduce((s, m) => s + (Number(m.value) || 0), 0))}</td>
-                        <td colSpan={3}></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                )}
-              </div>
+              {(() => {
+                const abertoList = dbMigrations.filter((m) => !m.paid);
+                const pagoList = dbMigrations.filter((m) => m.paid);
+                const selectableIds = abertoList.filter((m) => m.status === "concluida").map((m) => m.id);
+                const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedMigrations.has(id));
+
+                function toggleSelectAll() {
+                  setSelectedMigrations(allSelected ? new Set() : new Set(selectableIds));
+                }
+                function toggleSelectOne(id) {
+                  setSelectedMigrations((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id); else next.add(id);
+                    return next;
+                  });
+                }
+
+                function renderRow(m, i, showCheckbox) {
+                  const itens = [
+                    m.migrated_clients && "Clientes", m.migrated_products && "Produtos", m.migrated_stock && "Estoque",
+                    m.migrated_sales && "Vendas", m.migrated_others && (m.others_description ? `Outros (${m.others_description})` : "Outros"),
+                  ].filter(Boolean);
+                  const sm = MIGRATION_STATUS_META[m.status || "pendente"];
+                  const canSelect = showCheckbox && !m.paid && m.status === "concluida";
+                  return (
+                    <tr key={m.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                      {showCheckbox && (
+                        <td className="p-3">
+                          {canSelect && <input type="checkbox" checked={selectedMigrations.has(m.id)} onChange={() => toggleSelectOne(m.id)} className="w-4 h-4" />}
+                        </td>
+                      )}
+                      <td className="p-3 font-semibold">
+                        {m.client_name}
+                        {m.notes && <span title={m.notes} className="ml-1.5 cursor-help" style={{ color: COLORS.inkFaint }}>📝</span>}
+                      </td>
+                      <td className="p-3">{m.requested_by || "-"}</td>
+                      <td className="p-3">{m.migrated_by || "-"}</td>
+                      <td className="p-3">{m.request_date ? new Date(m.request_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                      <td className="p-3">{m.migrated_bank}</td>
+                      <td className="p-3">{itens.length > 0 ? itens.join(", ") : "-"}</td>
+                      <td className="p-3 text-right font-semibold">{fmtMoney(m.value)}</td>
+                      <td className="p-3"><span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ color: sm.color, background: sm.bg }}><span>{sm.icon}</span>{sm.label}</span></td>
+                      <td className="p-3">{m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                      <td className="p-3">
+                        {m.paid ? (
+                          <button onClick={() => handleToggleDbMigrationPaid(m)} className="text-[11px] font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: COLORS.success, color: COLORS.success, background: "rgba(34,197,94,0.1)" }}>
+                            ✓ Pago{m.paid_date ? " " + new Date(m.paid_date + "T00:00:00").toLocaleDateString("pt-BR") : ""}
+                          </button>
+                        ) : (
+                          <span className="text-[11px]" style={{ color: COLORS.inkFaint }}>{m.status === "concluida" ? "marque a caixinha ao lado" : "-"}</span>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <button onClick={() => { setEditingDbMigration(m); setShowDbMigrationForm(true); }} className="mr-2">✏️</button>
+                        <button onClick={() => handleDeleteDbMigration(m.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                      </td>
+                    </tr>
+                  );
+                }
+
+                return (
+                  <>
+                    {selectedMigrations.size > 0 && (
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-3 px-4 py-2.5 rounded-xl border" style={{ borderColor: COLORS.success, background: "rgba(34,197,94,0.08)" }}>
+                        <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>{selectedMigrations.size} migração(ões) concluída(s) selecionada(s)</span>
+                        <button onClick={() => handleMarkSelectedMigrationsPaid([...selectedMigrations])} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: COLORS.success }}>✓ Marcar selecionadas como pago</button>
+                      </div>
+                    )}
+                    <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      {abertoList.length === 0 ? (
+                        <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma migração em aberto.</div>
+                      ) : (
+                        <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                          <thead>
+                            <tr style={{ color: COLORS.inkMuted }}>
+                              <th className="text-left p-3">{selectableIds.length > 0 && <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="w-4 h-4" />}</th>
+                              <th className="text-left p-3">Cliente</th><th className="text-left p-3">Solicitado por</th><th className="text-left p-3">Migrado por</th><th className="text-left p-3">Data</th>
+                              <th className="text-left p-3">Banco migrado</th><th className="text-left p-3">O que foi migrado</th>
+                              <th className="text-right p-3">Valor</th>
+                              <th className="text-left p-3">Status</th><th className="text-left p-3">Conclusão</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
+                            </tr>
+                          </thead>
+                          <tbody>{abertoList.map((m, i) => renderRow(m, i, true))}</tbody>
+                          <tfoot>
+                            <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                              <td className="p-3 font-bold" colSpan={7} style={{ color: COLORS.ink }}>TOTAL EM ABERTO</td>
+                              <td className="p-3 text-right font-bold" style={{ color: COLORS.brandLight }}>{fmtMoney(abertoList.reduce((s, m) => s + (Number(m.value) || 0), 0))}</td>
+                              <td colSpan={3}></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      )}
+                    </div>
+                    {pagoList.length > 0 && (
+                      <div className="mt-3">
+                        <button onClick={() => setShowPaidMigrations((v) => !v)} className="text-sm font-bold flex items-center gap-2" style={{ color: COLORS.success }}>
+                          <span style={{ display: "inline-block", transition: "transform 0.15s", transform: showPaidMigrations ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
+                          ✅ Pago ({pagoList.length}) — {fmtMoney(pagoList.reduce((s, m) => s + (Number(m.value) || 0), 0))}
+                        </button>
+                        {showPaidMigrations && (
+                          <div className="rounded-2xl border overflow-x-auto mt-2" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                            <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                              <thead>
+                                <tr style={{ color: COLORS.inkMuted }}>
+                                  <th className="text-left p-3">Cliente</th><th className="text-left p-3">Solicitado por</th><th className="text-left p-3">Migrado por</th><th className="text-left p-3">Data</th>
+                                  <th className="text-left p-3">Banco migrado</th><th className="text-left p-3">O que foi migrado</th>
+                                  <th className="text-right p-3">Valor</th>
+                                  <th className="text-left p-3">Status</th><th className="text-left p-3">Conclusão</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
+                                </tr>
+                              </thead>
+                              <tbody>{pagoList.map((m, i) => renderRow(m, i, false))}</tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 

@@ -4461,6 +4461,7 @@ function App() {
   const [editingConsultation, setEditingConsultation] = useState(null);
   const [consultationsFilter, setConsultationsFilter] = useState("nao_associadas");
   const [consultationsClosingMonth, setConsultationsClosingMonth] = useState(() => todayStr().slice(0, 7));
+  const [consultationsClientFilter, setConsultationsClientFilter] = useState("");
   const [busyId, setBusyId] = useState(null);
   const [toast, setToast] = useState(null);
   const [history, setHistory] = useState([]);
@@ -4808,6 +4809,13 @@ function App() {
     await supa.from("db_migrations").delete().eq("id", id);
     await loadDbMigrations();
     showToast("Registro removido.");
+  }
+  async function handleToggleDbMigrationPaid(m) {
+    const willPay = !m.paid;
+    const { error } = await supa.from("db_migrations").update({ paid: willPay, paid_date: willPay ? todayStr() : null }).eq("id", m.id);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadDbMigrations();
+    if (willPay) logActivity(`Migração marcada como paga: ${m.client_name} (${m.migrated_by || "técnico"})`);
   }
   const loadClientCommissions = useCallback(async () => {
     const { data } = await supa.from("client_commissions").select("*");
@@ -5993,36 +6001,38 @@ function App() {
       const statusLabel = MIGRATION_STATUS_META[m.status || "pendente"].label;
       const pixKey = m.pix_key || settings.migracao_pix_key || "-";
       const pixFav = m.pix_favorecido || settings.migracao_pix_favorecido || "";
+      const paidLabel = m.paid ? `Pago${m.paid_date ? " " + new Date(m.paid_date + "T00:00:00").toLocaleDateString("pt-BR") : ""}` : "Pendente";
       return [
         m.client_name || "-", m.requested_by || "-", m.migrated_by || "-",
         m.request_date ? new Date(m.request_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
         m.migrated_bank || "-", itens, fmtMoney(m.value), statusLabel,
         m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
-        m.notes || "-", pixKey + (pixFav ? ` (${pixFav})` : ""),
+        m.notes || "-", pixKey + (pixFav ? ` (${pixFav})` : ""), paidLabel,
       ];
     });
     const totalValor = dbMigrations.reduce((s, m) => s + (Number(m.value) || 0), 0);
 
     doc.autoTable({
       startY: 44,
-      head: [["Cliente", "Solicitado por", "Migrado por", "Data", "Banco migrado", "O que foi migrado", "Valor", "Status", "Conclusão", "Observações", "Chave PIX do técnico"]],
+      head: [["Cliente", "Solicitado por", "Migrado por", "Data", "Banco migrado", "O que foi migrado", "Valor", "Status", "Conclusão", "Observações", "Chave PIX do técnico", "Pago ao técnico"]],
       body: rows,
-      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalValor), "", "", "", ""]],
+      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalValor), "", "", "", "", ""]],
       styles: { fontSize: 7.5, cellPadding: 2, valign: "middle", overflow: "linebreak" },
       headStyles: { fillColor: [124, 92, 255], fontSize: 7.5 },
       footStyles: { fillColor: [230, 230, 245], textColor: [30, 30, 30], fontStyle: "bold", fontSize: 7.5 },
       columnStyles: {
-        0: { cellWidth: 30 }, // Cliente
-        1: { cellWidth: 18 }, // Solicitado por
-        2: { cellWidth: 18 }, // Migrado por
-        3: { cellWidth: 18, halign: "center" }, // Data
-        4: { cellWidth: 20 }, // Banco migrado
-        5: { cellWidth: 34 }, // O que foi migrado
-        6: { cellWidth: 18, halign: "center" }, // Valor
-        7: { cellWidth: 18 }, // Status
-        8: { cellWidth: 18, halign: "center" }, // Conclusão
+        0: { cellWidth: 28 }, // Cliente
+        1: { cellWidth: 16 }, // Solicitado por
+        2: { cellWidth: 16 }, // Migrado por
+        3: { cellWidth: 16, halign: "center" }, // Data
+        4: { cellWidth: 18 }, // Banco migrado
+        5: { cellWidth: 30 }, // O que foi migrado
+        6: { cellWidth: 16, halign: "center" }, // Valor
+        7: { cellWidth: 16 }, // Status
+        8: { cellWidth: 16, halign: "center" }, // Conclusão
         9: { cellWidth: "auto" }, // Observações
-        10: { cellWidth: 32 }, // Chave PIX do técnico
+        10: { cellWidth: 28 }, // Chave PIX do técnico
+        11: { cellWidth: 20 }, // Pago ao técnico
       },
       margin: { left: 14, right: 14 },
     });
@@ -7179,7 +7189,7 @@ function App() {
   }
   async function saveSettings(next) {
     setSettings(next);
-    await supa.from("settings").upsert({
+    const { error } = await supa.from("settings").upsert({
       id: "default", wa_template: next.wa_template, email_subject: next.email_subject, email_body: next.email_body,
       overdue_wa_template: next.overdue_wa_template || null, overdue_email_subject: next.overdue_email_subject || null, overdue_email_body: next.overdue_email_body || null,
       company_pix_city: next.company_pix_city || null, last_backup_at: next.last_backup_at || null,
@@ -7190,6 +7200,7 @@ function App() {
       romaneio_next_number: next.romaneio_next_number || 1, romaneio_next_year: next.romaneio_next_year || new Date().getFullYear(),
       proposal_next_number: next.proposal_next_number || 1, proposal_next_year: next.proposal_next_year || new Date().getFullYear(),
     });
+    if (error) showToast(`Erro ao salvar configuração: ${error.message}`);
   }
   async function upsertBoleto(clientId, patch) {
     const id = `${mKey}_${clientId}`;
@@ -8475,7 +8486,12 @@ function App() {
                 });
                 Object.values(closingByClient).forEach((r) => r.dates.sort());
                 const closingList = Object.values(closingByClient).sort((a, b) => b.total - a.total);
-                const closingTotal = closingList.reduce((s, r) => s + r.total, 0);
+                // Total "de verdade" lançado no mês — soma cada consulta uma única vez, mesmo quando
+                // ela está associada a mais de um cliente (senão dobraria o valor no rodapé da tabela).
+                const closingUniqueTotal = closingRows.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
+                const sortedClientsForFilter = [...clients].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
+                const listFiltered = consultationsClientFilter ? listShown.filter((cq) => consultationClientIds(cq).includes(consultationsClientFilter)) : listShown;
+                const filterTotal = listFiltered.reduce((s, cq) => s + (Number(cq.value) || 0), 0);
                 return (
                   <>
                     <div className="rounded-xl p-3 mb-4 text-xs" style={{ background: "rgba(124,92,255,0.08)", border: `1px solid ${COLORS.cardBorder}`, color: COLORS.inkMuted }}>
@@ -8515,12 +8531,13 @@ function App() {
                                 <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.ink }}>TOTAL</td>
                                 <td></td>
                                 <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.ink }}>{closingRows.length}</td>
-                                <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.brandLight }}>{money(closingTotal)}</td>
+                                <td className="px-2 py-1.5 font-bold" style={{ color: COLORS.brandLight }}>{money(closingUniqueTotal)}</td>
                               </tr>
                             </tfoot>
                           </table>
                         </div>
                       )}
+                      <p className="text-[11px] mt-2" style={{ color: COLORS.inkMuted }}>* Quando a mesma consulta está associada a mais de uma loja, ela entra no valor de cada uma — por isso a soma das linhas pode passar do TOTAL (que conta cada consulta lançada só uma vez).</p>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
@@ -8545,44 +8562,65 @@ function App() {
                       <button onClick={() => { setEditingConsultation(null); setShowConsultationForm(true); }} className="ml-auto px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova consulta</button>
                     </div>
 
+                    <div className="flex items-center gap-2 mb-3 flex-wrap">
+                      <span className="text-xs font-semibold" style={{ color: COLORS.inkMuted }}>🔎 Filtrar por cliente (ver quanto cada um consultou):</span>
+                      <select value={consultationsClientFilter} onChange={(e) => setConsultationsClientFilter(e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink, minWidth: 180 }}>
+                        <option value="">Todos os clientes</option>
+                        {sortedClientsForFilter.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      {consultationsClientFilter && (
+                        <span className="text-xs font-bold" style={{ color: COLORS.brandLight }}>{listFiltered.length} consulta(s) · {money(filterTotal)}</span>
+                      )}
+                    </div>
+
                     {showConsultationForm && <div className="mb-4"><ConsultationForm initial={editingConsultation} clients={clients} onSave={handleSaveConsultation} onCancel={() => { setShowConsultationForm(false); setEditingConsultation(null); }} /></div>}
 
                     {!showConsultationForm && (
-                      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                        {listShown.length === 0 ? (
+                      <div className="rounded-2xl border overflow-hidden overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        {listFiltered.length === 0 ? (
                           <div className="p-10 text-center"><div className="text-3xl mb-2">📞</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma consulta por aqui.</div></div>
-                        ) : listShown.map((cq, i) => {
-                          const ids = consultationClientIds(cq);
-                          const availableToAdd = [...clients].filter((c) => !ids.includes(c.id)).sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
-                          return (
-                          <div key={cq.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                            <div>
-                              <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
-                                {ids.length === 0 ? (
-                                  <span style={{ color: COLORS.warn }}>— sem associação —</span>
-                                ) : ids.map((id) => (
-                                  <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs" style={{ background: "rgba(34,197,94,0.15)", color: COLORS.success }}>
-                                    {clientName(id) || "(cliente removido)"}
-                                    <button onClick={() => handleAssociateConsultation(cq, id, "remove")} title="Remover essa loja" className="font-bold" style={{ color: COLORS.success }}>×</button>
-                                  </span>
-                                ))}
-                                <span className="text-[11px] font-normal" style={{ color: COLORS.inkMuted }}>{fmtDate(cq.query_date)}</span>
-                                <span className="text-[11px] font-normal" style={{ color: COLORS.inkMuted }}>{cq.cnpj || "CNPJ não informado"}</span>
-                                <span className="text-xs font-bold" style={{ color: COLORS.brandLight }}>{money(cq.value)}</span>
-                              </div>
-                              {cq.notes && <div className="text-xs mt-0.5" style={{ color: COLORS.inkMuted }}>{cq.notes}</div>}
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <select value="" onChange={(e) => e.target.value && handleAssociateConsultation(cq, e.target.value, "add")} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ borderColor: ids.length ? COLORS.cardBorder : COLORS.warn, background: "#1C2B48", color: COLORS.ink, minWidth: 160 }}>
-                                <option value="">+ associar outra loja...</option>
-                                {availableToAdd.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                              </select>
-                              <button onClick={() => { setEditingConsultation(cq); setShowConsultationForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
-                              <button onClick={() => handleDeleteConsultation(cq.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
-                            </div>
-                          </div>
-                          );
-                        })}
+                        ) : (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                                <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Consultado por</th>
+                                <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Data consulta</th>
+                                <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">CPF/CNPJ</th>
+                                <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Valor</th>
+                                <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Ações</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {listFiltered.map((cq, i) => {
+                                const ids = consultationClientIds(cq);
+                                return (
+                                  <tr key={cq.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                    <td className="px-3 py-2">
+                                      {ids.length === 0 ? (
+                                        <select value="" onChange={(e) => e.target.value && handleAssociateConsultation(cq, e.target.value, "add")} className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.warn, background: "#1C2B48", color: COLORS.warn }}>
+                                          <option value="">— associar loja... —</option>
+                                          {sortedClientsForFilter.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                      ) : (
+                                        <span style={{ color: COLORS.ink }}>{ids.map((id) => clientName(id) || "(removido)").join(", ")}</span>
+                                      )}
+                                      {cq.notes && <div className="text-[11px] mt-0.5" style={{ color: COLORS.inkMuted }}>{cq.notes}</div>}
+                                    </td>
+                                    <td className="px-3 py-2" style={{ color: COLORS.inkMuted }}>{fmtDate(cq.query_date)}</td>
+                                    <td className="px-3 py-2" style={{ color: COLORS.inkMuted }}>{cq.cnpj || "-"}</td>
+                                    <td className="px-3 py-2 font-semibold" style={{ color: COLORS.brandLight }}>{money(cq.value)}</td>
+                                    <td className="px-3 py-2">
+                                      <div className="flex items-center gap-1">
+                                        <button onClick={() => { setEditingConsultation(cq); setShowConsultationForm(true); }} title="Editar (inclui associar mais de uma loja)" className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
+                                        <button onClick={() => handleDeleteConsultation(cq.id)} className="px-2 py-1 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
                       </div>
                     )}
                   </>
@@ -9039,7 +9077,7 @@ function App() {
 
           {effectiveTab === "migracoes" && (
             <div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
                 <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.inkMuted }}>Pendentes</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{dbMigrations.filter((m) => (m.status || "pendente") === "pendente").length}</div>
@@ -9055,6 +9093,10 @@ function App() {
                 <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total (R$)</div>
                   <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(dbMigrations.reduce((s, m) => s + (Number(m.value) || 0), 0))}</div>
+                </div>
+                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Pago ao técnico</div>
+                  <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(dbMigrations.filter((m) => m.paid).reduce((s, m) => s + (Number(m.value) || 0), 0))}</div>
                 </div>
               </div>
               <div className="flex justify-end gap-2 mb-3">
@@ -9072,7 +9114,7 @@ function App() {
                         <th className="text-left p-3">Cliente</th><th className="text-left p-3">Solicitado por</th><th className="text-left p-3">Migrado por</th><th className="text-left p-3">Data</th>
                         <th className="text-left p-3">Banco migrado</th><th className="text-left p-3">O que foi migrado</th>
                         <th className="text-right p-3">Valor</th>
-                        <th className="text-left p-3">Status</th><th className="text-left p-3">Conclusão</th><th className="text-left p-3"></th>
+                        <th className="text-left p-3">Status</th><th className="text-left p-3">Conclusão</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -9096,6 +9138,11 @@ function App() {
                             <td className="p-3 text-right font-semibold">{fmtMoney(m.value)}</td>
                             <td className="p-3"><span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold" style={{ color: sm.color, background: sm.bg }}><span>{sm.icon}</span>{sm.label}</span></td>
                             <td className="p-3">{m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                            <td className="p-3">
+                              <button onClick={() => handleToggleDbMigrationPaid(m)} className="text-[11px] font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: m.paid ? COLORS.success : COLORS.cardBorder, color: m.paid ? COLORS.success : COLORS.inkMuted, background: m.paid ? "rgba(34,197,94,0.1)" : "transparent" }}>
+                                {m.paid ? `✓ Pago${m.paid_date ? " " + new Date(m.paid_date + "T00:00:00").toLocaleDateString("pt-BR") : ""}` : "○ Marcar pago"}
+                              </button>
+                            </td>
                             <td className="p-3">
                               <button onClick={() => { setEditingDbMigration(m); setShowDbMigrationForm(true); }} className="mr-2">✏️</button>
                               <button onClick={() => handleDeleteDbMigration(m.id)} style={{ color: COLORS.danger }}>🗑️</button>

@@ -4187,13 +4187,98 @@ function PublicPayrollReceipt({ token }) {
     })();
   }, [token]);
 
+  // Baixa o recibo original e cola a assinatura desenhada nele (no rodapé da
+  // última página, se for PDF, ou embaixo da imagem, se for foto/print),
+  // junto com "assinado digitalmente em ...". Assim o recibo que fica salvo
+  // já sai com a assinatura visível nele, não só guardada à parte.
+  async function buildSignedReceiptBlob(fileUrl, signatureDataUrl, employeeName) {
+    const isPdfFile = /\.pdf($|\?)/i.test(fileUrl);
+    const carimbo = `Assinado digitalmente por ${employeeName} em ${new Date().toLocaleString("pt-BR")}`;
+    function dataUrlToBytes(dataUrl) {
+      const base64 = dataUrl.split(",")[1];
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes;
+    }
+    const originalBytes = await fetch(fileUrl).then((r) => r.arrayBuffer());
+
+    if (isPdfFile) {
+      const pdfDoc = await PDFLib.PDFDocument.load(originalBytes, { ignoreEncryption: true });
+      const font = await pdfDoc.embedFont(PDFLib.StandardFonts.Helvetica);
+      const sigBytes = dataUrlToBytes(signatureDataUrl);
+      const sigImg = await pdfDoc.embedPng(sigBytes);
+      const pages = pdfDoc.getPages();
+      const page = pages[pages.length - 1];
+      const { width } = page.getSize();
+      const sigW = Math.min(180, width - 28);
+      const sigH = sigW * (sigImg.height / sigImg.width);
+      const x = 14;
+      const y = 14;
+      page.drawImage(sigImg, { x, y: y + 12, width: sigW, height: sigH });
+      page.drawText(carimbo, { x, y: y, size: 7, font, color: PDFLib.rgb(0.3, 0.3, 0.3) });
+      const bytes = await pdfDoc.save();
+      return new Blob([bytes], { type: "application/pdf" });
+    }
+
+    // Imagem: desenha a foto original + a assinatura embaixo num canvas novo.
+    const imgBlob = new Blob([originalBytes]);
+    const imgUrl = URL.createObjectURL(imgBlob);
+    const baseImg = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = imgUrl;
+    });
+    const sigImgEl = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = signatureDataUrl;
+    });
+    const extraH = 130;
+    const canvas = document.createElement("canvas");
+    canvas.width = baseImg.naturalWidth;
+    canvas.height = baseImg.naturalHeight + extraH;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(baseImg, 0, 0);
+    const sigW = Math.min(320, canvas.width - 40);
+    const sigH = sigW * (sigImgEl.naturalHeight / sigImgEl.naturalWidth);
+    ctx.drawImage(sigImgEl, 20, baseImg.naturalHeight + 15, sigW, sigH);
+    ctx.fillStyle = "#475569";
+    ctx.font = "16px sans-serif";
+    ctx.fillText(carimbo, 20, baseImg.naturalHeight + sigH + 40);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    return blob;
+  }
+
   async function handleConfirm() {
     if (!signature) { setErr("Desenhe sua assinatura antes de confirmar."); return; }
     setErr("");
     setBusy(true);
-    const { data: ok, error } = await supa.rpc("sign_payroll_receipt", { p_token: token, p_signature: signature });
+    let signedFileUrl = null;
+    try {
+      if (data.receipt_file_url) {
+        const blob = await buildSignedReceiptBlob(data.receipt_file_url, signature, data.employee_name);
+        const ext = /\.pdf($|\?)/i.test(data.receipt_file_url) ? "pdf" : "png";
+        const path = `recibos-folha-assinados/${token}-${Date.now()}.${ext}`;
+        const { error: upErr } = await supa.storage.from("boletos").upload(path, blob, { upsert: true, contentType: blob.type });
+        if (!upErr) {
+          const { data: pub } = supa.storage.from("boletos").getPublicUrl(path);
+          signedFileUrl = pub.publicUrl;
+        }
+      }
+    } catch (e) {
+      // Se der qualquer problema ao gerar o recibo com a assinatura colada,
+      // segue e grava pelo menos a assinatura isolada, pra não travar o funcionário.
+      console.error("Erro ao gerar recibo assinado:", e);
+    }
+    const { data: ok, error } = await supa.rpc("sign_payroll_receipt", { p_token: token, p_signature: signature, p_signed_file_url: signedFileUrl });
     setBusy(false);
     if (error || !ok) { setErr("Não foi possível assinar. Se você já assinou esse recibo antes, recarregue a página."); return; }
+    setData((prev) => ({ ...prev, receipt_signed_file_url: signedFileUrl }));
     setJustSigned(true);
   }
 
@@ -4243,7 +4328,9 @@ function PublicPayrollReceipt({ token }) {
               <div className="text-xs mt-1" style={{ color: "#64748B" }}>
                 {justSigned ? "Assinatura registrada agora." : `Assinado em ${data.receipt_signed_at ? new Date(data.receipt_signed_at).toLocaleString("pt-BR") : "-"}`}
               </div>
-              {(justSigned ? signature : data.receipt_signature) && (
+              {data.receipt_signed_file_url ? (
+                <a href={data.receipt_signed_file_url} target="_blank" className="inline-block mt-3 px-4 py-2 rounded-lg text-sm font-bold text-white" style={{ background: "#7C5CFF" }}>📄 Ver recibo assinado</a>
+              ) : (justSigned ? signature : data.receipt_signature) && (
                 <img src={justSigned ? signature : data.receipt_signature} className="mx-auto mt-3 border rounded-lg" style={{ borderColor: "#DCE3F5", maxWidth: 300 }} />
               )}
             </div>
@@ -10290,11 +10377,18 @@ function App() {
                               </div>
                               {r.receipt_file_url && (
                                 <div className="w-full mt-1 pt-2 flex items-center gap-2 flex-wrap text-[11px]" style={{ borderTop: `1px dashed ${COLORS.cardBorder}` }}>
-                                  <a href={r.receipt_file_url} target="_blank" className="underline font-semibold" style={{ color: COLORS.brandLight }}>📎 ver recibo anexado</a>
+                                  <a href={r.receipt_file_url} target="_blank" className="underline font-semibold" style={{ color: COLORS.brandLight }}>📎 ver recibo original</a>
                                   {r.receipt_signed ? (
-                                    <span className="font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.12)" }}>
-                                      ✓ Assinado em {r.receipt_signed_at ? new Date(r.receipt_signed_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}
-                                    </span>
+                                    <>
+                                      <span className="font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.12)" }}>
+                                        ✓ Assinado em {r.receipt_signed_at ? new Date(r.receipt_signed_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}
+                                      </span>
+                                      {r.receipt_signed_file_url ? (
+                                        <a href={r.receipt_signed_file_url} target="_blank" className="underline font-bold" style={{ color: COLORS.success }}>📄 ver recibo assinado</a>
+                                      ) : r.receipt_signature && (
+                                        <a href={r.receipt_signature} target="_blank" className="underline font-semibold" style={{ color: COLORS.inkMuted }}>ver assinatura</a>
+                                      )}
+                                    </>
                                   ) : (
                                     <>
                                       <span className="font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.12)" }}>aguardando assinatura</span>

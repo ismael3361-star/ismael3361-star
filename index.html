@@ -6395,11 +6395,18 @@ function App() {
     doc.text("Comissão Etiquetas", 14, 32);
     doc.setFontSize(9);
     doc.setTextColor(100);
-    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")} — ${MONTHS_PT[monthDate.getMonth()]}/${monthDate.getFullYear()}`, 14, 38);
 
-    // Só entra no PDF o que ainda está em aberto — o que já foi pago não aparece mais aqui
-    // (igual o que já acontece na tela: depois de marcado como pago, some da lista).
-    const abertoRomaneios = [...romaneios].filter((r) => !r.commission_paid).sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
+    // Só entra no PDF o que é do mês selecionado na tela e ainda está em aberto —
+    // o que já foi pago, ou é de outro mês, não aparece mais aqui (igual a tela).
+    const abertoRomaneios = [...romaneios]
+      .filter((r) => !r.commission_paid)
+      .filter((r) => {
+        if (!r.order_date) return false;
+        const d = new Date(r.order_date + "T00:00:00");
+        return d.getFullYear() === monthDate.getFullYear() && d.getMonth() === monthDate.getMonth();
+      })
+      .sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
 
     const bySeller = {};
     abertoRomaneios.forEach((r) => {
@@ -8120,11 +8127,11 @@ function App() {
                 {effectiveTab === "agenda" && "Agenda de Apresentações"}
               </h2>
               <p className="text-sm" style={{ color: COLORS.inkMuted }}>
-                {["dashboard", "clientes", "boletos", "calendario"].includes(effectiveTab) ? `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}` : ""}
+                {["dashboard", "clientes", "boletos", "calendario", "comissao"].includes(effectiveTab) ? `${MONTHS_PT[monthDate.getMonth()]} de ${monthDate.getFullYear()}` : ""}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              {["dashboard", "boletos", "calendario"].includes(effectiveTab) && (
+              {["dashboard", "boletos", "calendario", "comissao"].includes(effectiveTab) && (
                 <div className="flex items-center gap-1 px-3 py-2 rounded-xl border text-sm font-semibold" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink }}>
                   <button onClick={() => changeMonth(-1)} style={{ color: COLORS.inkMuted }}>‹</button>
                   <span>{MONTHS_PT[monthDate.getMonth()].slice(0, 3)}/{monthDate.getFullYear()}</span>
@@ -10902,22 +10909,30 @@ function App() {
           {effectiveTab === "comissao" && (
             <div>
               {(() => {
+                // Só mostra romaneios do mês/ano selecionado no seletor "‹ Mês/Ano ›" do topo —
+                // assim que o mês vira, a comissão do mês anterior some da tela (igual já pedido
+                // pro usuário antes), e volta a aparecer só se ele navegar de volta pro mês dela.
+                const romaneiosDoMes = romaneios.filter((r) => {
+                  if (!r.order_date) return false;
+                  const d = new Date(r.order_date + "T00:00:00");
+                  return d.getFullYear() === monthDate.getFullYear() && d.getMonth() === monthDate.getMonth();
+                });
                 const byClient = {};
-                romaneios.forEach((r) => {
+                romaneiosDoMes.forEach((r) => {
                   const cli = romaneioClients.find((rc) => rc.id === r.romaneio_client_id)?.name || "Sem cliente";
                   if (!byClient[cli]) byClient[cli] = [];
                   byClient[cli].push(r);
                 });
                 const sellers = Object.keys(byClient).sort((a, b) => a.localeCompare(b, "pt-BR"));
                 const calcComissao = romaneioComissao;
-                const totalComissao = romaneios.reduce((s, r) => s + calcComissao(r), 0);
-                const totalPago = romaneios.filter((r) => r.commission_paid).reduce((s, r) => s + calcComissao(r), 0);
+                const totalComissao = romaneiosDoMes.reduce((s, r) => s + calcComissao(r), 0);
+                const totalPago = romaneiosDoMes.filter((r) => r.commission_paid).reduce((s, r) => s + calcComissao(r), 0);
                 const totalAberto = totalComissao - totalPago;
                 return (
                   <>
                     <div className="flex justify-end mb-3 gap-2">
-                      {romaneios.some((r) => !r.commission_paid) && (
-                        <button onClick={() => handleMarkAllCommissionPaid(romaneios)} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: COLORS.success }}>✓ Marcar tudo como pago (todos vendedores)</button>
+                      {romaneiosDoMes.some((r) => !r.commission_paid) && (
+                        <button onClick={() => handleMarkAllCommissionPaid(romaneiosDoMes)} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: COLORS.success }}>✓ Marcar tudo como pago (todos vendedores)</button>
                       )}
                       <button onClick={exportSellerCommissionsPDF} disabled={sellers.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                     </div>
@@ -10937,7 +10952,7 @@ function App() {
                     </div>
 
                     {(() => {
-                      const desatualizados = romaneios.filter((r) => Math.abs(calcComissao(r) - (Number(r.commission_value) || 0)) > 0.005);
+                      const desatualizados = romaneiosDoMes.filter((r) => Math.abs(calcComissao(r) - (Number(r.commission_value) || 0)) > 0.005);
                       if (desatualizados.length === 0) return null;
                       return (
                         <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: COLORS.warn, background: "rgba(245,158,11,0.1)" }}>
@@ -10956,7 +10971,7 @@ function App() {
                     {sellers.length === 0 ? (
                       <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                         <div className="text-3xl mb-2">💰</div>
-                        <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio cadastrado ainda.</div>
+                        <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio de {MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()}.</div>
                       </div>
                     ) : sellers.map((s) => {
                       const rows = byClient[s];

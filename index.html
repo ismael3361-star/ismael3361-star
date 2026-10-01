@@ -4730,6 +4730,7 @@ function App() {
   const [payrollSubTab, setPayrollSubTab] = useState("pagamentos");
   const [showPaidPayroll, setShowPaidPayroll] = useState(false);
   const [showPaidCommissionSellers, setShowPaidCommissionSellers] = useState(() => new Set());
+  const [showPaidRomaneios, setShowPaidRomaneios] = useState(false);
   const [supplierOrders, setSupplierOrders] = useState([]);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
@@ -9010,11 +9011,8 @@ function App() {
                 </div>
               )}
 
-              {!showRomaneioForm && (
-              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                {romaneios.length === 0 ? (
-                  <div className="p-10 text-center"><div className="text-3xl mb-2">📦</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio gerado ainda.</div></div>
-                ) : romaneios.map((r, i) => {
+              {!showRomaneioForm && (() => {
+                function renderRomaneioRow(r, i) {
                   const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
                   const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
                   return (
@@ -9058,9 +9056,30 @@ function App() {
                       </div>
                     </div>
                   );
-                })}
-              </div>
-              )}
+                }
+                const abertoList = romaneios.filter((r) => !r.paid);
+                const pagoList = romaneios.filter((r) => r.paid);
+                return (
+                  <>
+                    <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      {romaneios.length === 0 ? (
+                        <div className="p-10 text-center"><div className="text-3xl mb-2">📦</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio gerado ainda.</div></div>
+                      ) : abertoList.length === 0 ? (
+                        <div className="p-10 text-center"><div className="text-3xl mb-2">🎉</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pedido em aberto — tudo pago.</div></div>
+                      ) : abertoList.map((r, i) => renderRomaneioRow(r, i))}
+                    </div>
+                    {pagoList.length > 0 && (
+                      <div className="rounded-2xl border overflow-hidden mt-3" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        <button onClick={() => setShowPaidRomaneios((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.success, background: "rgba(34,197,94,0.06)" }}>
+                          <span>✅ Pagos ({pagoList.length})</span>
+                          <span style={{ display: "inline-block", transition: "transform 0.15s", transform: showPaidRomaneios ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
+                        </button>
+                        {showPaidRomaneios && pagoList.map((r, i) => renderRomaneioRow(r, i))}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 

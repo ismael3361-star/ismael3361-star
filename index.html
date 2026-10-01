@@ -6443,35 +6443,58 @@ function App() {
 
     let y2 = doc.lastAutoTable.finalY + 10;
     if (y2 > 170) { doc.addPage(); y2 = 20; }
-    doc.setFontSize(11);
-    doc.setTextColor(30);
-    doc.text("Detalhamento por romaneio", 14, y2);
-    y2 += 4;
 
-    const body = sortedRomaneios.map((r) => {
+    function romaneioRow(r) {
       const venda = romaneioVenda(r);
       const qtd = romaneioQtd(r);
       const custoTotal = romaneioCustoTotal(r);
       const lucro = romaneioLucro(r);
       const comissao = romaneioComissao(r);
       const cliName = romaneioClients.find((rc) => rc.id === r.romaneio_client_id)?.name || "Sem cliente";
-      return [cliName.toUpperCase(), r.number || "-", r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", qtd, fmtMoney(venda), fmtMoney(custoTotal), fmtMoney(lucro), `${r.commission_percent || 0}%`, fmtMoney(comissao), r.commission_paid ? "Pago" : "Pendente"];
-    });
-    const totalGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioComissao(r), 0);
-    const totalVendaGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioVenda(r), 0);
-    const totalQtdGeral = sortedRomaneios.reduce((sum, r) => sum + romaneioQtd(r), 0);
+      return [cliName.toUpperCase(), r.number || "-", r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", qtd, fmtMoney(venda), fmtMoney(custoTotal), fmtMoney(lucro), `${r.commission_percent || 0}%`, fmtMoney(comissao)];
+    }
+    function somaQtd(list) { return list.reduce((sum, r) => sum + romaneioQtd(r), 0); }
+    function somaVenda(list) { return list.reduce((sum, r) => sum + romaneioVenda(r), 0); }
+    function somaComissao(list) { return list.reduce((sum, r) => sum + romaneioComissao(r), 0); }
 
+    const abertoRomaneios = sortedRomaneios.filter((r) => !r.commission_paid);
+    const pagoRomaneios = sortedRomaneios.filter((r) => r.commission_paid);
+    const tableHead = [["Cliente", "Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão"]];
+
+    doc.setFontSize(11);
+    doc.setTextColor(180, 90, 20);
+    doc.text(`Em aberto (${abertoRomaneios.length})`, 14, y2);
+    y2 += 4;
     doc.autoTable({
       startY: y2,
-      head: [["Cliente", "Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão", "Situação"]],
-      body,
-      foot: [["TOTAL GERAL", "", "", totalQtdGeral, fmtMoney(totalVendaGeral), "", "", "", fmtMoney(totalGeral), ""]],
+      head: tableHead,
+      body: abertoRomaneios.length ? abertoRomaneios.map(romaneioRow) : [["Nenhum romaneio em aberto.", "", "", "", "", "", "", "", ""]],
+      foot: [["TOTAL EM ABERTO", "", "", somaQtd(abertoRomaneios), fmtMoney(somaVenda(abertoRomaneios)), "", "", "", fmtMoney(somaComissao(abertoRomaneios))]],
       styles: { fontSize: 8 },
-      headStyles: { fillColor: [124, 92, 255] },
-      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      headStyles: { fillColor: [245, 158, 11] },
+      footStyles: { fillColor: [253, 230, 190], textColor: 20, fontStyle: "bold" },
       showFoot: "lastPage",
       margin: { left: 14, right: 14 },
     });
+
+    let y3 = doc.lastAutoTable.finalY + 10;
+    if (y3 > 170) { doc.addPage(); y3 = 20; }
+    doc.setFontSize(11);
+    doc.setTextColor(30);
+    doc.text(`Pago (${pagoRomaneios.length})`, 14, y3);
+    y3 += 4;
+    doc.autoTable({
+      startY: y3,
+      head: tableHead,
+      body: pagoRomaneios.length ? pagoRomaneios.map(romaneioRow) : [["Nenhum romaneio pago ainda.", "", "", "", "", "", "", "", ""]],
+      foot: [["TOTAL PAGO", "", "", somaQtd(pagoRomaneios), fmtMoney(somaVenda(pagoRomaneios)), "", "", "", fmtMoney(somaComissao(pagoRomaneios))]],
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [34, 197, 94] },
+      footStyles: { fillColor: [210, 245, 220], textColor: 20, fontStyle: "bold" },
+      showFoot: "lastPage",
+      margin: { left: 14, right: 14 },
+    });
+
     doc.save(`comissao-etiquetas-${todayStr()}.pdf`);
   }
 

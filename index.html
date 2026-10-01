@@ -6397,18 +6397,18 @@ function App() {
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
-    const sortedRomaneios = [...romaneios].sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
+    // Só entra no PDF o que ainda está em aberto — o que já foi pago não aparece mais aqui
+    // (igual o que já acontece na tela: depois de marcado como pago, some da lista).
+    const abertoRomaneios = [...romaneios].filter((r) => !r.commission_paid).sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0));
 
     const bySeller = {};
-    sortedRomaneios.forEach((r) => {
+    abertoRomaneios.forEach((r) => {
       const s = (r.seller || "Sem vendedor").toUpperCase();
-      if (!bySeller[s]) bySeller[s] = { total: 0, pendente: 0 };
-      const c = romaneioComissao(r);
-      bySeller[s].total += c;
-      if (!r.commission_paid) bySeller[s].pendente += c;
+      if (!bySeller[s]) bySeller[s] = { pendente: 0 };
+      bySeller[s].pendente += romaneioComissao(r);
     });
     const sellerNames = Object.keys(bySeller).sort((a, b) => a.localeCompare(b, "pt-BR"));
-    const qrColIndex = 3;
+    const qrColIndex = 2;
 
     doc.setFontSize(11);
     doc.setTextColor(30);
@@ -6416,21 +6416,21 @@ function App() {
 
     doc.autoTable({
       startY: 50,
-      head: [["Vendedor", "Total comissão", "Pendente", "PIX"]],
-      body: sellerNames.map((s) => [s, fmtMoney(bySeller[s].total), fmtMoney(bySeller[s].pendente), ""]),
+      head: [["Vendedor", "Pendente", "PIX"]],
+      body: sellerNames.length ? sellerNames.map((s) => [s, fmtMoney(bySeller[s].pendente), ""]) : [["Nenhuma comissão em aberto.", "", ""]],
       styles: { fontSize: 9, valign: "middle", cellPadding: { top: 4, right: 3, bottom: 4, left: 3 } },
       headStyles: { fillColor: [124, 92, 255] },
       columnStyles: { [qrColIndex]: { minCellHeight: 34, cellWidth: 32 } },
       margin: { left: 14, right: 14 },
       didDrawCell: (data) => {
-        if (data.section !== "body" || data.column.index !== qrColIndex) return;
+        if (data.section !== "body" || data.column.index !== qrColIndex || !sellerNames.length) return;
         const s = sellerNames[data.row.index];
         const pend = bySeller[s].pendente;
         const emp = employees.find((e) => (e.name || "").toUpperCase() === s);
         if (pend <= 0 || !emp?.pix_key) {
           doc.setFontSize(7);
           doc.setTextColor(150);
-          doc.text(pend <= 0 ? "quitado" : "sem PIX", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: "center" });
+          doc.text(!emp?.pix_key ? "sem PIX" : "quitado", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: "center" });
           return;
         }
         const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: pend, txid: `COM${s}`.replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
@@ -6453,44 +6453,22 @@ function App() {
       const cliName = romaneioClients.find((rc) => rc.id === r.romaneio_client_id)?.name || "Sem cliente";
       return [cliName.toUpperCase(), r.number || "-", r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-", qtd, fmtMoney(venda), fmtMoney(custoTotal), fmtMoney(lucro), `${r.commission_percent || 0}%`, fmtMoney(comissao)];
     }
-    function somaQtd(list) { return list.reduce((sum, r) => sum + romaneioQtd(r), 0); }
-    function somaVenda(list) { return list.reduce((sum, r) => sum + romaneioVenda(r), 0); }
-    function somaComissao(list) { return list.reduce((sum, r) => sum + romaneioComissao(r), 0); }
-
-    const abertoRomaneios = sortedRomaneios.filter((r) => !r.commission_paid);
-    const pagoRomaneios = sortedRomaneios.filter((r) => r.commission_paid);
-    const tableHead = [["Cliente", "Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão"]];
+    const totalQtdGeral = abertoRomaneios.reduce((sum, r) => sum + romaneioQtd(r), 0);
+    const totalVendaGeral = abertoRomaneios.reduce((sum, r) => sum + romaneioVenda(r), 0);
+    const totalGeral = abertoRomaneios.reduce((sum, r) => sum + romaneioComissao(r), 0);
 
     doc.setFontSize(11);
-    doc.setTextColor(180, 90, 20);
-    doc.text(`Em aberto (${abertoRomaneios.length})`, 14, y2);
+    doc.setTextColor(30);
+    doc.text(`Detalhamento — em aberto (${abertoRomaneios.length})`, 14, y2);
     y2 += 4;
     doc.autoTable({
       startY: y2,
-      head: tableHead,
+      head: [["Cliente", "Romaneio", "Data", "Qtd", "Venda", "Custo total", "Lucro", "%", "Comissão"]],
       body: abertoRomaneios.length ? abertoRomaneios.map(romaneioRow) : [["Nenhum romaneio em aberto.", "", "", "", "", "", "", "", ""]],
-      foot: [["TOTAL EM ABERTO", "", "", somaQtd(abertoRomaneios), fmtMoney(somaVenda(abertoRomaneios)), "", "", "", fmtMoney(somaComissao(abertoRomaneios))]],
+      foot: [["TOTAL EM ABERTO", "", "", totalQtdGeral, fmtMoney(totalVendaGeral), "", "", "", fmtMoney(totalGeral)]],
       styles: { fontSize: 8 },
-      headStyles: { fillColor: [245, 158, 11] },
-      footStyles: { fillColor: [253, 230, 190], textColor: 20, fontStyle: "bold" },
-      showFoot: "lastPage",
-      margin: { left: 14, right: 14 },
-    });
-
-    let y3 = doc.lastAutoTable.finalY + 10;
-    if (y3 > 170) { doc.addPage(); y3 = 20; }
-    doc.setFontSize(11);
-    doc.setTextColor(30);
-    doc.text(`Pago (${pagoRomaneios.length})`, 14, y3);
-    y3 += 4;
-    doc.autoTable({
-      startY: y3,
-      head: tableHead,
-      body: pagoRomaneios.length ? pagoRomaneios.map(romaneioRow) : [["Nenhum romaneio pago ainda.", "", "", "", "", "", "", "", ""]],
-      foot: [["TOTAL PAGO", "", "", somaQtd(pagoRomaneios), fmtMoney(somaVenda(pagoRomaneios)), "", "", "", fmtMoney(somaComissao(pagoRomaneios))]],
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [34, 197, 94] },
-      footStyles: { fillColor: [210, 245, 220], textColor: 20, fontStyle: "bold" },
+      headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
       showFoot: "lastPage",
       margin: { left: 14, right: 14 },
     });

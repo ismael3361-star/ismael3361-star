@@ -10923,7 +10923,14 @@ function App() {
                   if (!byClient[cli]) byClient[cli] = [];
                   byClient[cli].push(r);
                 });
-                const sellers = Object.keys(byClient).sort((a, b) => a.localeCompare(b, "pt-BR"));
+                // Ordena os grupos pela ordem dos pedidos (menor número de romaneio primeiro),
+                // em vez de alfabética pelo nome do cliente/vendedor.
+                const sellerMinNumber = {};
+                Object.keys(byClient).forEach((s) => {
+                  sellerMinNumber[s] = Math.min(...byClient[s].map((r) => Number(r.number) || Infinity));
+                });
+                const sellers = Object.keys(byClient).sort((a, b) => sellerMinNumber[a] - sellerMinNumber[b]);
+                Object.keys(byClient).forEach((s) => { byClient[s].sort((a, b) => (Number(a.number) || 0) - (Number(b.number) || 0)); });
                 const calcComissao = romaneioComissao;
                 const totalComissao = romaneiosDoMes.reduce((s, r) => s + calcComissao(r), 0);
                 const totalPago = romaneiosDoMes.filter((r) => r.commission_paid).reduce((s, r) => s + calcComissao(r), 0);

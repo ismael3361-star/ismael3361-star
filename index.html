@@ -6837,33 +6837,50 @@ function App() {
     // para propostas antigas sem "kind", cai no reconhecimento por texto (compatibilidade).
     const items = p.monthly_items || [];
     const isKindPdf = (it, kind, legacyTest) => (it.kind ? it.kind === kind : legacyTest(it));
+    // Cada linha mostra Qtd. + Valor Unitário + Valor Total, separados por Implantação e por Mensalidade
+    // (igual ao modelo de "Proposta Comercial" de referência) — com Qtd. 1, unitário e total ficam iguais,
+    // mas a estrutura já fica pronta pra quando algum módulo tiver mais de 1 unidade.
+    function pushRow(desc, qtd, valorImplantacao, valorMensal) {
+      const q = Number(qtd) || 1;
+      rows.push([
+        desc, String(q),
+        valorImplantacao != null ? fmtMoney(valorImplantacao) : "--",
+        valorMensal != null ? fmtMoney(valorMensal) : "--",
+        valorImplantacao != null ? fmtMoney(valorImplantacao * q) : "--",
+        valorMensal != null ? fmtMoney(valorMensal * q) : "--",
+      ]);
+    }
     const rows = [];
-    items.filter((it) => isKindPdf(it, "loja", (x) => (x.desc || "").startsWith("Loja"))).forEach((it) => rows.push([it.desc, "1", "--", fmtMoney(it.value)]));
+    items.filter((it) => isKindPdf(it, "loja", (x) => (x.desc || "").startsWith("Loja"))).forEach((it) => pushRow(it.desc, 1, null, it.value));
     const fabricaItem = items.find((it) => isKindPdf(it, "fabrica", (x) => x.desc === "Fábrica"));
-    if (fabricaItem) rows.push(["Fábrica", "1", "--", fmtMoney(fabricaItem.value)]);
+    if (fabricaItem) pushRow("Fábrica", 1, null, fabricaItem.value);
     const producaoItem = items.find((it) => isKindPdf(it, "producao", (x) => x.desc === "Produção"));
-    if (producaoItem) rows.push(["Produção", "1", "--", fmtMoney(producaoItem.value)]);
-    if (p.integration_monthly_value > 0) rows.push([`Mensalidade integração${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, "1", "--", fmtMoney(p.integration_monthly_value)]);
+    if (producaoItem) pushRow("Produção", 1, null, producaoItem.value);
+    if (p.integration_monthly_value > 0) pushRow(`Mensalidade integração${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, null, p.integration_monthly_value);
 
     const installBundle = (p.installation_value || 0) + (p.training_value || 0) + (p.db_transfer_value || 0);
-    if (installBundle > 0) rows.push(["Implantação (inclui treinamento e transferência de banco de dados, quando houver)", "1", fmtMoney(installBundle), "--"]);
+    if (installBundle > 0) pushRow("Implantação (inclui treinamento e transferência de banco de dados, quando houver)", 1, installBundle, null);
     const cloudItem = items.find((it) => isKindPdf(it, "cloud", (x) => x.desc === "Cloud"));
-    if (cloudItem) rows.push([`Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, "1", fmtMoney(cloudItem.value), "--"]);
-    if (p.integration_setup_value > 0) rows.push([`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, "1", fmtMoney(p.integration_setup_value), "--"]);
+    if (cloudItem) pushRow(`Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, 1, cloudItem.value, null);
+    if (p.integration_setup_value > 0) pushRow(`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, p.integration_setup_value, null);
     const customItemsPdf = items.filter((it) => it.kind ? it.kind === "custom" : (!(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")));
-    customItemsPdf.forEach((it) => rows.push([it.desc, "1", fmtMoney(it.value), "--"]));
+    customItemsPdf.forEach((it) => pushRow(it.desc, 1, it.value, null));
 
     const customTotalPdf = customItemsPdf.reduce((s, it) => s + (Number(it.value) || 0), 0);
     const implantacaoTotalPdf = installBundle + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotalPdf;
 
     doc.autoTable({
       startY: y,
-      head: [["Módulos / Serviços", "Qtd.", "Valor Implantação", "Valor Mensalidade"]],
+      head: [["Módulos / Serviços", "Qtd.", "Vr. Unit. Implantação", "Vr. Unit. Mensal", "Vr. Total Implantação", "Vr. Total Mensal"]],
       body: rows,
-      foot: [["TOTAL COM DESCONTO", "", fmtMoney(implantacaoTotalPdf), fmtMoney(p.monthly_value)]],
-      styles: { fontSize: 8.5 },
-      headStyles: { fillColor: [124, 92, 255] },
+      foot: [["TOTAL COM DESCONTO", "", "", "", fmtMoney(implantacaoTotalPdf), fmtMoney(p.monthly_value)]],
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [124, 92, 255], fontSize: 7.5 },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+      columnStyles: {
+        1: { halign: "center", cellWidth: 12 },
+        2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" },
+      },
       margin: { left: 14, right: 14 },
     });
 

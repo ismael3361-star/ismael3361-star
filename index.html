@@ -8350,40 +8350,6 @@ function App() {
                 </div>
               </div>
 
-              {/* Linha 3: tipo de cliente + últimos envios */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="rounded-2xl p-4 border" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>🧩 Clientes por tipo</div>
-                  <DonutTipo countMonthly={stats.countMonthly} countAnnual={stats.countAnnual} />
-                </div>
-                <div className="rounded-2xl p-4 border" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>📨 Últimos boletos enviados</div>
-                  {recentSent.length === 0 ? (
-                    <div className="text-sm text-center py-6" style={{ color: COLORS.inkMuted }}>Nenhum envio registrado ainda neste mês.</div>
-                  ) : (
-                    <div className="space-y-3">
-                      {recentSent.map((b) => {
-                        const c = clients.find((x) => x.id === b.client_id);
-                        if (!c) return null;
-                        const channel = b.sent_whatsapp ? "WhatsApp" : "E-mail";
-                        return (
-                          <div key={b.id} className="flex items-center gap-2">
-                            <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0" style={{ background: b.sent_whatsapp ? "rgba(34,197,94,0.15)" : "rgba(167,139,250,0.15)", color: b.sent_whatsapp ? COLORS.wa : COLORS.email }}>
-                              {b.sent_whatsapp ? "💬" : "📧"}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="text-xs font-semibold truncate" style={{ color: COLORS.ink }}>{c.name}</div>
-                              <div className="text-[10px]" style={{ color: COLORS.inkMuted }}>{fmtDateTime(b.updated_at)}</div>
-                            </div>
-                            <span className="text-xs font-bold" style={{ color: COLORS.ink }}>{money(effectiveValue(c, boletos[c.id]))}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
               <div className="text-center text-[11px] pt-2" style={{ color: COLORS.inkFaint }}>
                 © {new Date().getFullYear()} ADM / MIRE. Todos os direitos reservados. <span className="ml-2">Versão 3.0.0</span>
               </div>

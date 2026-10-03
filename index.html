@@ -1203,6 +1203,7 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
     return custom;
   });
   const [discountValue, setDiscountValue] = useState(initial?.discount_value ?? "");
+  const [discountImplantacaoValue, setDiscountImplantacaoValue] = useState(initial?.discount_implantacao_value ?? "");
 
   const prospect = prospects.find((p) => p.id === prospectId);
 
@@ -1230,7 +1231,8 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
   const trainingTotal = Number(trainingValue) || 0;
   const dbTransferTotal = Number(dbTransferValue) || 0;
   const monthlyTotal = Math.max(0, mensalidadeBaseTotal - (Number(discountValue) || 0));
-  const implantacaoTotal = installationTotal + trainingTotal + dbTransferTotal + customTotal + integrationSetupTotal + cloudTotal;
+  const implantacaoBaseTotal = installationTotal + trainingTotal + dbTransferTotal + customTotal + integrationSetupTotal + cloudTotal;
+  const implantacaoTotal = Math.max(0, implantacaoBaseTotal - (Number(discountImplantacaoValue) || 0));
   const grandTotal = monthlyTotal + implantacaoTotal;
 
   async function handleSaveNewProspect(p) {
@@ -1385,10 +1387,16 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
           <button onClick={addCustom} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar customização</button>
         </div>
 
-        {/* Desconto */}
-        <div className="flex items-center gap-3 pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
-          <label className="text-sm font-semibold w-40 shrink-0" style={{ color: COLORS.warn }}>Desconto (R$)</label>
-          <input value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} type="number" placeholder="0" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+        {/* Descontos (mensalidade e implantação são independentes) */}
+        <div className="pt-2 border-t space-y-2" style={{ borderColor: COLORS.cardBorder }}>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-semibold w-40 shrink-0" style={{ color: COLORS.warn }}>Desconto na Mensalidade (R$)</label>
+            <input value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} type="number" placeholder="0" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-semibold w-40 shrink-0" style={{ color: COLORS.warn }}>Desconto na Implantação (R$)</label>
+            <input value={discountImplantacaoValue} onChange={(e) => setDiscountImplantacaoValue(e.target.value)} type="number" placeholder="0" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+          </div>
         </div>
 
         {/* Resumo: duas colunas principais + detalhes */}
@@ -1411,7 +1419,8 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
             <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.inkMuted }}>· Integração {integrationPlatforms.length ? `(${integrationPlatforms.join(", ")})` : ""} — setup: implantação / mensal: mensalidade</span><span className="font-bold" style={{ color: COLORS.ink }}>{fmtMoney(integrationSetupTotal)} + {fmtMoney(integrationMonthlyTotal)}/mês</span></div>
           )}
           {customTotal > 0 && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.inkMuted }}>· Customização (dentro da implantação)</span><span className="font-bold" style={{ color: COLORS.ink }}>{fmtMoney(customTotal)}</span></div>}
-          {Number(discountValue) > 0 && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.warn }}>Desconto (na mensalidade)</span><span className="font-bold" style={{ color: COLORS.warn }}>-{fmtMoney(discountValue)}</span></div>}
+          {Number(discountValue) > 0 && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.warn }}>Desconto na mensalidade</span><span className="font-bold" style={{ color: COLORS.warn }}>-{fmtMoney(discountValue)}</span></div>}
+          {Number(discountImplantacaoValue) > 0 && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.warn }}>Desconto na implantação</span><span className="font-bold" style={{ color: COLORS.warn }}>-{fmtMoney(discountImplantacaoValue)}</span></div>}
           <div className="flex items-center justify-between text-sm pt-1 border-t" style={{ borderColor: COLORS.cardBorder }}><span style={{ color: COLORS.ink }}>Total geral da proposta</span><span className="font-bold" style={{ color: COLORS.ink }}>{fmtMoney(grandTotal)}</span></div>
         </div>
       </div>
@@ -1439,11 +1448,11 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
               installation_value: Number(installationValue) || 0, training_value: Number(trainingValue) || 0, db_transfer_value: Number(dbTransferValue) || 0,
               payment_method: paymentMethod.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(),
               cloud_description: hasCloud ? cloudDescription.trim() : "",
-              monthly_items: builtItems, discount_value: Number(discountValue) || 0,
+              monthly_items: builtItems, discount_value: Number(discountValue) || 0, discount_implantacao_value: Number(discountImplantacaoValue) || 0,
               integration_platforms: hasIntegration ? integrationPlatforms.join(", ") : "",
               integration_setup_value: hasIntegration ? Number(integrationSetupValue) || 0 : 0,
               integration_monthly_value: hasIntegration ? Number(integrationMonthlyValue) || 0 : 0,
-              monthly_value: monthlyTotal, monthly_due_day: null,
+              monthly_value: monthlyTotal, implantacao_value: implantacaoTotal, monthly_due_day: null,
               valid_until: validUntil || null, body_text: bodyText,
             }, prospect);
           }}
@@ -1469,11 +1478,11 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
               installation_value: Number(installationValue) || 0, training_value: Number(trainingValue) || 0, db_transfer_value: Number(dbTransferValue) || 0,
               payment_method: paymentMethod.trim(), pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(),
               cloud_description: hasCloud ? cloudDescription.trim() : "",
-              monthly_items: builtItems, discount_value: Number(discountValue) || 0,
+              monthly_items: builtItems, discount_value: Number(discountValue) || 0, discount_implantacao_value: Number(discountImplantacaoValue) || 0,
               integration_platforms: hasIntegration ? integrationPlatforms.join(", ") : "",
               integration_setup_value: hasIntegration ? Number(integrationSetupValue) || 0 : 0,
               integration_monthly_value: hasIntegration ? Number(integrationMonthlyValue) || 0 : 0,
-              monthly_value: monthlyTotal, monthly_due_day: null,
+              monthly_value: monthlyTotal, implantacao_value: implantacaoTotal, monthly_due_day: null,
               valid_until: validUntil || null, body_text: bodyText,
             });
           }}
@@ -6867,13 +6876,27 @@ function App() {
     customItemsPdf.forEach((it) => pushRow(it.desc, 1, it.value, null));
 
     const customTotalPdf = customItemsPdf.reduce((s, it) => s + (Number(it.value) || 0), 0);
-    const implantacaoTotalPdf = installBundle + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotalPdf;
+    // Totais sem desconto (soma bruta dos itens da tabela, uma linha de cada coluna)
+    const implantacaoBaseTotalPdf = installBundle + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotalPdf;
+    const mensalidadeBaseTotalPdf = rows.reduce((s, r) => {
+      const v = r[5] === "--" ? 0 : Number(String(r[5]).replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
+      return s + v;
+    }, 0);
+    // Totais já com desconto aplicado (vêm salvos na proposta; fallback pro bruto se a proposta for antiga e não tiver o campo)
+    const implantacaoTotalPdf = p.implantacao_value != null ? p.implantacao_value : implantacaoBaseTotalPdf;
+    const mensalidadeTotalPdf = p.monthly_value != null ? p.monthly_value : mensalidadeBaseTotalPdf;
+    const descontoImplantacaoPdf = Math.max(0, implantacaoBaseTotalPdf - implantacaoTotalPdf);
+    const descontoMensalidadePdf = p.discount_value || Math.max(0, mensalidadeBaseTotalPdf - mensalidadeTotalPdf);
 
     doc.autoTable({
       startY: y,
       head: [["Módulos / Serviços", "Qtd.", "Vr. Unit. Implantação", "Vr. Unit. Mensal", "Vr. Total Implantação", "Vr. Total Mensal"]],
       body: rows,
-      foot: [["TOTAL COM DESCONTO", "", "", "", fmtMoney(implantacaoTotalPdf), fmtMoney(p.monthly_value)]],
+      foot: [
+        ["SUBTOTAL", "", "", "", fmtMoney(implantacaoBaseTotalPdf), fmtMoney(mensalidadeBaseTotalPdf)],
+        ["TOTAL IMPLANTAÇÃO (c/ desconto)", "", "", "", fmtMoney(implantacaoTotalPdf), ""],
+        ["TOTAL MENSALIDADE (c/ desconto)", "", "", "", "", fmtMoney(mensalidadeTotalPdf)],
+      ],
       styles: { fontSize: 8 },
       headStyles: { fillColor: [124, 92, 255], fontSize: 7.5 },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
@@ -6887,15 +6910,18 @@ function App() {
     y = doc.lastAutoTable.finalY + 8;
     if (y > 240) { doc.addPage(); y = 20; }
     doc.setFillColor(245, 245, 250);
-    const summaryLines = 2 + 1 + (p.pix_key ? 1 : 0) + 1;
+    const summaryLines = 2 + (descontoImplantacaoPdf > 0 ? 1 : 0) + (descontoMensalidadePdf > 0 ? 1 : 0) + 1 + (p.pix_key ? 1 : 0) + 1;
     const summaryH = summaryLines * 6 + 6;
     doc.roundedRect(14, y, pageWidth - 28, summaryH, 2, 2, "F");
     let sy = y + 8;
     doc.setFontSize(10);
     doc.setTextColor(30);
     doc.setFont(undefined, "bold");
-    doc.text(`Valor total da mensalidade: ${fmtMoney(p.monthly_value)}`, 18, sy); sy += 6;
-    doc.text(`Valor total da implantação: ${fmtMoney(implantacaoTotalPdf)}`, 18, sy); sy += 7;
+    doc.text(`Valor total da implantação: ${fmtMoney(implantacaoTotalPdf)}`, 18, sy); sy += 6;
+    if (descontoImplantacaoPdf > 0) { doc.setFont(undefined, "normal"); doc.setTextColor(180, 120, 0); doc.text(`   (desconto aplicado: -${fmtMoney(descontoImplantacaoPdf)})`, 18, sy); sy += 6; doc.setFont(undefined, "bold"); doc.setTextColor(30); }
+    doc.text(`Valor total da mensalidade: ${fmtMoney(mensalidadeTotalPdf)}`, 18, sy); sy += 6;
+    if (descontoMensalidadePdf > 0) { doc.setFont(undefined, "normal"); doc.setTextColor(180, 120, 0); doc.text(`   (desconto aplicado: -${fmtMoney(descontoMensalidadePdf)})`, 18, sy); sy += 6; doc.setTextColor(30); }
+    sy += 1;
     doc.setFont(undefined, "normal");
     doc.setFontSize(9);
     doc.setTextColor(60);

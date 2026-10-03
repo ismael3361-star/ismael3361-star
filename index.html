@@ -8241,73 +8241,83 @@ function App() {
                   </div>
                 </div>
               )}
-              {/* Linha 1: cards principais */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.brand, 0.18)}, ${rgba(COLORS.brand, 0.02)})`, borderColor: rgba(COLORS.brand, 0.28) }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Clientes cadastrados</span>
-                    <span className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style={{ background: "rgba(124,92,255,0.22)" }}>👥</span>
+              {/* Painel de cobrança: o número do mês é o protagonista, não um card entre outros iguais */}
+              {(() => {
+                const abertoNaoVencido = Math.max(0, pendingValue - overdueValue);
+                const pct = (v) => (totalPrevisto > 0 ? Math.max(0, Math.min(100, (v / totalPrevisto) * 100)) : 0);
+                const pctPago = pct(paidValue), pctAberto = pct(abertoNaoVencido), pctAtrasado = pct(overdueValue);
+                return (
+                  <div className="rounded-2xl border p-5 sm:p-6" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                    <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
+                      <div>
+                        <div className="text-sm" style={{ color: COLORS.inkMuted }}>Cobrança de {MONTHS_PT[monthDate.getMonth()].toLowerCase()} de {monthDate.getFullYear()}</div>
+                        <div className="text-3xl sm:text-4xl font-extrabold font-display tnum mt-1" style={{ color: COLORS.ink }}>{money(totalPrevisto)}</div>
+                        <div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>previsto no mês · mensalidade + consultas</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{stats.count}</div>
+                        <div className="text-xs" style={{ color: COLORS.inkMuted }}>clientes cadastrados</div>
+                      </div>
+                    </div>
+
+                    <div className="h-2.5 rounded-full overflow-hidden flex" style={{ background: "rgba(255,255,255,0.07)" }}>
+                      {pctPago > 0 && <div style={{ width: `${pctPago}%`, background: COLORS.success }} />}
+                      {pctAberto > 0 && <div style={{ width: `${pctAberto}%`, background: COLORS.warn }} />}
+                      {pctAtrasado > 0 && <div style={{ width: `${pctAtrasado}%`, background: COLORS.danger }} />}
+                    </div>
+
+                    <div className="flex items-center gap-5 flex-wrap mt-3 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: COLORS.success }} />
+                        <span style={{ color: COLORS.inkMuted }}>pago</span>
+                        <span className="font-bold tnum" style={{ color: COLORS.ink }}>{money(paidValue)}</span>
+                        <span style={{ color: COLORS.inkFaint }}>({pctPago.toFixed(0)}%)</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: COLORS.warn }} />
+                        <span style={{ color: COLORS.inkMuted }}>em aberto</span>
+                        <span className="font-bold tnum" style={{ color: COLORS.ink }}>{money(abertoNaoVencido)}</span>
+                      </div>
+                      {overdueValue > 0 && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: COLORS.danger }} />
+                          <span style={{ color: COLORS.inkMuted }}>atrasado</span>
+                          <span className="font-bold tnum" style={{ color: COLORS.ink }}>{money(overdueValue)}</span>
+                        </div>
+                      )}
+                      {prevMonthPaid > 0 && (
+                        <div className="ml-auto flex items-center gap-1 font-bold" style={{ color: momChange >= 0 ? COLORS.success : COLORS.danger }}>
+                          {momChange >= 0 ? "▲" : "▼"} {Math.abs(momChange).toFixed(1)}% vs mês anterior
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-2xl font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{stats.count}</div>
-                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Total de clientes</div>
-                </div>
-                <div className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.success, 0.18)}, ${rgba(COLORS.success, 0.02)})`, borderColor: rgba(COLORS.success, 0.28) }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.success }}>Total previsto (mês)</span>
-                    <span className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style={{ background: "rgba(34,197,94,0.22)" }}>💲</span>
+                );
+              })()}
+
+              {/* Tira de métricas secundárias — texto corrido, sem repetir o card-kit acima */}
+              <div className="rounded-2xl border px-5 py-3.5 flex items-center flex-wrap gap-x-6 gap-y-2 divide-x" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                {[
+                  { l: "ticket médio", v: money(ticketMedio), c: COLORS.brandLight },
+                  { l: "vencendo hoje", v: money(stats.dueTodayValue), sub: `${stats.dueTodayCount} cli.`, c: COLORS.info },
+                  { l: "vence em breve", v: money(dueSoonValue), sub: `${stats.dueSoon} cli.`, c: COLORS.warn },
+                  { l: "pagos no mês", v: money(paidValue), sub: `${stats.paid} cli.`, c: COLORS.success },
+                ].map((s, i) => (
+                  <div key={s.l} className={i > 0 ? "pl-6" : ""} style={{ borderColor: COLORS.cardBorder }}>
+                    <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{s.l}</div>
+                    <div className="text-sm font-extrabold tnum" style={{ color: s.c }}>{s.v}{s.sub && <span className="font-semibold ml-1" style={{ color: COLORS.inkFaint }}>· {s.sub}</span>}</div>
                   </div>
-                  <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(totalPrevisto)} style={{ color: COLORS.ink }}>{money(totalPrevisto)}</div>
-                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Mensalidades + Consultas</div>
-                </div>
-                <div className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.info, 0.18)}, ${rgba(COLORS.info, 0.02)})`, borderColor: rgba(COLORS.info, 0.28) }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.info }}>Total pago (mês)</span>
-                    <span className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style={{ background: "rgba(59,130,246,0.22)" }}>💳</span>
-                  </div>
-                  <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(paidValue)} style={{ color: COLORS.ink }}>{money(paidValue)}</div>
-                  <div className="h-1.5 rounded-full mt-2 mb-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(100, totalPrevisto > 0 ? (paidValue / totalPrevisto) * 100 : 0)}%`, background: COLORS.info }}></div>
-                  </div>
-                  <div className="text-[11px] flex items-center gap-1.5 flex-wrap" style={{ color: COLORS.inkMuted }}>
-                    <span>{totalPrevisto > 0 ? ((paidValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</span>
-                    {prevMonthPaid > 0 && (
-                      <span className="font-bold" style={{ color: momChange >= 0 ? COLORS.success : COLORS.danger }}>
-                        {momChange >= 0 ? "▲" : "▼"} {Math.abs(momChange).toFixed(1)}% vs mês anterior
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.warn, 0.18)}, ${rgba(COLORS.warn, 0.02)})`, borderColor: rgba(COLORS.warn, 0.3) }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.warn }}>Em aberto</span>
-                    <span className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style={{ background: "rgba(245,158,11,0.22)" }}>⚠️</span>
-                  </div>
-                  <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(pendingValue)} style={{ color: COLORS.ink }}>{money(pendingValue)}</div>
-                  <div className="h-1.5 rounded-full mt-2 mb-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
-                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(100, totalPrevisto > 0 ? (pendingValue / totalPrevisto) * 100 : 0)}%`, background: COLORS.warn }}></div>
-                  </div>
-                  <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{totalPrevisto > 0 ? ((pendingValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</div>
-                </div>
+                ))}
               </div>
 
-              {/* Linha 2: gráfico de receita */}
-              <div className="grid grid-cols-1 gap-4">
-                <div className="rounded-2xl p-4 border shadow-sm" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.04)})`, borderColor: COLORS.cardBorder }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: "rgba(124,92,255,0.18)" }}>📈</span>
-                    <span className="text-sm font-bold" style={{ color: COLORS.ink }}>Receita mensal (mensalidade + consultas)</span>
-                  </div>
+              {/* Linha 2: gráfico de receita + vencimentos por dia */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="rounded-2xl p-4 border lg:col-span-2" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>📈 Receita mensal (mensalidade + consultas)</div>
                   <ReceitaChart history={receitaHistory} />
                 </div>
-              </div>
-
-              {/* Linha 3: vencimentos, tipo, últimos enviados */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="rounded-2xl p-4 border shadow-sm" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.04)})`, borderColor: COLORS.cardBorder }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: "rgba(124,92,255,0.18)" }}>📅</span>
-                    <span className="text-sm font-bold" style={{ color: COLORS.ink }}>Vencimentos por dia ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</span>
-                  </div>
+                <div className="rounded-2xl p-4 border" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>📅 Vencimentos por dia ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</div>
                   {dueDayGroups.length === 0 ? (
                     <div className="text-sm text-center py-6" style={{ color: COLORS.inkMuted }}>Nenhum cliente com vencimento cadastrado.</div>
                   ) : (
@@ -8338,18 +8348,16 @@ function App() {
                     </div>
                   )}
                 </div>
-                <div className="rounded-2xl p-4 border shadow-sm" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.04)})`, borderColor: COLORS.cardBorder }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: "rgba(124,92,255,0.18)" }}>🧩</span>
-                    <span className="text-sm font-bold" style={{ color: COLORS.ink }}>Clientes por tipo</span>
-                  </div>
+              </div>
+
+              {/* Linha 3: tipo de cliente + últimos envios */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="rounded-2xl p-4 border" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>🧩 Clientes por tipo</div>
                   <DonutTipo countMonthly={stats.countMonthly} countAnnual={stats.countAnnual} />
                 </div>
-                <div className="rounded-2xl p-4 border shadow-sm" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.04)})`, borderColor: COLORS.cardBorder }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: "rgba(124,92,255,0.18)" }}>📨</span>
-                    <span className="text-sm font-bold" style={{ color: COLORS.ink }}>Últimos boletos enviados</span>
-                  </div>
+                <div className="rounded-2xl p-4 border" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>📨 Últimos boletos enviados</div>
                   {recentSent.length === 0 ? (
                     <div className="text-sm text-center py-6" style={{ color: COLORS.inkMuted }}>Nenhum envio registrado ainda neste mês.</div>
                   ) : (
@@ -8374,26 +8382,6 @@ function App() {
                     </div>
                   )}
                 </div>
-              </div>
-
-              {/* Linha 4: chips resumo */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                {[
-                  { l: "Vencendo hoje", v: money(stats.dueTodayValue), sub: `${stats.dueTodayCount} clientes`, c: COLORS.info, icon: "📅" },
-                  { l: "Vence em breve", v: money(dueSoonValue), sub: `${stats.dueSoon} clientes`, c: COLORS.warn, icon: "⏰" },
-                  { l: "Atrasados", v: money(overdueValue), sub: `${stats.overdue} clientes`, c: COLORS.danger, icon: "⚠️" },
-                  { l: "Pagos (mês)", v: money(paidValue), sub: `${stats.paid} clientes`, c: COLORS.success, icon: "✅" },
-                  { l: "Ticket médio (mês)", v: money(ticketMedio), sub: "Mensalidade + Consultas", c: COLORS.brandLight, icon: "💲" },
-                ].map((s) => (
-                  <div key={s.l} className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(s.c, 0.1)}, ${COLORS.card})`, borderColor: rgba(s.c, 0.25) }}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: `${s.c}22` }}>{s.icon}</span>
-                      <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: s.c }}>{s.l}</span>
-                    </div>
-                    <div className="text-base font-extrabold truncate" title={s.v} style={{ color: COLORS.ink }}>{s.v}</div>
-                    <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{s.sub}</div>
-                  </div>
-                ))}
               </div>
 
               <div className="text-center text-[11px] pt-2" style={{ color: COLORS.inkFaint }}>

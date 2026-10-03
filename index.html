@@ -4745,6 +4745,7 @@ function App() {
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [supplierYear, setSupplierYear] = useState(new Date().getFullYear());
   const [supplierSearch, setSupplierSearch] = useState("");
+  const [showPaidSupplierOrders, setShowPaidSupplierOrders] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
   const [showGlobalSearch, setShowGlobalSearch] = useState(false);
   const [showTechForm, setShowTechForm] = useState(false);
@@ -5009,6 +5010,9 @@ function App() {
     setDbMigrations(data || []);
   }, []);
   async function handleSaveDbMigration(m) {
+    const isTechRole = userRole === "migracao" || userRole === "tecnico_migracao";
+    const original = m.id ? dbMigrations.find((x) => x.id === m.id) : null;
+    if (isTechRole && original?.paid) { showToast("Essa migração já foi paga — só o admin/financeiro pode alterá-la."); return; }
     const payload = { ...m, updated_by: session?.user?.email || "desconhecido" };
     const { error } = await supa.from("db_migrations").upsert(payload);
     if (error) { showToast(`Erro: ${error.message}`); return; }
@@ -5017,12 +5021,17 @@ function App() {
     showToast("Migração salva.");
   }
   async function handleDeleteDbMigration(id) {
+    const isTechRole = userRole === "migracao" || userRole === "tecnico_migracao";
+    const original = dbMigrations.find((x) => x.id === id);
+    if (isTechRole && original?.paid) { showToast("Essa migração já foi paga — só o admin/financeiro pode excluí-la."); return; }
     if (!confirm("Remover este registro de migração?")) return;
     await supa.from("db_migrations").delete().eq("id", id);
     await loadDbMigrations();
     showToast("Registro removido.");
   }
   async function handleToggleDbMigrationPaid(m) {
+    const isTechRole = userRole === "migracao" || userRole === "tecnico_migracao";
+    if (isTechRole && m.paid) { showToast("Só o admin/financeiro pode reabrir uma migração já paga."); return; }
     const willPay = !m.paid;
     const { error } = await supa.from("db_migrations").update({ paid: willPay, paid_date: willPay ? todayStr() : null }).eq("id", m.id);
     if (error) { showToast(`Erro: ${error.message}`); return; }
@@ -7006,16 +7015,7 @@ function App() {
   async function handleCloseProposal(p) {
     const prospect = prospects.find((x) => x.id === p.prospect_id);
     if (!prospect) return;
-    if (!confirm(`Fechar a proposta nº ${p.number} e cadastrar "${prospect.name}" como cliente de mensalidade?`)) return;
-    const newClient = {
-      id: uid(), name: prospect.name, cnpj: prospect.cnpj || "", phone: prospect.phone || "", email: prospect.email || "",
-      cep: prospect.cep || "", street: prospect.street || "", number: prospect.number || "", complement: prospect.complement || "",
-      neighborhood: prospect.neighborhood || "", city: prospect.city || "", state: prospect.state || "",
-      value: p.monthly_value || 0, due_day: null, plan: "", notes: `Cliente fechado a partir da proposta nº ${p.number}.`,
-    };
-    const { error } = await supa.from("clients").upsert(newClient);
-    if (error) { showToast(`Erro: ${error.message}`); return; }
-    await loadClients();
+    if (!confirm(`Fechar a proposta nº ${p.number}?\n\nIsso só marca a proposta como fechada e gera a implantação/ficha técnica. O cadastro como cliente de mensalidade precisa ser feito manualmente (botão "👤 Cadastrar cliente" ou na aba Clientes).`)) return;
     await supa.from("proposals").update({ stage: "fechada" }).eq("id", p.id);
     await loadProposals();
     logActivity(`Proposta fechada: Nº ${p.number} — ${prospect.name}`);
@@ -7054,6 +7054,24 @@ function App() {
       updated_at: new Date().toISOString(), updated_by: session?.user?.email || "desconhecido",
     });
     await loadTechImplementations();
+  }
+
+  async function handleCadastrarClienteFromProposal(p) {
+    const prospect = prospects.find((x) => x.id === p.prospect_id);
+    if (!prospect) return;
+    const already = clients.some((c) => (c.name || "").trim().toLowerCase() === (prospect.name || "").trim().toLowerCase());
+    if (already && !confirm(`Já existe um cliente chamado "${prospect.name}". Cadastrar outro mesmo assim?`)) return;
+    if (!already && !confirm(`Cadastrar "${prospect.name}" como cliente de mensalidade, usando os dados da proposta nº ${p.number}?\n\nDepois de cadastrado, confira o dia de vencimento e o valor na aba Clientes.`)) return;
+    const newClient = {
+      id: uid(), name: prospect.name, cnpj: prospect.cnpj || "", phone: prospect.phone || "", email: prospect.email || "",
+      cep: prospect.cep || "", street: prospect.street || "", number: prospect.number || "", complement: prospect.complement || "",
+      neighborhood: prospect.neighborhood || "", city: prospect.city || "", state: prospect.state || "",
+      value: p.monthly_value || 0, due_day: null, plan: "", notes: `Cliente cadastrado a partir da proposta nº ${p.number}.`,
+    };
+    const { error } = await supa.from("clients").upsert(newClient);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadClients();
+    showToast(`Cliente "${prospect.name}" cadastrado. Confira o vencimento e o valor na aba Clientes.`);
   }
 
   async function handleCreateTechFromProposal(p) {
@@ -8225,28 +8243,31 @@ function App() {
               )}
               {/* Linha 1: cards principais */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.brand, 0.16)}, ${rgba(COLORS.brand, 0.02)})`, borderColor: rgba(COLORS.brand, 0.28) }}>
-                  <div className="flex items-center justify-between mb-2">
+                <div className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.brand, 0.18)}, ${rgba(COLORS.brand, 0.02)})`, borderColor: rgba(COLORS.brand, 0.28) }}>
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Clientes cadastrados</span>
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "rgba(124,92,255,0.2)" }}>👥</span>
+                    <span className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style={{ background: "rgba(124,92,255,0.22)" }}>👥</span>
                   </div>
                   <div className="text-2xl font-extrabold font-display tnum" style={{ color: COLORS.ink }}>{stats.count}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Total de clientes</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.success, 0.16)}, ${rgba(COLORS.success, 0.02)})`, borderColor: rgba(COLORS.success, 0.28) }}>
-                  <div className="flex items-center justify-between mb-2">
+                <div className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.success, 0.18)}, ${rgba(COLORS.success, 0.02)})`, borderColor: rgba(COLORS.success, 0.28) }}>
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.success }}>Total previsto (mês)</span>
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(34,197,94,0.2)" }}>💲</span>
+                    <span className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style={{ background: "rgba(34,197,94,0.22)" }}>💲</span>
                   </div>
                   <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(totalPrevisto)} style={{ color: COLORS.ink }}>{money(totalPrevisto)}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Mensalidades + Consultas</div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.info, 0.16)}, ${rgba(COLORS.info, 0.02)})`, borderColor: rgba(COLORS.info, 0.28) }}>
-                  <div className="flex items-center justify-between mb-2">
+                <div className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.info, 0.18)}, ${rgba(COLORS.info, 0.02)})`, borderColor: rgba(COLORS.info, 0.28) }}>
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.info }}>Total pago (mês)</span>
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(59,130,246,0.2)" }}>💳</span>
+                    <span className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style={{ background: "rgba(59,130,246,0.22)" }}>💳</span>
                   </div>
                   <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(paidValue)} style={{ color: COLORS.ink }}>{money(paidValue)}</div>
+                  <div className="h-1.5 rounded-full mt-2 mb-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(100, totalPrevisto > 0 ? (paidValue / totalPrevisto) * 100 : 0)}%`, background: COLORS.info }}></div>
+                  </div>
                   <div className="text-[11px] flex items-center gap-1.5 flex-wrap" style={{ color: COLORS.inkMuted }}>
                     <span>{totalPrevisto > 0 ? ((paidValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</span>
                     {prevMonthPaid > 0 && (
@@ -8256,28 +8277,37 @@ function App() {
                     )}
                   </div>
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.warn, 0.16)}, ${rgba(COLORS.warn, 0.02)})`, borderColor: rgba(COLORS.warn, 0.3) }}>
-                  <div className="flex items-center justify-between mb-2">
+                <div className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(COLORS.warn, 0.18)}, ${rgba(COLORS.warn, 0.02)})`, borderColor: rgba(COLORS.warn, 0.3) }}>
+                  <div className="flex items-center justify-between mb-3">
                     <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.warn }}>Em aberto</span>
-                    <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(245,158,11,0.2)" }}>⚠️</span>
+                    <span className="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0" style={{ background: "rgba(245,158,11,0.22)" }}>⚠️</span>
                   </div>
                   <div className="text-lg sm:text-xl font-extrabold truncate font-display tnum" title={money(pendingValue)} style={{ color: COLORS.ink }}>{money(pendingValue)}</div>
+                  <div className="h-1.5 rounded-full mt-2 mb-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${Math.min(100, totalPrevisto > 0 ? (pendingValue / totalPrevisto) * 100 : 0)}%`, background: COLORS.warn }}></div>
+                  </div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{totalPrevisto > 0 ? ((pendingValue / totalPrevisto) * 100).toFixed(2) : "0"}% do previsto</div>
                 </div>
               </div>
 
               {/* Linha 2: gráfico de receita */}
               <div className="grid grid-cols-1 gap-4">
-                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Receita mensal (mensalidade + consultas)</div>
+                <div className="rounded-2xl p-4 border shadow-sm" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.04)})`, borderColor: COLORS.cardBorder }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: "rgba(124,92,255,0.18)" }}>📈</span>
+                    <span className="text-sm font-bold" style={{ color: COLORS.ink }}>Receita mensal (mensalidade + consultas)</span>
+                  </div>
                   <ReceitaChart history={receitaHistory} />
                 </div>
               </div>
 
               {/* Linha 3: vencimentos, tipo, últimos enviados */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Vencimentos por dia ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</div>
+                <div className="rounded-2xl p-4 border shadow-sm" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.04)})`, borderColor: COLORS.cardBorder }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: "rgba(124,92,255,0.18)" }}>📅</span>
+                    <span className="text-sm font-bold" style={{ color: COLORS.ink }}>Vencimentos por dia ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</span>
+                  </div>
                   {dueDayGroups.length === 0 ? (
                     <div className="text-sm text-center py-6" style={{ color: COLORS.inkMuted }}>Nenhum cliente com vencimento cadastrado.</div>
                   ) : (
@@ -8308,12 +8338,18 @@ function App() {
                     </div>
                   )}
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Clientes por tipo</div>
+                <div className="rounded-2xl p-4 border shadow-sm" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.04)})`, borderColor: COLORS.cardBorder }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: "rgba(124,92,255,0.18)" }}>🧩</span>
+                    <span className="text-sm font-bold" style={{ color: COLORS.ink }}>Clientes por tipo</span>
+                  </div>
                   <DonutTipo countMonthly={stats.countMonthly} countAnnual={stats.countAnnual} />
                 </div>
-                <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>Últimos boletos enviados</div>
+                <div className="rounded-2xl p-4 border shadow-sm" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.04)})`, borderColor: COLORS.cardBorder }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: "rgba(124,92,255,0.18)" }}>📨</span>
+                    <span className="text-sm font-bold" style={{ color: COLORS.ink }}>Últimos boletos enviados</span>
+                  </div>
                   {recentSent.length === 0 ? (
                     <div className="text-sm text-center py-6" style={{ color: COLORS.inkMuted }}>Nenhum envio registrado ainda neste mês.</div>
                   ) : (
@@ -8349,9 +8385,9 @@ function App() {
                   { l: "Pagos (mês)", v: money(paidValue), sub: `${stats.paid} clientes`, c: COLORS.success, icon: "✅" },
                   { l: "Ticket médio (mês)", v: money(ticketMedio), sub: "Mensalidade + Consultas", c: COLORS.brandLight, icon: "💲" },
                 ].map((s) => (
-                  <div key={s.l} className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
+                  <div key={s.l} className="rounded-2xl p-4 border shadow-sm hover:shadow-md transition-shadow" style={{ background: `linear-gradient(160deg, ${rgba(s.c, 0.1)}, ${COLORS.card})`, borderColor: rgba(s.c, 0.25) }}>
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs" style={{ background: `${s.c}22` }}>{s.icon}</span>
+                      <span className="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0" style={{ background: `${s.c}22` }}>{s.icon}</span>
                       <span className="text-[10px] font-bold uppercase tracking-wide" style={{ color: s.c }}>{s.l}</span>
                     </div>
                     <div className="text-base font-extrabold truncate" title={s.v} style={{ color: COLORS.ink }}>{s.v}</div>
@@ -9007,9 +9043,12 @@ function App() {
                         <button onClick={() => sendProposalEmail(p)} disabled={!prospect?.email} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-30 hover:opacity-90 transition" style={{ background: COLORS.brand }}>📧 Enviar e-mail</button>
                         <button onClick={() => { setEditingProposal(p); setShowProposalForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
                         {p.stage === "fechada" ? (
-                          <button onClick={() => handleCreateTechFromProposal(p)} disabled={!prospect} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition disabled:opacity-30" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }} title="Criar/recriar a ficha de implantação técnica pra essa proposta">🛠️ Criar ficha técnica</button>
+                          <>
+                            <button onClick={() => handleCadastrarClienteFromProposal(p)} disabled={!prospect} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition disabled:opacity-30" style={{ borderColor: COLORS.success, color: COLORS.success }} title="Cadastrar esse prospect como cliente de mensalidade (não é automático)">👤 Cadastrar cliente</button>
+                            <button onClick={() => handleCreateTechFromProposal(p)} disabled={!prospect} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition disabled:opacity-30" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }} title="Criar/recriar a ficha de implantação técnica pra essa proposta">🛠️ Criar ficha técnica</button>
+                          </>
                         ) : (
-                          <button onClick={() => handleCloseProposal(p)} disabled={!prospect} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition disabled:opacity-30" style={{ borderColor: COLORS.success, color: COLORS.success }} title="Fechar proposta e virar cliente">✅ Fechado</button>
+                          <button onClick={() => handleCloseProposal(p)} disabled={!prospect} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition disabled:opacity-30" style={{ borderColor: COLORS.success, color: COLORS.success }} title="Marcar proposta como fechada (não cadastra cliente automaticamente)">✅ Fechado</button>
                         )}
                         <button onClick={() => handleDeleteProposal(p.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ Excluir</button>
                       </div>
@@ -9443,6 +9482,7 @@ function App() {
               </div>
               {showDbMigrationForm && <div className="mb-4"><DbMigrationForm initial={editingDbMigration} settings={settings} onSave={handleSaveDbMigration} onCancel={() => { setShowDbMigrationForm(false); setEditingDbMigration(null); }} /></div>}
               {(() => {
+                const isTechRole = userRole === "migracao" || userRole === "tecnico_migracao";
                 const abertoList = dbMigrations.filter((m) => !m.paid);
                 const pagoList = dbMigrations.filter((m) => m.paid);
                 const selectableIds = abertoList.filter((m) => m.status === "concluida").map((m) => m.id);
@@ -9487,16 +9527,28 @@ function App() {
                       <td className="p-3">{m.completion_date ? new Date(m.completion_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
                       <td className="p-3">
                         {m.paid ? (
-                          <button onClick={() => handleToggleDbMigrationPaid(m)} className="text-[11px] font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: COLORS.success, color: COLORS.success, background: "rgba(34,197,94,0.1)" }}>
-                            ✓ Pago{m.paid_date ? " " + new Date(m.paid_date + "T00:00:00").toLocaleDateString("pt-BR") : ""}
-                          </button>
+                          isTechRole ? (
+                            <span className="text-[11px] font-bold px-2.5 py-1.5 rounded-full border inline-block" style={{ borderColor: COLORS.success, color: COLORS.success, background: "rgba(34,197,94,0.1)" }} title="Já paga — só o admin/financeiro pode reabrir">
+                              🔒 Pago{m.paid_date ? " " + new Date(m.paid_date + "T00:00:00").toLocaleDateString("pt-BR") : ""}
+                            </span>
+                          ) : (
+                            <button onClick={() => handleToggleDbMigrationPaid(m)} className="text-[11px] font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: COLORS.success, color: COLORS.success, background: "rgba(34,197,94,0.1)" }}>
+                              ✓ Pago{m.paid_date ? " " + new Date(m.paid_date + "T00:00:00").toLocaleDateString("pt-BR") : ""}
+                            </button>
+                          )
                         ) : (
                           <span className="text-[11px]" style={{ color: COLORS.inkFaint }}>{m.status === "concluida" ? "marque a caixinha ao lado" : "-"}</span>
                         )}
                       </td>
                       <td className="p-3">
-                        <button onClick={() => { setEditingDbMigration(m); setShowDbMigrationForm(true); }} className="mr-2">✏️</button>
-                        <button onClick={() => handleDeleteDbMigration(m.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                        {isTechRole && m.paid ? (
+                          <span className="text-[11px]" style={{ color: COLORS.inkFaint }} title="Migração já paga — não pode mais ser editada ou excluída">🔒 bloqueada</span>
+                        ) : (
+                          <>
+                            <button onClick={() => { setEditingDbMigration(m); setShowDbMigrationForm(true); }} className="mr-2">✏️</button>
+                            <button onClick={() => handleDeleteDbMigration(m.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                          </>
+                        )}
                       </td>
                     </tr>
                   );
@@ -10274,18 +10326,14 @@ function App() {
 
                     {showSupplierForm && <div className="mb-4"><SupplierOrderForm initial={editingSupplier} onSave={handleSaveSupplierOrder} onCancel={() => { setShowSupplierForm(false); setEditingSupplier(null); }} /></div>}
 
-                    {!showSupplierForm && (
-                      <div className="rounded-2xl border divide-y overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                        <div className="flex items-center gap-3 px-4 py-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted, background: "rgba(255,255,255,0.02)" }}>
-                          <span className="w-9 shrink-0"></span>
-                          <span>Pedido</span>
-                        </div>
-                        {doAno.length === 0 ? (
-                          <div className="p-10 text-center"><div className="text-3xl mb-2">🏷️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>{supplierSearch ? "Nenhum pedido encontrado para essa busca." : `Nenhum pedido em ${supplierYear}.`}</div></div>
-                        ) : doAno.map((o) => {
+                    {(() => {
+                      const isTudoPago = (o) => (o.installments || []).length > 0 && (o.installments || []).every((it) => it.paid);
+                      const pedidosAbertos = doAno.filter((o) => !isTudoPago(o));
+                      const pedidosPagos = doAno.filter((o) => isTudoPago(o));
+                      function renderSupplierRow(o) {
                           const pago = (o.installments || []).filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
                           const aberto = (o.installments || []).filter((it) => !it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
-                          const tudoPago = (o.installments || []).length > 0 && (o.installments || []).every((it) => it.paid);
+                          const tudoPago = isTudoPago(o);
                           return (
                             <div key={o.id} className="p-4 transition-colors" style={{
                                 background: tudoPago ? "rgba(34,197,94,0.07)" : "transparent",
@@ -10361,17 +10409,40 @@ function App() {
                               </div>
                             </div>
                           );
-                        })}
-                        {doAno.length > 0 && (
-                          <div className="flex items-center gap-4 px-4 py-3 flex-wrap" style={{ background: "rgba(255,255,255,0.02)" }}>
-                            <span className="text-xs font-bold uppercase" style={{ color: COLORS.inkMuted }}>TOTAL {supplierYear}</span>
-                            <span className="text-xs" style={{ color: COLORS.ink }}>{somaQtd} unid.</span>
-                            <span className="text-xs font-bold" style={{ color: COLORS.warn }}>Aberto: {money(somaAberto)}</span>
-                            <span className="text-xs font-bold" style={{ color: COLORS.success }}>Pago: {money(somaPago)}</span>
+                      }
+                      return (
+                        <>
+                          <div className="rounded-2xl border divide-y overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                            <div className="flex items-center gap-3 px-4 py-2 text-[10px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted, background: "rgba(255,255,255,0.02)" }}>
+                              <span className="w-9 shrink-0"></span>
+                              <span>Pedido (ordenado por vencimento em aberto)</span>
+                            </div>
+                            {doAno.length === 0 ? (
+                              <div className="p-10 text-center"><div className="text-3xl mb-2">🏷️</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>{supplierSearch ? "Nenhum pedido encontrado para essa busca." : `Nenhum pedido em ${supplierYear}.`}</div></div>
+                            ) : pedidosAbertos.length === 0 ? (
+                              <div className="p-10 text-center"><div className="text-3xl mb-2">🎉</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pedido em aberto — tudo pago.</div></div>
+                            ) : pedidosAbertos.map((o) => renderSupplierRow(o))}
+                            {doAno.length > 0 && (
+                              <div className="flex items-center gap-4 px-4 py-3 flex-wrap" style={{ background: "rgba(255,255,255,0.02)" }}>
+                                <span className="text-xs font-bold uppercase" style={{ color: COLORS.inkMuted }}>TOTAL {supplierYear}</span>
+                                <span className="text-xs" style={{ color: COLORS.ink }}>{somaQtd} unid.</span>
+                                <span className="text-xs font-bold" style={{ color: COLORS.warn }}>Aberto: {money(somaAberto)}</span>
+                                <span className="text-xs font-bold" style={{ color: COLORS.success }}>Pago: {money(somaPago)}</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    )}
+                          {pedidosPagos.length > 0 && (
+                            <div className="rounded-2xl border overflow-hidden mt-3" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                              <button onClick={() => setShowPaidSupplierOrders((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.success, background: "rgba(34,197,94,0.06)" }}>
+                                <span>✅ Pagos ({pedidosPagos.length})</span>
+                                <span style={{ display: "inline-block", transition: "transform 0.15s", transform: showPaidSupplierOrders ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
+                              </button>
+                              {showPaidSupplierOrders && pedidosPagos.map((o) => renderSupplierRow(o))}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </>
                 );
               })()}

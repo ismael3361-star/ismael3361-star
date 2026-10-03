@@ -11637,11 +11637,6 @@ function App() {
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Implantações — em aberto</div>
                   <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(implantacoes.reduce((s, i) => s + (i.installments || []).filter((it) => !it.paid).reduce((s2, it) => s2 + (Number(it.value) || 0), 0), 0))}</div>
                 </div>
-                <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                  <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Vale Transp. / Refeição</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(vtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
-                  <div className="text-[11px]" style={{ color: COLORS.warn }}>Em aberto: {money(vtVrRecords.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.total_value) || 0), 0))}</div>
-                </div>
               </div>
 
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
@@ -11677,66 +11672,6 @@ function App() {
                       })}
                     </tbody>
                   </table>
-                )}
-              </div>
-
-              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: `1px solid ${COLORS.cardBorder}` }}>
-                  <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Vale Transporte / Refeição — por funcionário</div>
-                  <button onClick={exportVtVrExcel} disabled={vtVrByEmployee.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
-                </div>
-                {vtVrByEmployee.length === 0 ? (
-                  <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum lançamento ainda.</div>
-                ) : (
-                  <table className="w-full text-xs" style={{ color: COLORS.ink }}>
-                    <thead>
-                      <tr style={{ color: COLORS.inkMuted }}>
-                        <th className="text-left p-3">Funcionário</th><th className="text-left p-3">Lançamentos</th><th className="text-left p-3">VR</th>
-                        <th className="text-left p-3">VT</th><th className="text-left p-3">Total</th><th className="text-left p-3">Pago</th><th className="text-left p-3">Em aberto</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vtVrByEmployee.map((e, i) => (
-                        <tr key={e.name} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                          <td className="px-3 py-2 font-semibold">{e.name}</td>
-                          <td className="px-3 py-2">{e.qtd}</td>
-                          <td className="px-3 py-2">{money(e.vr)}</td>
-                          <td className="px-3 py-2">{money(e.vt)}</td>
-                          <td className="px-3 py-2 font-bold">{money(e.total)}</td>
-                          <td className="px-3 py-2" style={{ color: COLORS.success }}>{money(e.pago)}</td>
-                          <td className="px-3 py-2" style={{ color: COLORS.warn }}>{money(e.aberto)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                  <div className="text-sm font-bold mb-2" style={{ color: COLORS.ink }}>Recebido vs. previsto — {MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()}</div>
-                  <DonutCanais waCount={paidValue} emailCount={pendingValue} />
-                </div>
-                <div className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                  <div className="text-sm font-bold mb-2" style={{ color: COLORS.ink }}>Últimos 6 meses</div>
-                  <BarHistory id="chart-6m" history={history} />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                <div className="text-sm font-bold mb-2" style={{ color: COLORS.ink }}>Clientes por dia de vencimento</div>
-                {dueDayGroups.length === 0 ? (
-
-                  <div className="text-sm text-center py-6" style={{ color: COLORS.inkMuted }}>Nenhum cliente com vencimento cadastrado.</div>
-                ) : (
-                  <>
-                    <DueDayChart groups={dueDayGroups} />
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {dueDayGroups.map((g) => (
-                        <span key={g.day} className="text-xs font-semibold px-2.5 py-1 rounded-full" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.12)" }}>Dia {g.day}: {g.count} cliente{g.count > 1 ? "s" : ""}</span>
-                      ))}
-                    </div>
-                  </>
                 )}
               </div>
 

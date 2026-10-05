@@ -142,7 +142,7 @@ function rgba(hex, alpha) {
 const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
   comercial: ["clientes", "propostas", "romaneio", "agenda"],
-  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes", "caixa", "consultas"],
+  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes", "caixa"],
   operacional: ["compra_tag_rfid", "venda_tag_rfid", "fechamento_rfid", "implantacao_tecnica", "escala"],
   migracao: ["migracoes"],
   tecnico_migracao: ["implantacao_tecnica", "migracoes", "agenda"],
@@ -2513,9 +2513,13 @@ function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect
   const [pixKey, setPixKey] = useState(initial?.pix_key || settings?.implantacao_pix_key || "");
   const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || settings?.implantacao_pix_favorecido || "");
   const [notes, setNotes] = useState(initial?.notes || "");
+  const [items, setItems] = useState(initial?.items?.length ? initial.items : []);
 
   const prospect = prospects.find((p) => p.id === prospectId);
 
+  function updateItem(i, field, val) { setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [field]: val } : it))); }
+  function addItem() { setItems((prev) => [...prev, { desc: "", value: "" }]); }
+  function removeItem(i) { setItems((prev) => prev.filter((_, idx) => idx !== i)); }
   function updateInst(i, field, val) { setInstallments((prev) => prev.map((it, idx) => (idx === i ? { ...it, [field]: val } : it))); }
   function addInst() { setInstallments((prev) => [...prev, { due_date: "", value: "", paid: false, paid_date: "" }]); }
   function removeInst(i) { setInstallments((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev)); }
@@ -2569,6 +2573,7 @@ function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect
             <div key={i} className="flex gap-2 items-center flex-wrap">
               <input type="date" value={it.due_date} onChange={(e) => updateInst(i, "due_date", e.target.value)} className="rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
               <input value={it.value} onChange={(e) => updateInst(i, "value", e.target.value)} type="number" placeholder="Valor da parcela" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+              <input value={it.desc || ""} onChange={(e) => updateInst(i, "desc", e.target.value)} placeholder="Referente a (ex: entrada, treinamento)" className="flex-1 min-w-[180px] rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
               <label className="flex items-center gap-1.5 text-xs font-semibold cursor-pointer px-2 py-1.5 rounded-lg" style={{ color: it.paid ? COLORS.success : COLORS.inkMuted, background: it.paid ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.04)" }}>
                 <input type="checkbox" checked={it.paid} onChange={(e) => updateInst(i, "paid", e.target.checked)} /> Paga
               </label>
@@ -2585,6 +2590,23 @@ function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect
 
       <div className="text-sm font-bold pt-2 border-t" style={{ borderColor: COLORS.cardBorder, color: COLORS.warn }}>Em aberto: {fmtMoney(totalValue - paidValue)}</div>
 
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>O que está sendo pago (aparece no PDF)</span>
+          {items.length > 0 && <span className="text-xs font-bold" style={{ color: Math.abs(items.reduce((s, it) => s + (Number(it.value) || 0), 0) - totalValue) < 0.01 ? COLORS.success : COLORS.warn }}>Soma dos itens: {fmtMoney(items.reduce((s, it) => s + (Number(it.value) || 0), 0))}</span>}
+        </div>
+        <div className="space-y-2">
+          {items.map((it, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <input value={it.desc} onChange={(e) => updateItem(i, "desc", e.target.value)} placeholder="Ex: Implantação do sistema, Treinamento, Cloud, Customização..." className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+              <input value={it.value} onChange={(e) => updateItem(i, "value", e.target.value)} type="number" placeholder="Valor" className="w-28 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+              <button type="button" onClick={() => removeItem(i)} className="px-2 py-2 text-sm shrink-0" style={{ color: COLORS.danger }}>🗑️</button>
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={addItem} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar item</button>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <TextField label="Chave PIX (cobrança)" value={pixKey} onChange={setPixKey} placeholder="CNPJ, e-mail ou telefone" />
         <TextField label="PIX favorecido" value={pixFavorecido} onChange={setPixFavorecido} placeholder="Nome de quem recebe" />
@@ -2598,7 +2620,8 @@ function ImplantacaoForm({ initial, prospects, clients, settings, onSaveProspect
           onClick={() => onSave({
             id: initial?.id || uid(), prospect_id: prospectId, client_name: prospect?.name || "",
             total_value: totalValue,
-            installments: installments.filter((it) => it.due_date || Number(it.value) > 0).map((it) => ({ due_date: it.due_date || null, value: Number(it.value) || 0, paid: !!it.paid, paid_date: it.paid_date || null })),
+            installments: installments.filter((it) => it.due_date || Number(it.value) > 0).map((it) => ({ due_date: it.due_date || null, value: Number(it.value) || 0, paid: !!it.paid, paid_date: it.paid_date || null, desc: (it.desc || "").trim() })),
+            items: items.filter((it) => (it.desc || "").trim() || Number(it.value) !== 0).map((it) => ({ desc: (it.desc || "").trim() || "Item", value: Number(it.value) || 0 })),
             pix_key: pixKey.trim(), pix_favorecido: pixFavorecido.trim(), notes: notes.trim(),
           })}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 shadow-sm hover:opacity-90 transition"
@@ -5748,15 +5771,32 @@ function App() {
     if (prospect?.cnpj) { doc.text(`CNPJ: ${prospect.cnpj}`, 14, y); y += 5; }
     if (prospect?.phone || prospect?.email) { doc.text([prospect?.phone, prospect?.email].filter(Boolean).join("  ·  "), 14, y); y += 5; }
     y += 4;
+    const pdfItems = imp.items || [];
+    if (pdfItems.length > 0) {
+      doc.autoTable({
+        startY: y,
+        head: [["Referente a", "Valor"]],
+        body: pdfItems.map((it) => [it.desc || "-", fmtMoney(it.value)]),
+        foot: [["TOTAL DA IMPLANTAÇÃO", fmtMoney(pdfItems.reduce((s, it) => s + (Number(it.value) || 0), 0))]],
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [124, 92, 255] },
+        footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
+        columnStyles: { 1: { halign: "right", cellWidth: 40 } },
+        margin: { left: 14, right: 14 },
+      });
+      y = doc.lastAutoTable.finalY + 8;
+    }
+    const hasInstDesc = (imp.installments || []).some((it) => it.desc);
     const rows = (imp.installments || []).map((it) => [
       it.due_date ? new Date(it.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
+      ...(hasInstDesc ? [it.desc || "-"] : []),
       fmtMoney(it.value), it.paid ? "Pago" : "Pendente", it.paid_date ? new Date(it.paid_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
     ]);
     doc.autoTable({
       startY: y,
-      head: [["Vencimento", "Valor", "Situação", "Data pagamento"]],
+      head: [["Vencimento", ...(hasInstDesc ? ["Referente a"] : []), "Valor", "Situação", "Data pagamento"]],
       body: rows,
-      foot: [["TOTAL", fmtMoney(imp.total_value), "", ""]],
+      foot: [["TOTAL PAGAMENTOS", ...(hasInstDesc ? [""] : []), fmtMoney(imp.total_value), "", ""]],
       styles: { fontSize: 9 },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
@@ -7025,13 +7065,22 @@ function App() {
     const isKindClose = (it, kind, legacyTest) => (it.kind ? it.kind === kind : legacyTest(it));
     const cloudItem = items.find((it) => isKindClose(it, "cloud", (x) => x.desc === "Cloud"));
     const customItems = items.filter((it) => it.kind ? it.kind === "custom" : (!(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")));
-    const customTotal = customItems.reduce((s, it) => s + (Number(it.value) || 0), 0);
-    const implantacaoTotal = (p.installation_value || 0) + (p.training_value || 0) + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotal;
+    const implItems = [
+      ...((p.installation_value || 0) > 0 ? [{ desc: "Implantação do sistema", value: Number(p.installation_value) }] : []),
+      ...((p.training_value || 0) > 0 ? [{ desc: "Treinamento", value: Number(p.training_value) }] : []),
+      ...((p.db_transfer_value || 0) > 0 ? [{ desc: "Transferência de banco de dados", value: Number(p.db_transfer_value) }] : []),
+      ...(cloudItem && (Number(cloudItem.value) || 0) > 0 ? [{ desc: `Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, value: Number(cloudItem.value) }] : []),
+      ...((p.integration_setup_value || 0) > 0 ? [{ desc: `Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, value: Number(p.integration_setup_value) }] : []),
+      ...customItems.filter((it) => (Number(it.value) || 0) > 0).map((it) => ({ desc: it.desc || "Customização", value: Number(it.value) })),
+    ];
+    const implDesconto = Number(p.discount_implantacao_value) || 0;
+    if (implDesconto > 0) implItems.push({ desc: "Desconto", value: -implDesconto });
+    const implantacaoTotal = implItems.reduce((s, it) => s + it.value, 0);
     if (implantacaoTotal > 0) {
       await supa.from("implantacoes").upsert({
         id: uid(), prospect_id: prospect.id, proposal_id: p.id, client_name: prospect.name,
-        total_value: implantacaoTotal,
-        installments: [{ due_date: todayStr(), value: implantacaoTotal, paid: false, paid_date: null }],
+        total_value: implantacaoTotal, items: implItems,
+        installments: [{ due_date: todayStr(), value: implantacaoTotal, paid: false, paid_date: null, desc: "" }],
         pix_key: p.pix_key || "", pix_favorecido: p.pix_favorecido || "",
         notes: `Gerada automaticamente ao fechar a proposta nº ${p.number}.`,
       });
@@ -8054,7 +8103,6 @@ function App() {
               ]},
               { group: "Financeiro", items: [
                 { id: "boletos", label: "Mensalidades", icon: "📄" },
-                { id: "consultas", label: "Consultas", icon: "📞" },
                 { id: "implantacoes", label: "Implantações", icon: "🏗️" },
                 { id: "vtvr", label: "VR e VA", icon: "🎫" },
                 { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
@@ -10079,6 +10127,11 @@ function App() {
                           </div>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{ color: open <= 0 ? COLORS.success : COLORS.warn, background: open <= 0 ? "rgba(34,197,94,0.15)" : "rgba(245,158,11,0.15)" }}>{open <= 0 ? "QUITADA" : "EM ABERTO"}</span>
                         </div>
+                        {(imp.items || []).length > 0 && (
+                          <div className="text-xs mb-2 pl-11" style={{ color: COLORS.inkMuted }}>
+                            <span className="font-semibold">Referente a:</span> {(imp.items || []).map((it) => `${it.desc} (${money(it.value)})`).join(" · ")}
+                          </div>
+                        )}
                         <div className="flex flex-wrap gap-2 mb-2">
                           {(imp.installments || []).map((it, idx) => {
                             const overdue = !it.paid && it.due_date && it.due_date < today;
@@ -10090,7 +10143,7 @@ function App() {
                                   color: it.paid ? COLORS.success : overdue ? COLORS.danger : COLORS.inkMuted,
                                   background: it.paid ? "rgba(34,197,94,0.1)" : overdue ? "rgba(239,68,68,0.1)" : "transparent",
                                 }}>
-                                {it.paid ? "✓" : overdue ? "⚠️" : "○"} {it.due_date ? new Date(it.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {money(it.value)}{overdue ? " · atrasada" : ""}
+                                {it.paid ? "✓" : overdue ? "⚠️" : "○"} {it.due_date ? new Date(it.due_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {money(it.value)}{it.desc ? ` · ${it.desc}` : ""}{overdue ? " · atrasada" : ""}
                               </button>
                             );
                           })}

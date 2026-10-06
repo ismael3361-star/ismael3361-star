@@ -11494,6 +11494,7 @@ function App() {
                       <table className="w-full text-sm" style={{ color: COLORS.ink }}>
                         <thead>
                           <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                            <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Banco</th>
                             <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Cliente</th>
                             <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Forma</th>
                             <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Valor pago</th>
@@ -11505,6 +11506,7 @@ function App() {
                             const b = boletos[c.id];
                             return (
                               <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                                <td className="px-3 py-2 font-bold" style={{ color: COLORS.info }}>{c.bank_number || "-"}</td>
                                 <td className="px-3 py-2 font-semibold">{c.name}</td>
                                 <td className="px-3 py-2">
                                   {b?.payment_method === "pix" ? (
@@ -11523,6 +11525,7 @@ function App() {
                         </tbody>
                         <tfoot>
                           <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                            <td className="px-3 py-2"></td>
                             <td className="px-3 py-2 font-bold">TOTAL</td>
                             <td className="px-3 py-2"></td>
                             <td className="px-3 py-2 font-bold">{money(totalBoleto + totalPix + semFormaList.reduce((s, c) => s + valorPago(c), 0))}</td>

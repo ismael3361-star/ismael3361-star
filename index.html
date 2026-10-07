@@ -7173,8 +7173,8 @@ function App() {
     if (prospect && addressLine(prospect)) { doc.text(addressLine(prospect), 14, y); y += 5; }
     if (prospect?.cnpj) { doc.text(`CNPJ: ${prospect.cnpj}${prospect?.state_registration ? `  ·  IE: ${prospect.state_registration}` : ""}`, 14, y); y += 5; }
     if (prospect?.contact_name) { doc.text(`Contato: ${prospect.contact_name}`, 14, y); y += 5; }
-    const contact = [prospect?.phone, prospect?.email].filter(Boolean).join("  ·  ");
-    if (contact) { doc.text(contact, 14, y); y += 5; }
+    doc.text(`Cidade: ${prospect?.city || "-"}  ·  Estado: ${prospect?.state || "-"}`, 14, y); y += 5;
+    doc.text(`Telefone: ${prospect?.phone || "-"}${prospect?.email ? `  ·  E-mail: ${prospect.email}` : ""}`, 14, y); y += 5;
     if (r.delivery_address) { doc.setTextColor(30); doc.text(`Endereço de entrega: ${r.delivery_address}`, 14, y); y += 5; doc.setTextColor(60); }
 
     y += 3;
@@ -7291,6 +7291,9 @@ function App() {
   async function handleSaveRomaneio(r) {
     const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
     const isNew = !editingRomaneio;
+    // abre a aba já no clique (evita bloqueio de pop-up) e carrega o PDF depois de salvar
+    let previewWin = null;
+    try { previewWin = window.open("", "_blank"); if (previewWin) previewWin.document.write("<p style='font-family:sans-serif'>Gerando romaneio...</p>"); } catch (e) {}
     try {
       const doc = generateRomaneioPDF(r, prospect);
       const blob = doc.output("blob");
@@ -7310,7 +7313,11 @@ function App() {
       setShowRomaneioForm(false);
       setEditingRomaneio(null);
       showToast("Romaneio gerado e salvo.");
+      const viewUrl = URL.createObjectURL(blob);
+      if (previewWin && !previewWin.closed) previewWin.location.href = viewUrl;
+      else window.open(viewUrl, "_blank");
     } catch (e) {
+      try { if (previewWin && !previewWin.closed) previewWin.close(); } catch (e2) {}
       console.error("Erro ao salvar romaneio:", e);
       showToast(`Erro: ${e.message || "não foi possível gerar/salvar o romaneio"}`);
     }

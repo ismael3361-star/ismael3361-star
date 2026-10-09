@@ -142,7 +142,7 @@ function rgba(hex, alpha) {
 const ROLE_ALLOWED_TABS = {
   tecnico: ["implantacao_tecnica"],
   comercial: ["clientes", "propostas", "romaneio", "agenda"],
-  financeiro: ["boletos", "implantacoes", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes", "caixa"],
+  financeiro: ["boletos", "implantacoes", "cloud_contratos", "vtvr", "despesas", "comissao", "folha", "pedidos_etiquetas", "comissao_representantes", "caixa"],
   operacional: ["compra_tag_rfid", "venda_tag_rfid", "fechamento_rfid", "implantacao_tecnica", "escala"],
   migracao: ["migracoes"],
   tecnico_migracao: ["implantacao_tecnica", "migracoes", "agenda"],
@@ -2116,6 +2116,81 @@ function EmployeePicker({ employees, value, onSelect, onCreateNew }) {
 const VT_RATES = { "1": 5.4, "2": 9.38 };
 
 const SUPPLIER_MODELS = ["MODELO 03", "MODELO 04", "MODELO 03 + MODELO 04"];
+
+function addMonthsStr(dateStr, months) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr + "T00:00:00");
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + Number(months || 0));
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, last));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const a = new Date(dateStr + "T00:00:00");
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  return Math.round((a - t) / 86400000);
+}
+
+function CloudContratoForm({ initial, clients, onSave, onCancel }) {
+  const [clientId, setClientId] = useState(initial?.client_id || "");
+  const [startDate, setStartDate] = useState(initial?.start_date || todayStr());
+  const [months, setMonths] = useState(initial?.months ?? 24);
+  const [billing, setBilling] = useState(initial?.billing || "mensal");
+  const [amount, setAmount] = useState(initial?.amount_paid ?? "");
+  const [notes, setNotes] = useState(initial?.notes || "");
+  const client = clients.find((c) => c.id === clientId);
+  const endDate = addMonthsStr(startDate, months);
+  const canSave = clientId && startDate && Number(months) > 0;
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar contrato Cloud" : "Novo contrato Cloud"}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="sm:col-span-3">
+          <CommissionClientPicker clients={clients} value={clientId} onSelect={setClientId} disabled={false} />
+        </div>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de início</span>
+          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Período do contrato</span>
+          <select value={months} onChange={(e) => setMonths(Number(e.target.value))} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
+            {[12, 24, 36].map((m) => <option key={m} value={m}>{m} meses ({m / 12} {m === 12 ? "ano" : "anos"})</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Vence em</span>
+          <input disabled value={endDate ? fmtDate(endDate) : "-"} className="w-full rounded-lg border px-3 py-2 text-sm outline-none opacity-70 font-bold" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Pagamento</span>
+          <select value={billing} onChange={(e) => setBilling(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
+            <option value="mensal">Mensal</option>
+            <option value="anual">Anual</option>
+          </select>
+        </label>
+        <TextField label={billing === "anual" ? "Valor pago (por ano)" : "Valor pago (por mês)"} value={amount} onChange={setAmount} type="number" placeholder="0,00" />
+        <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
+      </div>
+      {client && !client.cloud && (
+        <div className="text-[11px]" style={{ color: COLORS.warn }}>⚠️ Esse cliente não está marcado como Cloud no cadastro. O contrato pode ser salvo mesmo assim.</div>
+      )}
+      <div className="flex gap-2 justify-end">
+        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Cancelar</button>
+        <button type="button" disabled={!canSave} onClick={() => onSave({
+          id: initial?.id || uid(), client_id: clientId, client_name: client?.name || initial?.client_name || "",
+          start_date: startDate, months: Number(months), end_date: endDate, billing, amount_paid: Number(amount) || 0,
+          notes: notes.trim() || null, renewed: initial?.renewed || false,
+          last_notice_at: initial?.last_notice_at || null, notice_count: initial?.notice_count || 0,
+        })} className="px-4 py-2 rounded-lg text-sm font-bold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>Salvar</button>
+      </div>
+    </div>
+  );
+}
 
 function SupplierOrderForm({ initial, onSave, onCancel }) {
   const [orderDate, setOrderDate] = useState(initial?.order_date || todayStr());
@@ -4764,6 +4839,11 @@ function App() {
   const [showPaidCommissionSellers, setShowPaidCommissionSellers] = useState(() => new Set());
   const [showPaidRomaneios, setShowPaidRomaneios] = useState(false);
   const [supplierOrders, setSupplierOrders] = useState([]);
+  const [cloudContratos, setCloudContratos] = useState([]);
+  const [showCloudForm, setShowCloudForm] = useState(false);
+  const [editingCloud, setEditingCloud] = useState(null);
+  const [cloudFilter, setCloudFilter] = useState("todos");
+  const [cloudAlertDays, setCloudAlertDays] = useState(60);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
   const [supplierYear, setSupplierYear] = useState(new Date().getFullYear());
@@ -5838,6 +5918,49 @@ function App() {
     await loadEmployees();
     return emp;
   }
+  const loadCloudContratos = useCallback(async () => {
+    const { data } = await supa.from("cloud_contratos").select("*").order("end_date", { ascending: true });
+    setCloudContratos(data || []);
+  }, []);
+  async function handleSaveCloudContrato(c) {
+    const { error } = await supa.from("cloud_contratos").upsert(c);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadCloudContratos();
+    setShowCloudForm(false); setEditingCloud(null);
+    showToast("Contrato salvo.");
+  }
+  async function handleDeleteCloudContrato(id) {
+    if (!confirm("Remover este contrato?")) return;
+    await supa.from("cloud_contratos").delete().eq("id", id);
+    await loadCloudContratos();
+    showToast("Contrato removido.");
+  }
+  async function handleRenewCloudContrato(c) {
+    const base = c.end_date && daysUntil(c.end_date) > 0 ? c.end_date : todayStr();
+    if (!confirm(`Renovar por mais ${c.months || 24} meses a partir de ${fmtDate(base)}?`)) return;
+    const novo = { ...c, start_date: base, end_date: addMonthsStr(base, c.months || 24), renewed: false, last_notice_at: null, notice_count: 0 };
+    const { error } = await supa.from("cloud_contratos").upsert(novo);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadCloudContratos();
+    showToast(`Contrato renovado até ${fmtDate(novo.end_date)}.`);
+  }
+  function buildCloudMessage(c, cli) {
+    const dias = daysUntil(c.end_date);
+    const nome = cli?.contact_name || cli?.name || c.client_name;
+    const quando = dias < 0 ? `venceu em ${fmtDate(c.end_date)}` : dias === 0 ? "vence hoje" : `vence em ${fmtDate(c.end_date)} (${dias} dia${dias === 1 ? "" : "s"})`;
+    return `Olá ${nome}! Tudo bem? Passando para avisar que o contrato do seu serviço Cloud (${c.client_name}) ${quando}. Para continuar com o serviço sem interrupção, precisamos fazer a renovação. Podemos conversar sobre isso?`;
+  }
+  async function sendCloudNotice(c, channel) {
+    const cli = clients.find((x) => x.id === c.client_id);
+    const phone = cli?.phone;
+    if (channel === "whatsapp" && !phone) { showToast("Cliente sem WhatsApp/telefone cadastrado."); return; }
+    if (channel === "email" && !cli?.email) { showToast("Cliente sem e-mail cadastrado."); return; }
+    const msg = buildCloudMessage(c, cli);
+    if (channel === "whatsapp") window.open(`https://web.whatsapp.com/send?phone=${waNumber(phone)}&text=${encodeURIComponent(msg)}`, "_blank");
+    else window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(cli.email)}&su=${encodeURIComponent("Renovação do contrato Cloud")}&body=${encodeURIComponent(msg)}`, "_blank");
+    await supa.from("cloud_contratos").update({ last_notice_at: new Date().toISOString(), notice_count: (c.notice_count || 0) + 1 }).eq("id", c.id);
+    await loadCloudContratos();
+  }
   const loadSupplierOrders = useCallback(async () => {
     const { data } = await supa.from("supplier_orders").select("*").order("order_date", { ascending: false });
     setSupplierOrders(data || []);
@@ -6693,7 +6816,7 @@ function App() {
     doc.save(`almoco-quinta-${monthLabelStr.replace("/", "-")}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); loadConsultations(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadCloudContratos(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); loadConsultations(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
   // Preenche automaticamente o valor de "Consultas" de cada boleto do mês com a soma das
   // consultas já associadas àquele cliente (respeitando a defasagem de 2 meses), mas só
@@ -8111,6 +8234,7 @@ function App() {
               { group: "Financeiro", items: [
                 { id: "boletos", label: "Mensalidades", icon: "📄" },
                 { id: "implantacoes", label: "Implantações", icon: "🏗️" },
+                { id: "cloud_contratos", label: "Contratos Cloud", icon: "☁️" },
                 { id: "vtvr", label: "VR e VA", icon: "🎫" },
                 { id: "despesas", label: "Contas a Pagar", icon: "🧾" },
                 { id: "folha", label: "Folha de Pagamento", icon: "👥" },
@@ -8237,6 +8361,7 @@ function App() {
                 {effectiveTab === "escala" && "Escala de Sábado"}
                 {effectiveTab === "folha" && "Folha de Pagamento"}
                 {effectiveTab === "pedidos_etiquetas" && "Compra de Etiqueta"}
+                {effectiveTab === "cloud_contratos" && "Contratos Cloud"}
                 {effectiveTab === "migracoes" && "Migração de Banco de Dados"}
                 {effectiveTab === "comissao_representantes" && "Comissão de Representantes"}
                 {effectiveTab === "caixa" && "Caixa"}
@@ -8296,6 +8421,23 @@ function App() {
                   </div>
                 </div>
               )}
+              {(() => {
+                const alerta = cloudContratos.filter((c) => { const d = daysUntil(c.end_date); return d !== null && d <= cloudAlertDays; });
+                if (alerta.length === 0) return null;
+                const venc = alerta.filter((c) => daysUntil(c.end_date) < 0).length;
+                return (
+                  <div className="rounded-2xl border p-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: COLORS.info, background: "rgba(59,130,246,0.1)" }}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">☁️</span>
+                      <div>
+                        <div className="text-sm font-bold" style={{ color: COLORS.info }}>{alerta.length} contrato(s) Cloud {venc > 0 ? `vencido(s) ou ` : ""}próximo(s) de vencer</div>
+                        <div className="text-xs" style={{ color: COLORS.inkMuted }}>{alerta.slice(0, 3).map((c) => c.client_name).join(", ")}{alerta.length > 3 ? ` e mais ${alerta.length - 3}` : ""}</div>
+                      </div>
+                    </div>
+                    <button onClick={() => { setCloudFilter("todos"); setTab("cloud_contratos"); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: COLORS.info }}>Ver contratos</button>
+                  </div>
+                );
+              })()}
               {/* Painel de cobrança: o número do mês é o protagonista, não um card entre outros iguais */}
               {(() => {
                 const abertoNaoVencido = Math.max(0, pendingValue - overdueValue);
@@ -10261,6 +10403,99 @@ function App() {
             </div>
           )}
 
+
+          {effectiveTab === "cloud_contratos" && (
+            <div>
+              {(() => {
+                const lista = cloudContratos.map((c) => ({ ...c, _dias: daysUntil(c.end_date) }));
+                const statusDe = (c) => c._dias < 0 ? "vencido" : c._dias <= cloudAlertDays ? "vencendo" : "ok";
+                const vencidos = lista.filter((c) => statusDe(c) === "vencido");
+                const vencendo = lista.filter((c) => statusDe(c) === "vencendo");
+                const emDia = lista.filter((c) => statusDe(c) === "ok");
+                const mostrados = (cloudFilter === "todos" ? lista : cloudFilter === "vencido" ? vencidos : cloudFilter === "vencendo" ? vencendo : emDia)
+                  .slice().sort((a, b) => (a.end_date || "").localeCompare(b.end_date || ""));
+                const cor = { vencido: COLORS.danger, vencendo: COLORS.warn, ok: COLORS.success };
+                const card = (label, n, color, key) => (
+                  <button onClick={() => setCloudFilter(cloudFilter === key ? "todos" : key)} className="rounded-xl p-3 border text-left" style={{ background: cloudFilter === key ? rgba(color, 0.14) : COLORS.card, borderColor: cloudFilter === key ? color : COLORS.cardBorder }}>
+                    <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color }}>{label}</div>
+                    <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{n}</div>
+                  </button>
+                );
+                return (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 text-xs" style={{ color: COLORS.inkMuted }}>
+                        Avisar quando faltar até
+                        <select value={cloudAlertDays} onChange={(e) => setCloudAlertDays(Number(e.target.value))} className="rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
+                          {[30, 60, 90, 120].map((d) => <option key={d} value={d}>{d} dias</option>)}
+                        </select>
+                      </div>
+                      <button onClick={() => { setEditingCloud(null); setShowCloudForm(true); }} className="px-4 py-2 rounded-lg text-sm font-bold text-white" style={{ background: COLORS.brand }}>+ Novo contrato Cloud</button>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {card("Vencidos", vencidos.length, COLORS.danger, "vencido")}
+                      {card(`Vencendo em ${cloudAlertDays} dias`, vencendo.length, COLORS.warn, "vencendo")}
+                      {card("Em dia", emDia.length, COLORS.success, "ok")}
+                      <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total de contratos</div>
+                        <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{lista.length}</div>
+                      </div>
+                    </div>
+
+                    {(vencidos.length + vencendo.length) > 0 && (
+                      <div className="rounded-xl p-3 border text-sm font-semibold" style={{ borderColor: COLORS.warn, background: "rgba(245,158,11,0.10)", color: COLORS.warn }}>
+                        ⚠️ {vencidos.length > 0 ? `${vencidos.length} contrato(s) vencido(s)` : ""}{vencidos.length > 0 && vencendo.length > 0 ? " e " : ""}{vencendo.length > 0 ? `${vencendo.length} próximo(s) de vencer` : ""} — avise os clientes para renovar.
+                      </div>
+                    )}
+
+                    {showCloudForm && <CloudContratoForm key={editingCloud?.id || "novo"} initial={editingCloud} clients={clients.filter((c) => !c.cancelled)} onSave={handleSaveCloudContrato} onCancel={() => { setShowCloudForm(false); setEditingCloud(null); }} />}
+
+                    {mostrados.length === 0 ? (
+                      <div className="rounded-2xl border p-8 text-center text-sm" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.inkMuted }}>
+                        {lista.length === 0 ? "Nenhum contrato Cloud cadastrado ainda." : "Nenhum contrato nesse filtro."}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {mostrados.map((c) => {
+                          const st = statusDe(c);
+                          const cli = clients.find((x) => x.id === c.client_id);
+                          return (
+                            <div key={c.id} className="rounded-xl border p-3 flex flex-col lg:flex-row lg:items-center gap-3" style={{ borderColor: st === "ok" ? COLORS.cardBorder : cor[st], background: COLORS.card }}>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-sm flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
+                                  {cli?.bank_number && <span className="text-[13px] font-extrabold px-2 py-0.5 rounded-lg" style={{ color: "#fff", background: "rgba(59,130,246,0.38)", border: `1px solid ${COLORS.info}` }}>{cli.bank_number}</span>}
+                                  {c.client_name}
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: cor[st], background: rgba(cor[st], 0.15) }}>
+                                    {st === "vencido" ? `venceu há ${Math.abs(c._dias)} dia${Math.abs(c._dias) === 1 ? "" : "s"}` : st === "vencendo" ? `vence em ${c._dias} dia${c._dias === 1 ? "" : "s"}` : `${c._dias} dias restantes`}
+                                  </span>
+                                </div>
+                                <div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>
+                                  Início {fmtDate(c.start_date)} → Vence <b style={{ color: COLORS.ink }}>{fmtDate(c.end_date)}</b> · {c.months || 24} meses · {c.billing === "anual" ? "Anual" : "Mensal"} · Valor pago {fmtMoney(c.amount_paid)}{c.billing === "anual" ? "/ano" : "/mês"}
+                                </div>
+                                {(c.notice_count > 0 || c.notes) && (
+                                  <div className="text-[11px] mt-0.5" style={{ color: COLORS.inkFaint }}>
+                                    {c.notice_count > 0 && `Avisado ${c.notice_count}x · último em ${fmtDateTime(c.last_notice_at)}`}{c.notice_count > 0 && c.notes ? " · " : ""}{c.notes}
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                <button onClick={() => sendCloudNotice(c, "whatsapp")} disabled={!cli?.phone} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-30" style={{ borderColor: COLORS.wa, color: COLORS.wa }}>💬 WhatsApp</button>
+                                <button onClick={() => sendCloudNotice(c, "email")} disabled={!cli?.email} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-30" style={{ borderColor: COLORS.info, color: COLORS.info }}>✉️ E-mail</button>
+                                <button onClick={() => handleRenewCloudContrato(c)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>🔄 Renovar</button>
+                                <button onClick={() => { setEditingCloud(c); setShowCloudForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
+                                <button onClick={() => handleDeleteCloudContrato(c.id)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           {effectiveTab === "pedidos_etiquetas" && (
             <div>

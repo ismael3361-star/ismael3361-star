@@ -3699,6 +3699,7 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
   const [numParcelas, setNumParcelas] = useState(initial?.num_parcelas || (initial?.installments?.length || 1));
   const [diasEntreParcelas, setDiasEntreParcelas] = useState(initial?.dias_entre_parcelas ?? 15);
   const [status, setStatus] = useState(initial?.status || "ABERTO");
+  const [diasPrimeira, setDiasPrimeira] = useState(initial?.dias_primeira ?? (initial ? 0 : 15));
 
   function updateInst(i, field, val) { setInstallments((prev) => prev.map((it, idx) => (idx === i ? { ...it, [field]: val } : it))); }
   function addInst() { setInstallments((prev) => [...prev, { due_date: "", value: "", paid: false }]); }
@@ -3706,24 +3707,49 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
   function toggleInstPaid(i) { setInstallments((prev) => prev.map((it, idx) => (idx === i ? { ...it, paid: !it.paid } : it))); }
   function fillFromQty() { setTotalFaturado(((Number(quantity) || 0) * (Number(unitValue) || 0)).toFixed(2)); }
 
-  function gerarParcelas() {
+  function fmtLocalDate(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+  function calcularParcelas(prevInst) {
     const n = Math.max(1, Number(numParcelas) || 1);
     const dias = Math.max(0, Number(diasEntreParcelas) || 0);
+    const primeira = Math.max(0, Number(diasPrimeira) || 0);
     const total = Number(totalFaturado) || 0;
     const base = dataFaturamento ? new Date(dataFaturamento + "T00:00:00") : new Date();
-    const each = Math.floor((total / n) * 100) / 100;
+    const totalCents = Math.round(total * 100);
+    const eachCents = Math.floor(totalCents / n);
     const rows = [];
     let acumulado = 0;
     for (let i = 0; i < n; i++) {
       const d = new Date(base);
-      d.setDate(d.getDate() + i * dias);
-      const val = i === n - 1 ? Math.round((total - acumulado) * 100) / 100 : each;
-      acumulado += val;
-      rows.push({ due_date: d.toISOString().slice(0, 10), value: val.toFixed(2), paid: false });
+      d.setDate(d.getDate() + primeira + i * dias);
+      const cents = i === n - 1 ? totalCents - acumulado : eachCents; // última parcela leva a sobra dos centavos
+      acumulado += cents;
+      rows.push({ due_date: fmtLocalDate(d), value: (cents / 100).toFixed(2), paid: !!prevInst?.[i]?.paid });
     }
-    setInstallments(rows);
-    setShowExtraInstallments(n > 1);
+    return rows;
   }
+  function gerarParcelas() {
+    const rows = calcularParcelas(installments);
+    setInstallments(rows);
+    setShowExtraInstallments(rows.length > 1);
+  }
+  // Recalcula as parcelas sozinho sempre que data, total, qtd. de parcelas ou prazos mudarem
+  const primeiraRender = useRef(true);
+  useEffect(() => {
+    if (primeiraRender.current) { primeiraRender.current = false; return; }
+    if (!(Number(totalFaturado) > 0)) return;
+    setInstallments((prev) => calcularParcelas(prev));
+    setShowExtraInstallments(Number(numParcelas) > 1);
+  }, [dataFaturamento, totalFaturado, numParcelas, diasEntreParcelas, diasPrimeira]);
+  // Total faturado acompanha qtd × valor unitário enquanto não for digitado à mão
+  const totalAuto = useRef(initial ? null : "");
+  useEffect(() => {
+    const calc = ((Number(quantity) || 0) * (Number(unitValue) || 0));
+    if (!(calc > 0)) return;
+    const v = calc.toFixed(2);
+    if (totalAuto.current === null) { totalAuto.current = String(totalFaturado) === v ? v : undefined; return; }
+    if (totalAuto.current === undefined) return;
+    if (String(totalFaturado) === "" || String(totalFaturado) === totalAuto.current) { totalAuto.current = v; setTotalFaturado(v); }
+  }, [quantity, unitValue]);
 
   const boletoValue = installments.reduce((s, it) => s + (Number(it.value) || 0), 0);
   const paidValue = installments.filter((it) => it.paid).reduce((s, it) => s + (Number(it.value) || 0), 0);
@@ -3758,12 +3784,15 @@ function ItagBillingForm({ initial, onSave, onCancel }) {
             <TextField label="Qtd. de parcelas" value={numParcelas} onChange={setNumParcelas} type="number" placeholder="3" />
           </div>
           <div className="w-40">
+            <TextField label="1ª parcela após (dias)" value={diasPrimeira} onChange={setDiasPrimeira} type="number" placeholder="15" />
+          </div>
+          <div className="w-40">
             <TextField label="Dias entre parcelas" value={diasEntreParcelas} onChange={setDiasEntreParcelas} type="number" placeholder="15" />
           </div>
           <button type="button" onClick={gerarParcelas} disabled={!(Number(totalFaturado) > 0)} className="px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>🔄 Gerar parcelas</button>
           <button type="button" onClick={fillFromQty} className="px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Calcular valor total (qtd × unitário)</button>
         </div>
-        <div className="text-[11px] mt-1.5" style={{ color: COLORS.inkFaint }}>Divide o "Valor total faturado" em partes iguais, com vencimentos espaçados a partir da "Data do faturamento".</div>
+        <div className="text-[11px] mt-1.5" style={{ color: COLORS.inkFaint }}>As parcelas são recalculadas sozinhas ao mudar data, total, quantidade de parcelas ou prazos. A 1ª vence X dias após a "Data do faturamento" e as demais a cada "Dias entre parcelas"; a última leva a sobra dos centavos.</div>
       </div>
 
       <div>

@@ -5958,6 +5958,50 @@ function App() {
     await loadEmployees();
     return emp;
   }
+  function cloudExportRows(rows) {
+    return rows.map((c) => {
+      const cli = clients.find((x) => x.id === c.client_id);
+      const d = daysUntil(c.end_date);
+      const st = d === null ? "-" : d < 0 ? "Vencido" : d <= cloudAlertDays ? "Vencendo" : "Em dia";
+      const rest = d === null ? "-" : d < 0 ? `venceu há ${Math.abs(d)} dia(s)` : `${d} dia(s)`;
+      return { banco: cli?.bank_number || "-", cliente: c.client_name || cli?.name || "-", inicio: fmtDate(c.start_date), vence: fmtDate(c.end_date), periodo: `${c.months || 24} meses`, pagamento: c.billing === "anual" ? "Anual" : "Mensal", valor: Number(c.amount_paid) || 0, status: st, restante: rest, avisos: c.notice_count || 0, obs: c.notes || "" };
+    });
+  }
+  function exportCloudExcel(rows) {
+    if (!rows.length) { showToast("Nenhum contrato para exportar."); return; }
+    const data = cloudExportRows(rows).map((r) => ({ "Banco": r.banco, "Cliente": r.cliente, "Início": r.inicio, "Vence em": r.vence, "Período": r.periodo, "Pagamento": r.pagamento, "Valor pago": r.valor, "Situação": r.status, "Prazo": r.restante, "Avisos enviados": r.avisos, "Observações": r.obs }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "Contratos Cloud");
+    XLSX.writeFile(wb, `contratos-cloud-${todayStr()}.xlsx`);
+  }
+  function exportCloudPDF(rows) {
+    if (!rows.length) { showToast("Nenhum contrato para exportar."); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "landscape" });
+    const list = cloudExportRows(rows);
+    doc.setFontSize(16); doc.setTextColor(30);
+    doc.text("Contratos Cloud — controle de vencimentos", 14, 16);
+    doc.setFontSize(9); doc.setTextColor(100);
+    const venc = list.filter((r) => r.status === "Vencido").length, vcdo = list.filter((r) => r.status === "Vencendo").length;
+    doc.text(`Gerado em ${new Date().toLocaleDateString("pt-BR")}   ·   ${list.length} contrato(s)   ·   Vencidos: ${venc}   ·   Vencendo em ${cloudAlertDays} dias: ${vcdo}`, 14, 23);
+    doc.autoTable({
+      startY: 28,
+      head: [["Banco", "Cliente", "Início", "Vence em", "Período", "Pagamento", "Valor pago", "Situação", "Prazo", "Avisos"]],
+      body: list.map((r) => [r.banco, r.cliente, r.inicio, r.vence, r.periodo, r.pagamento, fmtMoney(r.valor), r.status, r.restante, String(r.avisos)]),
+      styles: { fontSize: 8, cellPadding: 1.8 },
+      headStyles: { fillColor: [124, 92, 255], fontSize: 8 },
+      columnStyles: { 0: { cellWidth: 14 }, 6: { halign: "right" }, 7: { halign: "center" }, 9: { halign: "center", cellWidth: 14 } },
+      didParseCell: (h) => {
+        if (h.section === "body" && h.column.index === 7) {
+          const v = h.cell.raw;
+          h.cell.styles.textColor = v === "Vencido" ? [220, 38, 38] : v === "Vencendo" ? [217, 119, 6] : [22, 163, 74];
+          h.cell.styles.fontStyle = "bold";
+        }
+      },
+      margin: { left: 10, right: 10 },
+    });
+    doc.save(`contratos-cloud-${todayStr()}.pdf`);
+  }
   const loadCloudContratos = useCallback(async () => {
     const { data } = await supa.from("cloud_contratos").select("*").order("end_date", { ascending: true });
     setCloudContratos(data || []);
@@ -10480,7 +10524,11 @@ function App() {
                           {[30, 60, 90, 120].map((d) => <option key={d} value={d}>{d} dias</option>)}
                         </select>
                       </div>
-                      <button onClick={() => { setEditingCloud(null); setShowCloudForm(true); }} className="px-4 py-2 rounded-lg text-sm font-bold text-white" style={{ background: COLORS.brand }}>+ Novo contrato Cloud</button>
+                      <div className="flex gap-2 flex-wrap">
+                        <button onClick={() => exportCloudPDF(mostrados)} className="px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                        <button onClick={() => exportCloudExcel(mostrados)} className="px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Gerar Excel</button>
+                        <button onClick={() => { setEditingCloud(null); setShowCloudForm(true); }} className="px-4 py-2 rounded-lg text-sm font-bold text-white" style={{ background: COLORS.brand }}>+ Novo contrato Cloud</button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

@@ -483,10 +483,21 @@ function isDueSoon(client, b, monthDate) {
 // não há uso, e quem cancelou e não pagou não deve nada; mas o que ele já pagou antes de cancelar
 // continua contando normalmente, pra não sumir do "Total pago").
 // Usado para manter os totais do Dashboard (previsto, pago, em aberto, atrasados) todos batendo entre si.
+// Cancelamento com data futura (ex.: cliente pagou outubro e só sai em novembro):
+// até o mês da data de cancelamento ele continua ativo e cobrado normalmente.
+function isCancelledInMonth(client, monthDate) {
+  if (!client.cancelled) return false;
+  const eff = client.cancelled_at;
+  if (eff && eff > todayStr() && monthDate) {
+    const e = new Date(eff + "T00:00:00");
+    if (monthDate.getFullYear() * 12 + monthDate.getMonth() < e.getFullYear() * 12 + e.getMonth()) return false;
+  }
+  return true;
+}
 function isInCurrentMonthCycle(client, monthDate, paid) {
   if (client.annual) return false;
   if (!client.due_day) return false;
-  if (client.cancelled && !paid) return false; // cancelado e não pago: pré-pago, não deve nada
+  if (isCancelledInMonth(client, monthDate) && !paid) return false; // cancelado e não pago: pré-pago, não deve nada
   if (client.next_due_date) {
     const nd = new Date(client.next_due_date + "T00:00:00");
     const ndKey = nd.getFullYear() * 12 + nd.getMonth();
@@ -6962,10 +6973,17 @@ function App() {
   }
   async function handleToggleCancelled(c) {
     const willCancel = !c.cancelled;
-    if (willCancel && !confirm(`Marcar "${c.name}" como cancelada? Ela vai sair da lista de Mensalidades.`)) return;
-    await supa.from("clients").update({ cancelled: willCancel, cancelled_at: willCancel ? todayStr() : null }).eq("id", c.id);
+    let effDate = todayStr();
+    if (willCancel) {
+      const ans = prompt(`Cancelar "${c.name}" a partir de qual mês?\n\nDeixe vazio para cancelar agora (sai da lista de Mensalidades).\nOu digite o 1º mês SEM cobrança, no formato AAAA-MM (ex.: 2026-11 = continua cobrando até outubro e cancela em novembro).`, "");
+      if (ans === null) return;
+      const m = ans.trim().match(/^(\d{4})-(\d{1,2})$/);
+      if (ans.trim() && !m) { showToast("Formato inválido. Use AAAA-MM, ex.: 2026-11."); return; }
+      if (m) effDate = `${m[1]}-${String(m[2]).padStart(2, "0")}-01`;
+    }
+    await supa.from("clients").update({ cancelled: willCancel, cancelled_at: willCancel ? effDate : null }).eq("id", c.id);
     await loadClients();
-    showToast(willCancel ? "Loja marcada como cancelada." : "Loja reativada.");
+    showToast(willCancel ? (effDate > todayStr() ? `Cancelamento agendado para ${new Date(effDate + "T00:00:00").toLocaleDateString("pt-BR")}. Segue cobrando até lá.` : "Loja marcada como cancelada.") : "Loja reativada.");
   }
 
   function generateProposalPDF(p, prospect) {
@@ -7658,7 +7676,7 @@ function App() {
 
   function exportPaymentMethodExcel() {
     const paidList = clients
-      .filter((c) => !c.cancelled && isInCurrentMonthCycle(c, monthDate, boletos[c.id]?.paid) && boletos[c.id]?.paid)
+      .filter((c) => !isCancelledInMonth(c, monthDate) && isInCurrentMonthCycle(c, monthDate, boletos[c.id]?.paid) && boletos[c.id]?.paid)
       .sort(sortByBankNumber);
     const rows = paidList.map((c) => {
       const b = boletos[c.id];
@@ -7979,7 +7997,7 @@ function App() {
   }, [clients, search]);
 
   const sortedClients = useMemo(() => {
-    const base = showCancelled ? filteredClients : filteredClients.filter((c) => !c.cancelled);
+    const base = showCancelled ? filteredClients : filteredClients.filter((c) => !isCancelledInMonth(c, monthDate));
     const arr = [...base];
     arr.sort((a, b) => {
       let av = sortBy === "value" ? effectiveValue(a) : a[sortBy], bv = sortBy === "value" ? effectiveValue(b) : b[sortBy];
@@ -7990,7 +8008,7 @@ function App() {
       return 0;
     });
     return arr;
-  }, [filteredClients, sortBy, sortDir, showCancelled]);
+  }, [filteredClients, sortBy, sortDir, showCancelled, monthDate]);
 
   const visibleClients = useMemo(() => sortedClients
     .filter((c) => c.bank_number || (Number(c.value) || 0) > 0 || c.cancelled || c.annual)
@@ -8000,7 +8018,7 @@ function App() {
   useEffect(() => { setClientsPage(1); }, [search, sortBy, sortDir, showCancelled, filterAnnualOnly, filterCloudOnly]);
 
   const filteredByStatus = useMemo(() => {
-    const activeClients = filteredClients.filter((c) => !c.cancelled && !c.annual && (c.bank_number || (Number(c.value) || 0) > 0));
+    const activeClients = filteredClients.filter((c) => !isCancelledInMonth(c, monthDate) && !c.annual && (c.bank_number || (Number(c.value) || 0) > 0));
     let arr;
     if (statusFilter === "todos") arr = activeClients;
     // Nos demais filtros (Em aberto, Atrasados, Vence em breve, Enviados, Pagos), um cliente cuja
@@ -8033,7 +8051,7 @@ function App() {
     const today = new Date().getDate();
     const dueToday = monthly.filter((c) => c.due_day === today && !boletos[c.id]?.paid);
     return {
-      count: clients.filter((c) => !c.cancelled && (c.bank_number || (Number(c.value) || 0) > 0 || c.annual)).length, sent, sentWa, sentEmail, paid, overdue, dueSoon,
+      count: clients.filter((c) => !isCancelledInMonth(c, monthDate) && (c.bank_number || (Number(c.value) || 0) > 0 || c.annual)).length, sent, sentWa, sentEmail, paid, overdue, dueSoon,
       countMonthly: monthly.length, totalMonthly: monthly.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
       countAnnual: annualC.length, totalAnnual: annualC.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
       dueTodayCount: dueToday.length, dueTodayValue: dueToday.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
@@ -8048,7 +8066,7 @@ function App() {
   }, [clients, boletos, monthDate]);
 
   const dueSoonNotSent = useMemo(() => {
-    return clients.filter((c) => !c.cancelled && !c.annual && isInCurrentMonthCycle(c, monthDate, boletos[c.id]?.paid) && isDueSoon(c, boletos[c.id], monthDate) && !boletos[c.id]?.sent_whatsapp && !boletos[c.id]?.sent_email);
+    return clients.filter((c) => !isCancelledInMonth(c, monthDate) && !c.annual && isInCurrentMonthCycle(c, monthDate, boletos[c.id]?.paid) && isDueSoon(c, boletos[c.id], monthDate) && !boletos[c.id]?.sent_whatsapp && !boletos[c.id]?.sent_email);
   }, [clients, boletos, monthDate]);
 
   const paidValue = useMemo(() => clients
@@ -8120,7 +8138,7 @@ function App() {
     doc.setFontSize(10); doc.setTextColor(100);
     // Mesma regra da tela de Clientes: sem cancelados e só quem tem banco ou mensalidade
     const clientesRelatorio = filteredClients
-      .filter((c) => !c.cancelled && (c.bank_number || (Number(c.value) || 0) > 0 || c.annual))
+      .filter((c) => !isCancelledInMonth(c, monthDate) && (c.bank_number || (Number(c.value) || 0) > 0 || c.annual))
       .sort((a, b) => (a.bank_number || "").localeCompare(b.bank_number || "", "pt-BR", { numeric: true }));
     const cloudCount = clientesRelatorio.filter((c) => c.cloud).length;
     const consultasTotal = clientesRelatorio.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0);
@@ -8732,7 +8750,7 @@ function App() {
                               <div className="min-w-0">
                                 <div className="font-semibold truncate flex items-center gap-1.5 flex-wrap">
                                   {c.name}
-                                  {c.cancelled && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>CANCELADA</span>}
+                                  {c.cancelled && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>{c.cancelled_at && c.cancelled_at > todayStr() ? `CANCELA EM ${new Date(c.cancelled_at + "T00:00:00").toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" })}` : "CANCELADA"}</span>}
                                   {c.annual && <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full" style={{ color: "#1a1a1a", background: "#D4AF37" }}>⭐ ANUAL</span>}
                                   {c.cloud && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.15)" }}>CLOUD</span>}
                                   {c.group_name && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.15)" }}>🏬 {c.group_name}</span>}
@@ -11726,7 +11744,7 @@ function App() {
 
               {(() => {
                 const paidList = clients
-                  .filter((c) => !c.cancelled && isInCurrentMonthCycle(c, monthDate, boletos[c.id]?.paid) && boletos[c.id]?.paid)
+                  .filter((c) => !isCancelledInMonth(c, monthDate) && isInCurrentMonthCycle(c, monthDate, boletos[c.id]?.paid) && boletos[c.id]?.paid)
                   .sort(sortByBankNumber);
                 const valorPago = (c) => { const b = boletos[c.id]; const pv = Number(b?.paid_value); return pv > 0 ? pv : effectiveValue(c, b); };
                 const boletoList = paidList.filter((c) => boletos[c.id]?.payment_method === "boleto");

@@ -6975,10 +6975,13 @@ function App() {
     const willCancel = !c.cancelled;
     let effDate = todayStr();
     if (willCancel) {
-      const ans = prompt(`Cancelar "${c.name}" a partir de qual mês?\n\nDeixe vazio para cancelar agora (sai da lista de Mensalidades).\nOu digite o 1º mês SEM cobrança, no formato AAAA-MM (ex.: 2026-11 = continua cobrando até outubro e cancela em novembro).`, "");
+      const ans = prompt(`Cancelar "${c.name}" a partir de qual mês?\n\nDeixe vazio para cancelar agora (sai da lista de Mensalidades).\nOu digite o 1º mês SEM cobrança, no formato MM/AAAA (ex.: 11/2026 = continua cobrando até outubro e cancela em novembro).`, "");
       if (ans === null) return;
-      const m = ans.trim().match(/^(\d{4})-(\d{1,2})$/);
-      if (ans.trim() && !m) { showToast("Formato inválido. Use AAAA-MM, ex.: 2026-11."); return; }
+      const t = ans.trim();
+      const m1 = t.match(/^(\d{1,2})\/(\d{4})$/);
+      const m2 = t.match(/^(\d{4})-(\d{1,2})$/);
+      const m = m1 ? [null, m1[2], m1[1]] : m2;
+      if (t && !m) { showToast("Formato inválido. Use MM/AAAA, ex.: 11/2026."); return; }
       if (m) effDate = `${m[1]}-${String(m[2]).padStart(2, "0")}-01`;
     }
     await supa.from("clients").update({ cancelled: willCancel, cancelled_at: willCancel ? effDate : null }).eq("id", c.id);

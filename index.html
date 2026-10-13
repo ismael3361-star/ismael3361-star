@@ -400,8 +400,14 @@ function todayStr() {
 }
 function waNumber(phone) { let d = onlyDigits(phone); if (d.length <= 11) d = "55" + d; return d; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+// Valor da mensalidade conforme o mês: se o cliente tem reajuste agendado ("new_value" a partir de "new_value_from"),
+// os meses a partir dessa data usam o valor novo; os anteriores continuam com o valor antigo.
+function valueForMonth(c, mk) {
+  if (c && c.new_value_from && c.new_value != null && mk && mk >= c.new_value_from) return Number(c.new_value) || 0;
+  return Number(c?.value) || 0;
+}
 function effectiveValue(c, b) {
-  return (Number(c?.value) || 0)
+  return valueForMonth(c, b?.month_key)
     + Number(b?.consultations_value ?? c?.consultations_value ?? 0)
     + Number(b?.vpn_value || 0)
     + Number(b?.server_change_value || 0);
@@ -6935,7 +6941,7 @@ function App() {
       const client = clients.find((c) => c.id === b.client_id);
       if (!client || !byMonth[b.month_key]) return;
       byMonth[b.month_key].emitido += effectiveValue(client, b);
-      byMonth[b.month_key].mensalidade += Number(client.value) || 0;
+      byMonth[b.month_key].mensalidade += valueForMonth(client, b.month_key);
       byMonth[b.month_key].consultas += Number(b.consultations_value) || 0;
       if (b.paid) byMonth[b.month_key].pago += effectiveValue(client, b);
     });
@@ -7002,13 +7008,25 @@ function App() {
     showToast("Nome atualizado.");
   }
   async function handleUpdateClientValue(clientId, newValue) {
-    await supa.from("clients").update({ value: Number(newValue) || 0 }).eq("id", clientId);
+    const v = Number(newValue) || 0;
+    const cli = clients.find((x) => x.id === clientId);
+    const nowKey = monthKey(new Date());
+    let patch;
+    if (cli?.new_value_from && mKey >= cli.new_value_from) patch = { new_value: v };               // reajuste já vigora neste mês: ajusta o valor novo
+    else if (mKey > nowKey) patch = { new_value: v, new_value_from: mKey };                         // mês futuro: vale só a partir dele, meses anteriores não mudam
+    else patch = { value: v };                                                                      // mês atual/passado: muda o valor base
+    const { error } = await supa.from("clients").update(patch).eq("id", clientId);
+    if (error) { showToast(`Erro: ${error.message} (rodou o SQL do reajuste agendado?)`); return; }
     await loadClients();
+    if (patch.new_value_from && !(cli?.new_value_from && mKey >= cli.new_value_from)) {
+      const [yy, mm] = mKey.split("-");
+      showToast(`Novo valor vale a partir de ${mm}/${yy}. Os meses anteriores continuam com o valor antigo.`);
+    }
     // Se a mensalidade desse mês já está marcada como paga, resincroniza o valor pago
     // pra não ficar desatualizado (evita diferença entre Previsto e Pago no Dashboard).
     const b = boletos[clientId];
     if (b?.paid) {
-      const updatedClient = { ...clients.find((x) => x.id === clientId), value: Number(newValue) || 0 };
+      const updatedClient = { ...cli, ...patch };
       const newPaidValue = effectiveValue(updatedClient, b);
       const next = { ...b, paid_value: newPaidValue, updated_at: new Date().toISOString() };
       await supa.from("boletos").upsert(next);
@@ -7713,13 +7731,13 @@ function App() {
       .map((c) => ({
         "Banco": c.bank_number || "-",
         "Cliente": c.name,
-        "Mensalidade": Number(c.value) || 0,
+        "Mensalidade": valueForMonth(c, mKey),
         "Consultas": Number(boletos[c.id]?.consultations_value) || 0,
         "Total": effectiveValue(c, boletos[c.id]),
       }));
     rows.push({
       "Banco": "", "Cliente": "TOTAL",
-      "Mensalidade": clients.reduce((s, c) => s + (Number(c.value) || 0), 0),
+      "Mensalidade": clients.reduce((s, c) => s + valueForMonth(c, mKey), 0),
       "Consultas": clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0),
       "Total": clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
     });
@@ -8203,7 +8221,7 @@ function App() {
       const b = boletos[c.id];
       const st = STATUS_META[computeStatus(c, b, monthDate)].label;
       const pagoEm = b?.paid ? (b.paid_value ? fmtMoney(b.paid_value) : "sim") : "-";
-      return [c.bank_number || "-", c.name, fmtMoney(Number(c.value) || 0), fmtMoney(Number(b?.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", clientDueDisplay(c, monthDate), st, pagoEm];
+      return [c.bank_number || "-", c.name, fmtMoney(valueForMonth(c, mKey)), fmtMoney(Number(b?.consultations_value) || 0), c.cloud ? "Sim" : "Não", c.annual ? "Anual" : "Mensal", clientDueDisplay(c, monthDate), st, pagoEm];
     });
     doc.autoTable({
       startY: 38,
@@ -8924,13 +8942,13 @@ function App() {
                             {overdue > 0 && <span className="text-[11px] font-semibold" style={{ color: COLORS.danger }}>há {overdue} dia{overdue > 1 ? "s" : ""}</span>}
                             {dueSoon && <span className="text-[11px] font-semibold" style={{ color: COLORS.warn }}>vence em {daysUntilDue(c, monthDate)} dia{daysUntilDue(c, monthDate) !== 1 ? "s" : ""}</span>}
                           </div>
-                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>vence em {clientDueDisplay(c, monthDate)} · {c.annual ? "anual" : "mensal"} · total {money(effectiveValue(c, boletos[c.id]))}</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>vence em {clientDueDisplay(c, monthDate)} · {c.annual ? "anual" : "mensal"} · total {money(effectiveValue(c, boletos[c.id]))}{c.new_value_from && c.new_value != null && mKey < c.new_value_from && <span style={{ color: COLORS.warn }}> · reajuste para {money(c.new_value)} a partir de {c.new_value_from.slice(5)}/{c.new_value_from.slice(0, 4)}</span>}</div>
                         </div>
                       </div>
 
                       {/* LINHA 2: valores em grade alinhada */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-1 pl-[54px]">
-                        <MiniMoneyField label="Mensalidade" value={c.value} fieldKey={`val-${c.id}`} onSave={(v) => handleUpdateClientValue(c.id, v)} />
+                        <MiniMoneyField label="Mensalidade" value={valueForMonth(c, mKey)} fieldKey={`val-${c.id}-${mKey}`} onSave={(v) => handleUpdateClientValue(c.id, v)} />
                         <MiniMoneyField label="Consultas" value={b?.consultations_value} fieldKey={`cons-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { consultations_value: v })} />
                         <MiniMoneyField label="VPN" value={b?.vpn_value} fieldKey={`vpn-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { vpn_value: v })} title="Cobrança de VPN nesse mês" />
                         <MiniMoneyField label="Troca servidor" value={b?.server_change_value} fieldKey={`srv-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { server_change_value: v })} title="Cobrança de troca de servidor nesse mês" />
@@ -11725,7 +11743,7 @@ function App() {
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Só mensalidade</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + valueForMonth(c, mKey), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>sem consultas</div>
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
@@ -11767,7 +11785,7 @@ function App() {
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
                             <td className="px-3 py-2 font-extrabold" style={{ color: COLORS.info }}>{c.bank_number || "-"}</td>
                             <td className="px-3 py-2 font-semibold">{c.name}</td>
-                            <td className="px-3 py-2">{money(c.value)}</td>
+                            <td className="px-3 py-2">{money(valueForMonth(c, mKey))}</td>
                             <td className="px-3 py-2" style={{ color: Number(boletos[c.id]?.consultations_value) > 0 ? COLORS.brandLight : COLORS.inkFaint }}>{money(boletos[c.id]?.consultations_value)}</td>
                             <td className="px-3 py-2 font-bold">{money(effectiveValue(c, boletos[c.id]))}</td>
                           </tr>
@@ -11777,7 +11795,7 @@ function App() {
                       <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
                         <td className="px-3 py-2"></td>
                         <td className="px-3 py-2 font-bold">TOTAL</td>
-                        <td className="px-3 py-2 font-bold">{money(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</td>
+                        <td className="px-3 py-2 font-bold">{money(clients.reduce((s, c) => s + valueForMonth(c, mKey), 0))}</td>
                         <td className="px-3 py-2 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
                         <td className="px-3 py-2 font-bold">{money(clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
                       </tr>

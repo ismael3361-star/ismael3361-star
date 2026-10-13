@@ -616,6 +616,14 @@ function padBankNumber(v) {
   if (!s) return s;
   return /^\d+$/.test(s) ? s.padStart(4, "0") : s;
 }
+// Consultas primeiro (quem tem valor de consultas no mês), depois os demais; dentro de cada grupo, por nº do banco
+function sortConsultasFirst(boletos) {
+  return (a, b) => {
+    const ca = Number(boletos[a.id]?.consultations_value) > 0 ? 0 : 1;
+    const cb = Number(boletos[b.id]?.consultations_value) > 0 ? 0 : 1;
+    return ca !== cb ? ca - cb : sortByBankNumber(a, b);
+  };
+}
 function sortByBankNumber(a, b) {
   const na = a.bank_number ? Number(String(a.bank_number).replace(/\D/g, "")) : NaN;
   const nb = b.bank_number ? Number(String(b.bank_number).replace(/\D/g, "")) : NaN;
@@ -7701,16 +7709,16 @@ function App() {
   function exportConsultasExcel() {
     const rows = clients
       .filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
-      .sort((a, b) => (Number(boletos[b.id]?.consultations_value) || 0) - (Number(boletos[a.id]?.consultations_value) || 0))
+      .sort(sortConsultasFirst(boletos))
       .map((c) => ({
-        "Cliente": c.name,
         "Banco": c.bank_number || "-",
+        "Cliente": c.name,
         "Mensalidade": Number(c.value) || 0,
         "Consultas": Number(boletos[c.id]?.consultations_value) || 0,
         "Total": effectiveValue(c, boletos[c.id]),
       }));
     rows.push({
-      "Cliente": "TOTAL", "Banco": "",
+      "Banco": "", "Cliente": "TOTAL",
       "Mensalidade": clients.reduce((s, c) => s + (Number(c.value) || 0), 0),
       "Consultas": clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0),
       "Total": clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
@@ -11635,6 +11643,7 @@ function App() {
                   <table className="w-full text-sm" style={{ color: COLORS.ink }}>
                     <thead>
                       <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                        <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Banco</th>
                         <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Cliente</th>
                         <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Valor/ano</th>
                         <th className="text-left p-3 font-bold text-xs uppercase tracking-wide">Vencimento</th>
@@ -11642,10 +11651,11 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {clients.filter((c) => !c.cancelled && c.annual).map((c, i) => {
+                      {clients.filter((c) => !c.cancelled && c.annual).sort(sortByBankNumber).map((c, i) => {
                         const b = boletos[c.id];
                         return (
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <td className="p-3 font-extrabold" style={{ color: COLORS.info }}>{c.bank_number || "-"}</td>
                             <td className="p-3 font-semibold">{c.name}</td>
                             <td className="p-3">{money(effectiveValue(c, b))}</td>
                             <td className="p-3">{clientDueDisplay(c, monthDate)}</td>
@@ -11656,6 +11666,7 @@ function App() {
                     </tbody>
                     <tfoot>
                       <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                        <td className="px-3 py-2"></td>
                         <td className="px-3 py-2 font-bold">TOTAL</td>
                         <td className="px-3 py-2 font-bold">{money(stats.totalAnnual)}</td>
                         <td className="px-3 py-2"></td>
@@ -11742,6 +11753,7 @@ function App() {
                   <table className="w-full text-sm" style={{ color: COLORS.ink }}>
                     <thead>
                       <tr style={{ color: COLORS.inkMuted, borderBottom: `1px solid ${COLORS.cardBorder}` }}>
+                        <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Banco</th>
                         <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Cliente</th>
                         <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Mensalidade</th>
                         <th className="text-left px-3 py-2 font-bold text-xs uppercase tracking-wide">Consultas</th>
@@ -11750,9 +11762,10 @@ function App() {
                     </thead>
                     <tbody>
                       {clients.filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
-                        .sort((a, b) => (Number(boletos[b.id]?.consultations_value) || 0) - (Number(boletos[a.id]?.consultations_value) || 0))
+                        .sort(sortConsultasFirst(boletos))
                         .map((c, i) => (
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <td className="px-3 py-2 font-extrabold" style={{ color: COLORS.info }}>{c.bank_number || "-"}</td>
                             <td className="px-3 py-2 font-semibold">{c.name}</td>
                             <td className="px-3 py-2">{money(c.value)}</td>
                             <td className="px-3 py-2" style={{ color: Number(boletos[c.id]?.consultations_value) > 0 ? COLORS.brandLight : COLORS.inkFaint }}>{money(boletos[c.id]?.consultations_value)}</td>
@@ -11762,6 +11775,7 @@ function App() {
                     </tbody>
                     <tfoot>
                       <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                        <td className="px-3 py-2"></td>
                         <td className="px-3 py-2 font-bold">TOTAL</td>
                         <td className="px-3 py-2 font-bold">{money(clients.reduce((s, c) => s + (Number(c.value) || 0), 0))}</td>
                         <td className="px-3 py-2 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>

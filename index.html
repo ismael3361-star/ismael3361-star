@@ -2152,6 +2152,11 @@ function addMonthsStr(dateStr, months) {
   d.setDate(Math.min(day, last));
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+// Valor do contrato Cloud nas duas bases: se foi cadastrado mensal, o anual = mensal × 12; se anual, o mensal = anual ÷ 12
+function cloudValores(c) {
+  const v = Number(c?.amount_paid) || 0;
+  return c?.billing === "anual" ? { mensal: v / 12, anual: v } : { mensal: v, anual: v * 12 };
+}
 function daysUntil(dateStr) {
   if (!dateStr) return null;
   const a = new Date(dateStr + "T00:00:00");
@@ -2201,6 +2206,11 @@ function CloudContratoForm({ initial, clients, onSave, onCancel }) {
         <TextField label={billing === "anual" ? "Valor pago (por ano)" : "Valor pago (por mês)"} value={amount} onChange={setAmount} type="number" placeholder="0,00" />
         <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
       </div>
+      {Number(amount) > 0 && (() => { const v = cloudValores({ amount_paid: amount, billing }); return (
+        <div className="rounded-lg p-2.5 text-sm font-bold" style={{ background: "rgba(124,92,255,0.10)", color: COLORS.brandLight }}>
+          Valor mensal: {fmtMoney(v.mensal)} · Valor anual: {fmtMoney(v.anual)}
+        </div>
+      ); })()}
       {client && !client.cloud && (
         <div className="text-[11px]" style={{ color: COLORS.warn }}>⚠️ Esse cliente não está marcado como Cloud no cadastro. O contrato pode ser salvo mesmo assim.</div>
       )}
@@ -5978,12 +5988,12 @@ function App() {
       const d = daysUntil(c.end_date);
       const st = d === null ? "-" : d < 0 ? "Vencido" : d <= cloudAlertDays ? "Vencendo" : "Em dia";
       const rest = d === null ? "-" : d < 0 ? `venceu há ${Math.abs(d)} dia(s)` : `${d} dia(s)`;
-      return { banco: cli?.bank_number || "-", cliente: c.client_name || cli?.name || "-", inicio: fmtDate(c.start_date), vence: fmtDate(c.end_date), periodo: `${c.months || 24} meses`, pagamento: c.billing === "anual" ? "Anual" : "Mensal", valor: Number(c.amount_paid) || 0, status: st, restante: rest, avisos: c.notice_count || 0, obs: c.notes || "" };
+      return { banco: cli?.bank_number || "-", cliente: c.client_name || cli?.name || "-", inicio: fmtDate(c.start_date), vence: fmtDate(c.end_date), periodo: `${c.months || 24} meses`, pagamento: c.billing === "anual" ? "Anual" : "Mensal", vmensal: cloudValores(c).mensal, vanual: cloudValores(c).anual, status: st, restante: rest, avisos: c.notice_count || 0, obs: c.notes || "" };
     });
   }
   function exportCloudExcel(rows) {
     if (!rows.length) { showToast("Nenhum contrato para exportar."); return; }
-    const data = cloudExportRows(rows).map((r) => ({ "Banco": r.banco, "Cliente": r.cliente, "Início": r.inicio, "Vence em": r.vence, "Período": r.periodo, "Pagamento": r.pagamento, "Valor pago": r.valor, "Situação": r.status, "Prazo": r.restante, "Avisos enviados": r.avisos, "Observações": r.obs }));
+    const data = cloudExportRows(rows).map((r) => ({ "Banco": r.banco, "Cliente": r.cliente, "Início": r.inicio, "Vence em": r.vence, "Período": r.periodo, "Pagamento": r.pagamento, "Valor mensal": r.vmensal, "Valor anual": r.vanual, "Situação": r.status, "Prazo": r.restante, "Avisos enviados": r.avisos, "Observações": r.obs }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "Contratos Cloud");
     XLSX.writeFile(wb, `contratos-cloud-${todayStr()}.xlsx`);
@@ -6000,13 +6010,13 @@ function App() {
     doc.text(`Gerado em ${new Date().toLocaleDateString("pt-BR")}   ·   ${list.length} contrato(s)   ·   Vencidos: ${venc}   ·   Vencendo em ${cloudAlertDays} dias: ${vcdo}`, 14, 23);
     doc.autoTable({
       startY: 28,
-      head: [["Banco", "Cliente", "Início", "Vence em", "Período", "Pagamento", "Valor pago", "Situação", "Prazo", "Avisos"]],
-      body: list.map((r) => [r.banco, r.cliente, r.inicio, r.vence, r.periodo, r.pagamento, fmtMoney(r.valor), r.status, r.restante, String(r.avisos)]),
+      head: [["Banco", "Cliente", "Início", "Vence em", "Período", "Pagamento", "Valor mensal", "Valor anual", "Situação", "Prazo", "Avisos"]],
+      body: list.map((r) => [r.banco, r.cliente, r.inicio, r.vence, r.periodo, r.pagamento, fmtMoney(r.vmensal), fmtMoney(r.vanual), r.status, r.restante, String(r.avisos)]),
       styles: { fontSize: 8, cellPadding: 1.8 },
       headStyles: { fillColor: [124, 92, 255], fontSize: 8 },
-      columnStyles: { 0: { cellWidth: 14 }, 6: { halign: "right" }, 7: { halign: "center" }, 9: { halign: "center", cellWidth: 14 } },
+      columnStyles: { 0: { cellWidth: 14 }, 6: { halign: "right" }, 7: { halign: "right" }, 8: { halign: "center" }, 10: { halign: "center", cellWidth: 14 } },
       didParseCell: (h) => {
-        if (h.section === "body" && h.column.index === 7) {
+        if (h.section === "body" && h.column.index === 8) {
           const v = h.cell.raw;
           h.cell.styles.textColor = v === "Vencido" ? [220, 38, 38] : v === "Vencendo" ? [217, 119, 6] : [22, 163, 74];
           h.cell.styles.fontStyle = "bold";
@@ -7726,7 +7736,7 @@ function App() {
 
   function exportConsultasExcel() {
     const rows = clients
-      .filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
+      .filter((c) => !c.cancelled && !c.annual && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
       .sort(sortConsultasFirst(boletos))
       .map((c) => ({
         "Banco": c.bank_number || "-",
@@ -7737,9 +7747,9 @@ function App() {
       }));
     rows.push({
       "Banco": "", "Cliente": "TOTAL",
-      "Mensalidade": clients.reduce((s, c) => s + valueForMonth(c, mKey), 0),
-      "Consultas": clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0),
-      "Total": clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
+      "Mensalidade": clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + valueForMonth(c, mKey), 0),
+      "Consultas": clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0),
+      "Total": clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
     });
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -8214,7 +8224,7 @@ function App() {
       .filter((c) => !isCancelledInMonth(c, monthDate) && (c.bank_number || (Number(c.value) || 0) > 0 || c.annual))
       .sort((a, b) => (a.bank_number || "").localeCompare(b.bank_number || "", "pt-BR", { numeric: true }));
     const cloudCount = clientesRelatorio.filter((c) => c.cloud).length;
-    const consultasTotal = clientesRelatorio.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0);
+    const consultasTotal = clientesRelatorio.filter((c) => !c.annual).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0);
     doc.text(`Clientes: ${clientesRelatorio.length}   Mensal: ${fmtMoney(stats.totalMonthly)}   Anual: ${fmtMoney(stats.totalAnnual)}   Recebido: ${fmtMoney(paidValue)}`, 14, 26);
     doc.text(`Clientes cloud: ${cloudCount}   Total em consultas: ${fmtMoney(consultasTotal)}`, 14, 32);
     const rows = clientesRelatorio.map((c) => {
@@ -8627,43 +8637,11 @@ function App() {
                 ))}
               </div>
 
-              {/* Linha 2: gráfico de receita + vencimentos por dia */}
+              {/* Linha 2: gráfico de receita */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="rounded-2xl p-4 border lg:col-span-2" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <div className="rounded-2xl p-4 border lg:col-span-3" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                   <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>📈 Receita mensal (mensalidade + consultas)</div>
                   <ReceitaChart history={receitaHistory} />
-                </div>
-                <div className="rounded-2xl p-4 border" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>📅 Vencimentos por dia ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</div>
-                  {dueDayGroups.length === 0 ? (
-                    <div className="text-sm text-center py-6" style={{ color: COLORS.inkMuted }}>Nenhum cliente com vencimento cadastrado.</div>
-                  ) : (
-                    <div className="text-xs">
-                      <div className="grid grid-cols-3 gap-2 font-bold pb-2 mb-2 border-b" style={{ color: COLORS.inkMuted, borderColor: COLORS.cardBorder }}>
-                        <span>Dia</span><span>Clientes</span><span>Valor</span>
-                      </div>
-                      <div className="space-y-2 max-h-[220px] overflow-y-auto">
-                        {dueDayGroups.map((g) => {
-                          const max = Math.max(...dueDayGroups.map((x) => x.count));
-                          return (
-                            <div key={g.day} className="grid grid-cols-3 gap-2 items-center">
-                              <span style={{ color: COLORS.ink }}>{String(g.day).padStart(2, "0")}/{String(monthDate.getMonth() + 1).padStart(2, "0")}</span>
-                              <span style={{ color: COLORS.ink }}>{g.count}</span>
-                              <div>
-                                <span style={{ color: COLORS.ink }}>{money(g.value)}</span>
-                                <div className="h-1.5 rounded-full mt-1" style={{ background: "rgba(255,255,255,0.06)" }}>
-                                  <div className="h-1.5 rounded-full" style={{ width: `${(g.count / max) * 100}%`, background: COLORS.brand }}></div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 font-bold pt-2 mt-2 border-t" style={{ color: COLORS.ink, borderColor: COLORS.cardBorder }}>
-                        <span>TOTAL</span><span>{dueDayGroups.reduce((s, g) => s + g.count, 0)}</span><span>{money(dueDayGroups.reduce((s, g) => s + g.value, 0))}</span>
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -10564,6 +10542,8 @@ function App() {
                       <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total de contratos</div>
                         <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{lista.length}</div>
+                        <div className="text-[11px] mt-1" style={{ color: COLORS.inkMuted }}>Mensal: {fmtMoney(lista.reduce((t, c) => t + cloudValores(c).mensal, 0))}</div>
+                        <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Anual: {fmtMoney(lista.reduce((t, c) => t + cloudValores(c).anual, 0))}</div>
                       </div>
                     </div>
 
@@ -10595,7 +10575,10 @@ function App() {
                                   </span>
                                 </div>
                                 <div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>
-                                  Início {fmtDate(c.start_date)} → Vence <b style={{ color: COLORS.ink }}>{fmtDate(c.end_date)}</b> · {c.months || 24} meses · {c.billing === "anual" ? "Anual" : "Mensal"} · Valor pago {fmtMoney(c.amount_paid)}{c.billing === "anual" ? "/ano" : "/mês"}
+                                  Início {fmtDate(c.start_date)} → Vence <b style={{ color: COLORS.ink }}>{fmtDate(c.end_date)}</b> · {c.months || 24} meses · Pagamento {c.billing === "anual" ? "anual" : "mensal"}
+                                </div>
+                                <div className="text-xs mt-1 font-semibold" style={{ color: COLORS.ink }}>
+                                  <span style={{ color: COLORS.brandLight }}>Valor mensal:</span> {fmtMoney(cloudValores(c).mensal)} <span className="mx-1" style={{ color: COLORS.inkFaint }}>·</span> <span style={{ color: COLORS.brandLight }}>Valor anual:</span> {fmtMoney(cloudValores(c).anual)}
                                 </div>
                                 {(c.notice_count > 0 || c.notes) && (
                                   <div className="text-[11px] mt-0.5" style={{ color: COLORS.inkFaint }}>
@@ -11738,12 +11721,12 @@ function App() {
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total em consultas</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>somado à mensalidade</div>
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Só mensalidade</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.reduce((s, c) => s + valueForMonth(c, mKey), 0))}</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + valueForMonth(c, mKey), 0))}</div>
                   <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>sem consultas</div>
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
@@ -11765,7 +11748,7 @@ function App() {
                   <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Mensalidade x Consultas — por cliente ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</div>
                   <button onClick={exportConsultasExcel} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
                 </div>
-                {clients.filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0)).length === 0 ? (
+                {clients.filter((c) => !c.cancelled && !c.annual && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0)).length === 0 ? (
                   <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com valores cadastrados.</div>
                 ) : (
                   <table className="w-full text-sm" style={{ color: COLORS.ink }}>
@@ -11779,7 +11762,7 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {clients.filter((c) => !c.cancelled && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
+                      {clients.filter((c) => !c.cancelled && !c.annual && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
                         .sort(sortConsultasFirst(boletos))
                         .map((c, i) => (
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
@@ -11795,9 +11778,9 @@ function App() {
                       <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
                         <td className="px-3 py-2"></td>
                         <td className="px-3 py-2 font-bold">TOTAL</td>
-                        <td className="px-3 py-2 font-bold">{money(clients.reduce((s, c) => s + valueForMonth(c, mKey), 0))}</td>
-                        <td className="px-3 py-2 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
-                        <td className="px-3 py-2 font-bold">{money(clients.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
+                        <td className="px-3 py-2 font-bold">{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + valueForMonth(c, mKey), 0))}</td>
+                        <td className="px-3 py-2 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
+                        <td className="px-3 py-2 font-bold">{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -12067,16 +12050,6 @@ function App() {
                     </tbody>
                   </table>
                 )}
-              </div>
-
-              <div className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <button onClick={() => setReportYear((y) => y - 1)} className="p-1 rounded-lg border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>‹</button>
-                  <span className="text-sm font-bold" style={{ color: COLORS.ink }}>Visão anual — {reportYear}</span>
-                  <button onClick={() => setReportYear((y) => y + 1)} className="p-1 rounded-lg border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>›</button>
-                  <span className="ml-auto text-sm font-bold" style={{ color: COLORS.success }}>Total recebido: {money(yearTotal)}</span>
-                </div>
-                <BarHistory id="chart-year" history={yearHistory} />
               </div>
 
               <div className="flex justify-end">

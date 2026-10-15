@@ -2152,10 +2152,14 @@ function addMonthsStr(dateStr, months) {
   d.setDate(Math.min(day, last));
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-// Valor do contrato Cloud nas duas bases: se foi cadastrado mensal, o anual = mensal × 12; se anual, o mensal = anual ÷ 12
+// Valores do contrato Cloud. "amount_paid" é o valor por mês (se pagamento mensal) ou por ano (se anual).
+// total = valor do contrato inteiro no período; mensal só existe p/ contrato mensal; anual só p/ contrato anual.
 function cloudValores(c) {
   const v = Number(c?.amount_paid) || 0;
-  return c?.billing === "anual" ? { mensal: v / 12, anual: v } : { mensal: v, anual: v * 12 };
+  const meses = Number(c?.months) || 24;
+  if (c?.billing === "anual") return { total: v * (meses / 12), mensal: null, anual: v };
+  if (c?.billing === "mensal") return { total: v * meses, mensal: v, anual: null };
+  return { total: 0, mensal: null, anual: null }; // forma de pagamento ainda não escolhida
 }
 function daysUntil(dateStr) {
   if (!dateStr) return null;
@@ -2168,12 +2172,12 @@ function CloudContratoForm({ initial, clients, onSave, onCancel }) {
   const [clientId, setClientId] = useState(initial?.client_id || "");
   const [startDate, setStartDate] = useState(initial?.start_date || todayStr());
   const [months, setMonths] = useState(initial?.months ?? 24);
-  const [billing, setBilling] = useState(initial?.billing || "mensal");
+  const [billing, setBilling] = useState(initial?.billing || "");
   const [amount, setAmount] = useState(initial?.amount_paid ?? "");
   const [notes, setNotes] = useState(initial?.notes || "");
   const client = clients.find((c) => c.id === clientId);
   const endDate = addMonthsStr(startDate, months);
-  const canSave = clientId && startDate && Number(months) > 0;
+  const canSave = clientId && startDate && Number(months) > 0 && (billing === "mensal" || billing === "anual");
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
@@ -2199,16 +2203,17 @@ function CloudContratoForm({ initial, clients, onSave, onCancel }) {
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Pagamento</span>
           <select value={billing} onChange={(e) => setBilling(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
+            <option value="">Selecione…</option>
             <option value="mensal">Mensal</option>
             <option value="anual">Anual</option>
           </select>
         </label>
-        <TextField label={billing === "anual" ? "Valor pago (por ano)" : "Valor pago (por mês)"} value={amount} onChange={setAmount} type="number" placeholder="0,00" />
+        <TextField label={billing === "anual" ? "Valor pago (por ano)" : billing === "mensal" ? "Valor pago (por mês)" : "Valor pago (escolha Mensal ou Anual)"} value={amount} onChange={setAmount} type="number" placeholder="0,00" />
         <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
       </div>
-      {Number(amount) > 0 && (() => { const v = cloudValores({ amount_paid: amount, billing }); return (
+      {Number(amount) > 0 && billing && (() => { const v = cloudValores({ amount_paid: amount, billing, months }); return (
         <div className="rounded-lg p-2.5 text-sm font-bold" style={{ background: "rgba(124,92,255,0.10)", color: COLORS.brandLight }}>
-          Valor mensal: {fmtMoney(v.mensal)} · Valor anual: {fmtMoney(v.anual)}
+          Valor total do contrato ({months} meses): {fmtMoney(v.total)}
         </div>
       ); })()}
       {client && !client.cloud && (
@@ -5988,12 +5993,12 @@ function App() {
       const d = daysUntil(c.end_date);
       const st = d === null ? "-" : d < 0 ? "Vencido" : d <= cloudAlertDays ? "Vencendo" : "Em dia";
       const rest = d === null ? "-" : d < 0 ? `venceu há ${Math.abs(d)} dia(s)` : `${d} dia(s)`;
-      return { banco: cli?.bank_number || "-", cliente: c.client_name || cli?.name || "-", inicio: fmtDate(c.start_date), vence: fmtDate(c.end_date), periodo: `${c.months || 24} meses`, pagamento: c.billing === "anual" ? "Anual" : "Mensal", vmensal: cloudValores(c).mensal, vanual: cloudValores(c).anual, status: st, restante: rest, avisos: c.notice_count || 0, obs: c.notes || "" };
+      return { banco: cli?.bank_number || "-", cliente: c.client_name || cli?.name || "-", inicio: fmtDate(c.start_date), vence: fmtDate(c.end_date), periodo: `${c.months || 24} meses`, pagamento: c.billing === "anual" ? "Anual" : c.billing === "mensal" ? "Mensal" : "Não definido", vtotal: cloudValores(c).total, vmensal: cloudValores(c).mensal, vanual: cloudValores(c).anual, status: st, restante: rest, avisos: c.notice_count || 0, obs: c.notes || "" };
     });
   }
   function exportCloudExcel(rows) {
     if (!rows.length) { showToast("Nenhum contrato para exportar."); return; }
-    const data = cloudExportRows(rows).map((r) => ({ "Banco": r.banco, "Cliente": r.cliente, "Início": r.inicio, "Vence em": r.vence, "Período": r.periodo, "Pagamento": r.pagamento, "Valor mensal": r.vmensal, "Valor anual": r.vanual, "Situação": r.status, "Prazo": r.restante, "Avisos enviados": r.avisos, "Observações": r.obs }));
+    const data = cloudExportRows(rows).map((r) => ({ "Banco": r.banco, "Cliente": r.cliente, "Início": r.inicio, "Vence em": r.vence, "Período": r.periodo, "Pagamento": r.pagamento, "Valor total": r.vtotal, "Valor mensal": r.vmensal == null ? "" : r.vmensal, "Valor anual": r.vanual == null ? "" : r.vanual, "Situação": r.status, "Prazo": r.restante, "Avisos enviados": r.avisos, "Observações": r.obs }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), "Contratos Cloud");
     XLSX.writeFile(wb, `contratos-cloud-${todayStr()}.xlsx`);
@@ -6010,13 +6015,13 @@ function App() {
     doc.text(`Gerado em ${new Date().toLocaleDateString("pt-BR")}   ·   ${list.length} contrato(s)   ·   Vencidos: ${venc}   ·   Vencendo em ${cloudAlertDays} dias: ${vcdo}`, 14, 23);
     doc.autoTable({
       startY: 28,
-      head: [["Banco", "Cliente", "Início", "Vence em", "Período", "Pagamento", "Valor mensal", "Valor anual", "Situação", "Prazo", "Avisos"]],
-      body: list.map((r) => [r.banco, r.cliente, r.inicio, r.vence, r.periodo, r.pagamento, fmtMoney(r.vmensal), fmtMoney(r.vanual), r.status, r.restante, String(r.avisos)]),
+      head: [["Banco", "Cliente", "Início", "Vence em", "Período", "Pagamento", "Valor total", "Valor mensal", "Valor anual", "Situação", "Prazo", "Avisos"]],
+      body: list.map((r) => [r.banco, r.cliente, r.inicio, r.vence, r.periodo, r.pagamento, fmtMoney(r.vtotal), r.vmensal == null ? "-" : fmtMoney(r.vmensal), r.vanual == null ? "-" : fmtMoney(r.vanual), r.status, r.restante, String(r.avisos)]),
       styles: { fontSize: 8, cellPadding: 1.8 },
       headStyles: { fillColor: [124, 92, 255], fontSize: 8 },
-      columnStyles: { 0: { cellWidth: 14 }, 6: { halign: "right" }, 7: { halign: "right" }, 8: { halign: "center" }, 10: { halign: "center", cellWidth: 14 } },
+      columnStyles: { 0: { cellWidth: 14 }, 6: { halign: "right" }, 7: { halign: "right" }, 8: { halign: "right" }, 9: { halign: "center" }, 11: { halign: "center", cellWidth: 14 } },
       didParseCell: (h) => {
-        if (h.section === "body" && h.column.index === 8) {
+        if (h.section === "body" && h.column.index === 9) {
           const v = h.cell.raw;
           h.cell.styles.textColor = v === "Vencido" ? [220, 38, 38] : v === "Vencendo" ? [217, 119, 6] : [22, 163, 74];
           h.cell.styles.fontStyle = "bold";
@@ -10535,15 +10540,17 @@ function App() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                       {card("Vencidos", vencidos.length, COLORS.danger, "vencido")}
                       {card(`Vencendo em ${cloudAlertDays} dias`, vencendo.length, COLORS.warn, "vencendo")}
                       {card("Em dia", emDia.length, COLORS.success, "ok")}
                       <div className="rounded-xl p-3 border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
                         <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total de contratos</div>
                         <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{lista.length}</div>
-                        <div className="text-[11px] mt-1" style={{ color: COLORS.inkMuted }}>Mensal: {fmtMoney(lista.reduce((t, c) => t + cloudValores(c).mensal, 0))}</div>
-                        <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Anual: {fmtMoney(lista.reduce((t, c) => t + cloudValores(c).anual, 0))}</div>
+                      </div>
+                      <div className="rounded-xl p-3 border col-span-2 sm:col-span-1" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }}>
+                        <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Valor total</div>
+                        <div className="text-2xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(lista.reduce((t, c) => t + cloudValores(c).total, 0))}</div>
                       </div>
                     </div>
 
@@ -10575,10 +10582,10 @@ function App() {
                                   </span>
                                 </div>
                                 <div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>
-                                  Início {fmtDate(c.start_date)} → Vence <b style={{ color: COLORS.ink }}>{fmtDate(c.end_date)}</b> · {c.months || 24} meses · Pagamento {c.billing === "anual" ? "anual" : "mensal"}
+                                  Início {fmtDate(c.start_date)} → Vence <b style={{ color: COLORS.ink }}>{fmtDate(c.end_date)}</b> · {c.months || 24} meses · Pagamento {c.billing === "anual" ? "anual" : c.billing === "mensal" ? "mensal" : "não definido"}
                                 </div>
                                 <div className="text-xs mt-1 font-semibold" style={{ color: COLORS.ink }}>
-                                  <span style={{ color: COLORS.brandLight }}>Valor mensal:</span> {fmtMoney(cloudValores(c).mensal)} <span className="mx-1" style={{ color: COLORS.inkFaint }}>·</span> <span style={{ color: COLORS.brandLight }}>Valor anual:</span> {fmtMoney(cloudValores(c).anual)}
+                                  <span style={{ color: COLORS.brandLight }}>Valor total:</span> {fmtMoney(cloudValores(c).total)}{c.billing === "mensal" && <><span className="mx-1" style={{ color: COLORS.inkFaint }}>·</span><span style={{ color: COLORS.brandLight }}>Valor mensal:</span> {fmtMoney(cloudValores(c).mensal)}</>}{c.billing === "anual" && <><span className="mx-1" style={{ color: COLORS.inkFaint }}>·</span><span style={{ color: COLORS.brandLight }}>Valor anual:</span> {fmtMoney(cloudValores(c).anual)}</>}
                                 </div>
                                 {(c.notice_count > 0 || c.notes) && (
                                   <div className="text-[11px] mt-0.5" style={{ color: COLORS.inkFaint }}>

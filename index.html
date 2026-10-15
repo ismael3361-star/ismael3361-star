@@ -2152,14 +2152,15 @@ function addMonthsStr(dateStr, months) {
   d.setDate(Math.min(day, last));
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-// Valores do contrato Cloud. "amount_paid" é o valor por mês (se pagamento mensal) ou por ano (se anual).
+// Valores do contrato Cloud. "amount_paid" = valor total pago pelo contrato (todo o período).
 // total = valor do contrato inteiro no período; mensal só existe p/ contrato mensal; anual só p/ contrato anual.
 function cloudValores(c) {
   const v = Number(c?.amount_paid) || 0;
   const meses = Number(c?.months) || 24;
-  if (c?.billing === "anual") return { total: v * (meses / 12), mensal: null, anual: v };
-  if (c?.billing === "mensal") return { total: v * meses, mensal: v, anual: null };
-  return { total: 0, mensal: null, anual: null }; // forma de pagamento ainda não escolhida
+  // "Valor pago" = valor total do contrato (todo o período). Mensal/anual são derivados dele.
+  if (c?.billing === "anual") return { total: v, mensal: null, anual: v / (meses / 12) };
+  if (c?.billing === "mensal") return { total: v, mensal: v / meses, anual: null };
+  return { total: v, mensal: null, anual: null };
 }
 function daysUntil(dateStr) {
   if (!dateStr) return null;
@@ -2208,12 +2209,12 @@ function CloudContratoForm({ initial, clients, onSave, onCancel }) {
             <option value="anual">Anual</option>
           </select>
         </label>
-        <TextField label={billing === "anual" ? "Valor pago (por ano)" : billing === "mensal" ? "Valor pago (por mês)" : "Valor pago (escolha Mensal ou Anual)"} value={amount} onChange={setAmount} type="number" placeholder="0,00" />
+        <TextField label="Valor pago (total do contrato)" value={amount} onChange={setAmount} type="number" placeholder="0,00" />
         <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
       </div>
       {Number(amount) > 0 && billing && (() => { const v = cloudValores({ amount_paid: amount, billing, months }); return (
         <div className="rounded-lg p-2.5 text-sm font-bold" style={{ background: "rgba(124,92,255,0.10)", color: COLORS.brandLight }}>
-          Valor total do contrato ({months} meses): {fmtMoney(v.total)}
+          Valor total do contrato ({months} meses): {fmtMoney(v.total)}{v.mensal != null && ` · Mensal: ${fmtMoney(v.mensal)}`}{v.anual != null && ` · Anual: ${fmtMoney(v.anual)}`}
         </div>
       ); })()}
       {client && !client.cloud && (

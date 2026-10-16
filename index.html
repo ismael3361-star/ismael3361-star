@@ -8422,7 +8422,7 @@ function App() {
                     <span className="text-[8px] sm:text-[13px] font-semibold leading-tight text-center sm:text-left mt-0.5 sm:mt-0" style={{ color: isOpen || hasActive ? COLORS.ink : COLORS.inkMuted }}>{g.group}</span>
                   </button>
                   {isOpen && (
-                    <div className="fixed top-0 bottom-0 right-0 left-16 sm:left-52 z-40 p-4 sm:p-8 overflow-y-auto" style={{ background: "rgba(10,18,34,0.92)" }} onClick={() => setOpenGroup(null)}>
+                    <div className="fixed top-0 bottom-0 right-0 left-16 sm:left-52 z-40 p-4 sm:p-8 overflow-y-auto" style={{ background: COLORS.bg }} onClick={() => setOpenGroup(null)}>
                       <div className="flex items-center gap-2 mb-4 text-lg font-extrabold" style={{ color: COLORS.ink }}>
                         <span>{GROUP_ICONS[g.group] || "📂"}</span>{g.group}
                       </div>

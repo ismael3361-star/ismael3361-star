@@ -4806,6 +4806,14 @@ function App() {
   const [clients, setClients] = useState([]);
   const [settings, setSettings] = useState(null);
   const [tab, setTab] = useState("dashboard");
+  const tabHist = useRef([]); const tabLast = useRef("dashboard"); const tabGoingBack = useRef(false);
+  useEffect(() => {
+    if (tab === tabLast.current) return;
+    if (!tabGoingBack.current) tabHist.current.push(tabLast.current);
+    tabGoingBack.current = false; tabLast.current = tab;
+    if (tabHist.current.length > 30) tabHist.current.shift();
+  }, [tab]);
+  const goBackTab = () => { const prev = tabHist.current.pop(); tabGoingBack.current = true; setTab(prev || "dashboard"); if (!prev) tabGoingBack.current = false; };
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [sortBy, setSortBy] = useState("bank_number");
@@ -8517,6 +8525,13 @@ function App() {
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 py-7">
+
+          {effectiveTab !== "dashboard" && !(ROLE_ALLOWED_TABS[userRole] && effectiveTab === ROLE_ALLOWED_TABS[userRole][0]) && (
+            <div className="flex items-center gap-2 mb-4">
+              <button onClick={goBackTab} className="px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all hover:bg-white/5" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>← Voltar</button>
+              <button onClick={() => { tabHist.current = []; setTab("dashboard"); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all hover:bg-white/5" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>✕ Fechar</button>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
             <div>

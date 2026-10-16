@@ -4813,7 +4813,9 @@ function App() {
     tabGoingBack.current = false; tabLast.current = tab;
     if (tabHist.current.length > 30) tabHist.current.shift();
   }, [tab]);
-  const goBackTab = () => { const prev = tabHist.current.pop(); tabGoingBack.current = true; setTab(prev || "dashboard"); if (!prev) tabGoingBack.current = false; };
+  const tabGroupRef = useRef({});
+  const goBackTab = () => {
+    if (iconMenu && tabGroupRef.current[tab]) { setOpenGroup(tabGroupRef.current[tab]); return; } const prev = tabHist.current.pop(); tabGoingBack.current = true; setTab(prev || "dashboard"); if (!prev) tabGoingBack.current = false; };
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [sortBy, setSortBy] = useState("bank_number");
@@ -8428,7 +8430,7 @@ function App() {
                       </div>
                       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))" }} onClick={(e) => e.stopPropagation()}>
                         {g.items.map((t) => (
-                          <button key={t.id} onClick={() => { setTab(t.id); setOpenGroup(null); }}
+                          <button key={t.id} onClick={() => { tabGroupRef.current[t.id] = g.group; setTab(t.id); setOpenGroup(null); }}
                             className="flex flex-col items-center justify-center gap-2 rounded-xl p-3 transition-all hover:scale-105"
                             style={{ height: 104, background: tab === t.id ? rgba(accent, 0.25) : COLORS.card, border: `1px solid ${tab === t.id ? accent : COLORS.cardBorder}` }}>
                             <span style={{ fontSize: 30 }}>{t.icon}</span>

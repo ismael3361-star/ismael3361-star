@@ -8528,10 +8528,10 @@ function App() {
         <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 py-7">
 
-          {effectiveTab !== "dashboard" && !(ROLE_ALLOWED_TABS[userRole] && effectiveTab === ROLE_ALLOWED_TABS[userRole][0]) && (
+          {!(ROLE_ALLOWED_TABS[userRole] && effectiveTab === ROLE_ALLOWED_TABS[userRole][0]) && (
             <div className="flex items-center gap-2 mb-4">
               <button onClick={goBackTab} className="px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all hover:bg-white/5" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>← Voltar</button>
-              <button onClick={() => { tabHist.current = []; setTab("dashboard"); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all hover:bg-white/5" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>✕ Fechar</button>
+              {effectiveTab !== "dashboard" && <button onClick={() => { tabHist.current = []; setTab("dashboard"); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold border transition-all hover:bg-white/5" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>✕ Fechar</button>}
             </div>
           )}
 

@@ -131,6 +131,7 @@ const GROUP_ACCENTS = {
   Principal: "#7C5CFF", Comercial: "#3B82F6", Etiqueta: "#F59E0B", RFID: "#06B6D4",
   Financeiro: "#22C55E", Operacional: "#EC4899", Sistema: "#8A97AC",
 };
+const GROUP_ICONS = { Principal: "🏠", Comercial: "🤝", Etiqueta: "🏷️", RFID: "📡", Financeiro: "💰", Operacional: "🛠️", Sistema: "⚙️" };
 function hexToRgb(hex) {
   const h = hex.replace("#", "");
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
@@ -4898,6 +4899,9 @@ function App() {
   const [editingExpense, setEditingExpense] = useState(null);
   const [expenseFilter, setExpenseFilter] = useState("todos");
   const [hideValues, setHideValues] = useState(false);
+  const [iconMenu, setIconMenu] = useState(() => { try { return localStorage.getItem("adm_icon_menu") !== "0"; } catch (e) { return true; } });
+  const [openGroup, setOpenGroup] = useState(null);
+  const toggleIconMenu = () => { setOpenGroup(null); setIconMenu((v) => { const n = !v; try { localStorage.setItem("adm_icon_menu", n ? "1" : "0"); } catch (e) {} return n; }); };
   const money = useCallback((v) => hideValues ? "R$ ••••••" : fmtMoney(v), [hideValues]);
   const [payrollRecords, setPayrollRecords] = useState([]);
   const [showPayrollForm, setShowPayrollForm] = useState(false);
@@ -8396,6 +8400,40 @@ function App() {
             const flatItems = ALL_GROUPS.flatMap((g) => g.items).filter((it) => allowed.includes(it.id));
             return [{ group: userRole.charAt(0).toUpperCase() + userRole.slice(1), items: flatItems }];
           })().map((g, gi) => (
+            iconMenu ? (
+            <div key={g.group} className="mb-1">
+              {(() => {
+                const accent = GROUP_ACCENTS[g.group] || COLORS.brand;
+                const isOpen = openGroup === g.group;
+                const hasActive = g.items.some((t) => t.id === tab);
+                return (<>
+                  <button onClick={() => setOpenGroup(isOpen ? null : g.group)}
+                    className="flex flex-col sm:flex-row items-center sm:gap-2.5 justify-center sm:justify-start w-full px-1.5 sm:px-2.5 py-2 rounded-xl transition-all"
+                    style={{ background: isOpen || hasActive ? `linear-gradient(135deg, ${rgba(accent, 0.22)}, ${rgba(accent, 0.05)})` : "transparent", border: isOpen || hasActive ? `1px solid ${rgba(accent, 0.4)}` : "1px solid transparent" }}>
+                    <span className="flex items-center justify-center rounded-xl shrink-0" style={{ width: 30, height: 30, background: rgba(accent, 0.18), fontSize: 16 }}>{GROUP_ICONS[g.group] || "📂"}</span>
+                    <span className="text-[8px] sm:text-[13px] font-semibold leading-tight text-center sm:text-left mt-0.5 sm:mt-0" style={{ color: isOpen || hasActive ? COLORS.ink : COLORS.inkMuted }}>{g.group}</span>
+                  </button>
+                  {isOpen && (
+                    <div className="fixed top-0 bottom-0 right-0 left-16 sm:left-52 z-40 p-4 sm:p-8 overflow-y-auto" style={{ background: "rgba(10,18,34,0.92)" }} onClick={() => setOpenGroup(null)}>
+                      <div className="flex items-center gap-2 mb-4 text-lg font-extrabold" style={{ color: COLORS.ink }}>
+                        <span>{GROUP_ICONS[g.group] || "📂"}</span>{g.group}
+                      </div>
+                      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(112px, 1fr))" }} onClick={(e) => e.stopPropagation()}>
+                        {g.items.map((t) => (
+                          <button key={t.id} onClick={() => { setTab(t.id); setOpenGroup(null); }}
+                            className="flex flex-col items-center justify-center gap-2 rounded-xl p-3 transition-all hover:scale-105"
+                            style={{ height: 104, background: tab === t.id ? rgba(accent, 0.25) : COLORS.card, border: `1px solid ${tab === t.id ? accent : COLORS.cardBorder}` }}>
+                            <span style={{ fontSize: 30 }}>{t.icon}</span>
+                            <span className="text-[11px] font-semibold text-center leading-tight" style={{ color: COLORS.ink }}>{t.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>);
+              })()}
+            </div>
+            ) : (
             <div key={g.group} className="mb-2">
               <div className="hidden sm:block text-[12px] font-extrabold uppercase tracking-[0.12em] px-3 mb-1.5" style={{ color: COLORS.inkFaint }}>{g.group}</div>
               <div className="flex flex-col gap-0.5">
@@ -8415,7 +8453,13 @@ function App() {
                 })}
               </div>
             </div>
+            )
           ))}
+
+          <button onClick={toggleIconMenu} className="flex items-center justify-center sm:justify-start gap-2 px-1.5 sm:px-2 py-1 rounded-lg font-semibold text-[11px] w-full mb-1" style={{ color: COLORS.inkFaint }} title="Alternar entre menu em ícones e menu em lista">
+            <span className="flex items-center justify-center rounded-md shrink-0" style={{ width: 22, height: 22, background: "rgba(255,255,255,0.05)", fontSize: 12 }}>{iconMenu ? "☰" : "▦"}</span>
+            <span className="hidden sm:inline">{iconMenu ? "Menu em lista" : "Menu em ícones"}</span>
+          </button>
 
           {(userRole === "admin" || userRole === "financeiro") && (
           <div className="mt-1">

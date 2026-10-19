@@ -4861,6 +4861,8 @@ function App() {
   const [editingProposal, setEditingProposal] = useState(null);
   const [romaneios, setRomaneios] = useState([]);
   const [showRomaneioForm, setShowRomaneioForm] = useState(false);
+  const [romaneioView, setRomaneioView] = useState("pedidos");
+  const [ultimaFiltro, setUltimaFiltro] = useState("todos");
   const [editingRomaneio, setEditingRomaneio] = useState(null);
   const [itagEntries, setItagEntries] = useState([]);
   const [itagBillings, setItagBillings] = useState([]);
@@ -9399,7 +9401,10 @@ function App() {
             <div>
               <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
                 <p className="text-xs" style={{ color: COLORS.inkMuted }}>Gere romaneios de pedido em PDF com logo, itens, forma e prazo de pagamento. Fica salvo e pode ser visualizado, impresso ou exportado pra Excel a qualquer momento.</p>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex gap-2 shrink-0 flex-wrap">
+                  <button onClick={() => setRomaneioView(romaneioView === "ultima" ? "pedidos" : "ultima")} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border hover:bg-white/5 transition" style={{ borderColor: romaneioView === "ultima" ? COLORS.brandLight : COLORS.cardBorder, color: romaneioView === "ultima" ? COLORS.brandLight : COLORS.ink }}>
+                    {romaneioView === "ultima" ? "📦 Ver pedidos" : "📅 Última compra"}
+                  </button>
                   <button onClick={exportAllRomaneiosExcel} disabled={romaneios.length === 0} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40 hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>
                     📊 Exportar Excel (todos)
                   </button>
@@ -9460,6 +9465,61 @@ function App() {
                         <button onClick={() => { setEditingRomaneio(r); setShowRomaneioForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
                         <button onClick={() => handleDeleteRomaneio(r.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ Excluir</button>
                       </div>
+                    </div>
+                  );
+                }
+                if (romaneioView === "ultima") {
+                  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+                  const mapa = {};
+                  romaneios.forEach((r) => {
+                    if (!r.romaneio_client_id || !r.order_date) return;
+                    const total = (r.items || []).reduce((t, it) => t + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+                    const m = mapa[r.romaneio_client_id] || (mapa[r.romaneio_client_id] = { id: r.romaneio_client_id, ultima: "", numero: "", total: 0, pedidos: 0, valorUltima: 0 });
+                    m.pedidos += 1; m.total += total;
+                    if (r.order_date > m.ultima) { m.ultima = r.order_date; m.numero = r.number; m.valorUltima = total; }
+                  });
+                  let linhas = Object.values(mapa).map((m) => {
+                    const cli = romaneioClients.find((p) => p.id === m.id);
+                    const dias = Math.round((hoje - new Date(m.ultima + "T00:00:00")) / 86400000);
+                    return { ...m, nome: cli?.name || "Cliente removido", phone: cli?.phone || "", dias };
+                  }).sort((a, b) => b.dias - a.dias);
+                  const semCompra = romaneioClients.filter((p) => !mapa[p.id]).map((p) => ({ id: p.id, nome: p.name, phone: p.phone || "", ultima: "", dias: null, pedidos: 0, total: 0, numero: "", valorUltima: 0 }));
+                  const minDias = ultimaFiltro === "todos" ? -1 : Number(ultimaFiltro);
+                  linhas = linhas.filter((l) => l.dias >= minDias);
+                  const exportar = () => {
+                    const rows = linhas.map((l) => ({ Cliente: l.nome, "Última compra": fmtDate(l.ultima), "Dias sem comprar": l.dias, "Pedido nº": l.numero, "Valor da última": l.valorUltima, "Qtd. pedidos": l.pedidos, "Total comprado": l.total }));
+                    const ws = XLSX.utils.json_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Última compra");
+                    XLSX.writeFile(wb, `ultima-compra-etiquetas-${todayStr()}.xlsx`);
+                  };
+                  const corDias = (d) => d >= 90 ? COLORS.danger : d >= 60 ? COLORS.warn : d >= 30 ? COLORS.info : COLORS.success;
+                  return (
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        <span className="text-xs font-bold" style={{ color: COLORS.inkMuted }}>Sem comprar há:</span>
+                        {[["todos", "Todos"], ["30", "30+ dias"], ["60", "60+ dias"], ["90", "90+ dias"]].map(([v, l]) => (
+                          <button key={v} onClick={() => setUltimaFiltro(v)} className="px-3 py-1 rounded-full text-xs font-semibold border" style={{ borderColor: ultimaFiltro === v ? COLORS.brandLight : COLORS.cardBorder, color: ultimaFiltro === v ? COLORS.brandLight : COLORS.inkMuted }}>{l}</button>
+                        ))}
+                        <button onClick={exportar} className="ml-auto px-3 py-1 rounded-lg text-xs font-semibold border hover:bg-white/5" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
+                      </div>
+                      <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        {linhas.length === 0 ? (
+                          <div className="p-10 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente nesse filtro.</div>
+                        ) : linhas.map((l, i) => (
+                          <div key={l.id} className="flex flex-wrap items-center justify-between gap-2 p-3" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                            <div className="min-w-0">
+                              <div className="font-bold text-sm truncate" style={{ color: COLORS.ink }}>{l.nome}</div>
+                              <div className="text-xs" style={{ color: COLORS.inkMuted }}>Última compra {fmtDate(l.ultima)} · pedido nº {l.numero} · {money(l.valorUltima)} · {l.pedidos} pedido(s) · total {money(l.total)}</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: rgba(corDias(l.dias), 0.15), color: corDias(l.dias) }}>{l.dias === 0 ? "hoje" : `há ${l.dias} dia(s)`}</span>
+                              {l.phone && <a href={`https://wa.me/${waNumber(l.phone)}`} target="_blank" className="text-xs px-2 py-1 rounded-lg border" style={{ borderColor: COLORS.cardBorder, color: COLORS.wa }}>💬</a>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {ultimaFiltro === "todos" && semCompra.length > 0 && (
+                        <div className="text-xs mt-3" style={{ color: COLORS.inkFaint }}>Cadastrados sem nenhum pedido: {semCompra.map((c) => c.nome).join(", ")}</div>
+                      )}
                     </div>
                   );
                 }

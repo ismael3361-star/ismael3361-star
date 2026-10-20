@@ -861,6 +861,68 @@ function TextField({ label, value, onChange, type = "text", placeholder, require
   );
 }
 
+// ---------------------------------------------------------------------------
+// Formulários que abrem acima de uma lista (editar/novo).
+// FormHost faz duas coisas:
+//  1) rola a tela até o formulário ao abrir ou ao trocar o item em edição — mesmo que o clique
+//     tenha sido lá embaixo na lista (a área que rola é a principal, não a janela);
+//  2) recria o formulário quando muda o item (senão ele continuava mostrando os dados do item anterior).
+// ---------------------------------------------------------------------------
+const __formObjKeys = new WeakMap();
+let __formObjSeq = 0;
+let __lastFormScrollAt = 0;
+function formItemKey(item) {
+  if (!item) return "novo";
+  if (typeof item !== "object") return "v" + String(item);
+  let k = __formObjKeys.get(item);
+  if (!k) { k = ++__formObjSeq; __formObjKeys.set(item, k); }
+  return "e" + k;
+}
+function findScrollParent(el) {
+  let p = el && el.parentElement;
+  while (p && p !== document.body && p !== document.documentElement) {
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight + 1) return p;
+    p = p.parentElement;
+  }
+  return null;
+}
+function ensureFormVisible(el, force) {
+  if (!el || !el.isConnected) return;
+  const now = Date.now();
+  if (!force && now - __lastFormScrollAt < 800) return;
+  const sc = findScrollParent(el);
+  const box = sc ? sc.getBoundingClientRect() : { top: 0, height: window.innerHeight };
+  const top = el.getBoundingClientRect().top;
+  if (top >= box.top && top <= box.top + box.height * 0.25) return; // já está no alto da tela
+  __lastFormScrollAt = now;
+  if (sc) {
+    const alvo = Math.max(0, sc.scrollTop + (top - box.top) - 12);
+    try { sc.scrollTo({ top: alvo, behavior: "smooth" }); } catch (e) { sc.scrollTop = alvo; }
+  } else {
+    try { el.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) { el.scrollIntoView(true); }
+  }
+}
+function FormHostInner({ className, children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const t = setTimeout(() => ensureFormVisible(ref.current, true), 40);
+    // Clicar de novo em "✏️/Editar" com o formulário já aberto (mas fora da tela) também leva até ele.
+    function onDocClick(e) {
+      const btn = e.target && e.target.closest ? e.target.closest("button, a") : null;
+      if (!btn || (ref.current && ref.current.contains(btn))) return;
+      const label = (btn.textContent || "") + " " + (btn.getAttribute("title") || "");
+      if (/✏|Editar/i.test(label)) setTimeout(() => ensureFormVisible(ref.current), 160);
+    }
+    document.addEventListener("click", onDocClick, true);
+    return () => { clearTimeout(t); document.removeEventListener("click", onDocClick, true); };
+  }, []);
+  return <div ref={ref} className={className} data-form-host="1">{children}</div>;
+}
+function FormHost({ item, className = "mb-4", children }) {
+  return <FormHostInner key={formItemKey(item)} className={className}>{children}</FormHostInner>;
+}
+
 function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || "");
   const [contactName, setContactName] = useState(initial?.contact_name || "");
@@ -4906,9 +4968,7 @@ function App() {
   const PAGE_SIZE = 25;
   const [sortDir, setSortDir] = useState("asc");
   const [editing, setEditing] = useState(null);
-  const clientFormRef = useRef(null);
   const [showForm, setShowForm] = useState(false);
-  useEffect(() => { if (showForm && clientFormRef.current) clientFormRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); }, [showForm]);
   const [monthDate, setMonthDate] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [boletos, setBoletos] = useState({});
   const [consultations, setConsultations] = useState([]);
@@ -8903,7 +8963,7 @@ function App() {
                 <span className="text-xs ml-auto" style={{ color: COLORS.inkFaint }}>💾 O backup completo salva clientes, boletos e anotações.</span>
               </div>
 
-              {showForm && <div className="mb-4" ref={clientFormRef}><ClientForm initial={editing} existingReps={[...new Set(clientCommissions.map((cc) => cc.representative_name).filter(Boolean))]} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></div>}
+              {showForm && <FormHost item={editing}><ClientForm initial={editing} existingReps={[...new Set(clientCommissions.map((cc) => cc.representative_name).filter(Boolean))]} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></FormHost>}
 
               {!showForm && (
               <>
@@ -9325,7 +9385,7 @@ function App() {
                       )}
                     </div>
 
-                    {showConsultationForm && <div className="mb-4"><ConsultationForm initial={editingConsultation} clients={clients} onSave={handleSaveConsultation} onCancel={() => { setShowConsultationForm(false); setEditingConsultation(null); }} /></div>}
+                    {showConsultationForm && <FormHost item={editingConsultation}><ConsultationForm initial={editingConsultation} clients={clients} onSave={handleSaveConsultation} onCancel={() => { setShowConsultationForm(false); setEditingConsultation(null); }} /></FormHost>}
 
                     {!showConsultationForm && (
                       <div className="rounded-2xl border overflow-hidden overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
@@ -9391,9 +9451,9 @@ function App() {
               </div>
 
               {showProposalForm && (
-                <div className="mb-4">
+                <FormHost item={editingProposal}>
                   <ProposalForm initial={editingProposal} prospects={prospects} clients={clients} settings={settings} onSaveProspect={handleSaveProspect} onSave={handleSaveProposal} onPreview={previewProposalPDF} onCancel={() => { setShowProposalForm(false); setEditingProposal(null); }} />
-                </div>
+                </FormHost>
               )}
 
               {!showProposalForm && (
@@ -9493,9 +9553,9 @@ function App() {
               </div>
 
               {showRomaneioForm && (
-                <div className="mb-4">
+                <FormHost item={editingRomaneio}>
                   <RomaneioForm initial={editingRomaneio} romaneioClients={romaneioClients} settings={settings} onSaveRomaneioClient={handleSaveRomaneioClient} onSave={handleSaveRomaneio} onPreview={previewRomaneioPDF} onCancel={() => { setShowRomaneioForm(false); setEditingRomaneio(null); }} />
-                </div>
+                </FormHost>
               )}
 
               {!showRomaneioForm && (() => {
@@ -9627,7 +9687,7 @@ function App() {
                 <button onClick={exportItagEntriesPDF} disabled={itagEntries.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                 <button onClick={() => { setEditingItagEntry(null); setShowItagEntryForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova entrada</button>
               </div>
-              {showItagEntryForm && <div className="mb-4"><ItagEntryForm initial={editingItagEntry} onSave={handleSaveItagEntry} onCancel={() => { setShowItagEntryForm(false); setEditingItagEntry(null); }} /></div>}
+              {showItagEntryForm && <FormHost item={editingItagEntry}><ItagEntryForm initial={editingItagEntry} onSave={handleSaveItagEntry} onCancel={() => { setShowItagEntryForm(false); setEditingItagEntry(null); }} /></FormHost>}
               <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 {itagEntries.length === 0 ? (
                   <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma entrada registrada ainda.</div>
@@ -9700,7 +9760,7 @@ function App() {
                 <button onClick={exportItagBillingsPDF} disabled={itagBillings.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                 <button onClick={() => { setEditingItagBilling(null); setShowItagBillingForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo faturamento</button>
               </div>
-              {showItagBillingForm && <div className="mb-4"><ItagBillingForm initial={editingItagBilling} onSave={handleSaveItagBilling} onCancel={() => { setShowItagBillingForm(false); setEditingItagBilling(null); }} /></div>}
+              {showItagBillingForm && <FormHost item={editingItagBilling}><ItagBillingForm initial={editingItagBilling} onSave={handleSaveItagBilling} onCancel={() => { setShowItagBillingForm(false); setEditingItagBilling(null); }} /></FormHost>}
               <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 {itagBillings.length === 0 ? (
                   <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum faturamento registrado ainda.</div>
@@ -9820,10 +9880,10 @@ function App() {
                     </div>
 
                     {showItagOrderForm && (
-                      <div className="mb-4">
+                      <FormHost item={editingItagOrder}>
                         <ItagOrderForm initial={editingItagOrder} nextOrderNumber={nextOrderNumber} existingClients={existingClients} existingLabels={existingLabels} existingRibbons={existingRibbons}
                           onSave={handleSaveItagOrder} onCancel={() => { setShowItagOrderForm(false); setEditingItagOrder(null); }} />
-                      </div>
+                      </FormHost>
                     )}
 
                     <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
@@ -9920,7 +9980,7 @@ function App() {
                 <button onClick={exportDbMigrationsPDF} disabled={dbMigrations.filter((m) => !m.paid).length === 0} title="Gera o PDF só com as migrações em aberto (as pagas não entram)" className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF (em aberto)</button>
                 <button onClick={() => { setEditingDbMigration(null); setShowDbMigrationForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova migração</button>
               </div>
-              {showDbMigrationForm && <div className="mb-4"><DbMigrationForm initial={editingDbMigration} settings={settings} onSave={handleSaveDbMigration} onCancel={() => { setShowDbMigrationForm(false); setEditingDbMigration(null); }} /></div>}
+              {showDbMigrationForm && <FormHost item={editingDbMigration}><DbMigrationForm initial={editingDbMigration} settings={settings} onSave={handleSaveDbMigration} onCancel={() => { setShowDbMigrationForm(false); setEditingDbMigration(null); }} /></FormHost>}
               {(() => {
                 const isTechRole = userRole === "migracao" || userRole === "tecnico_migracao";
                 const abertoList = dbMigrations.filter((m) => !m.paid);
@@ -10267,7 +10327,7 @@ function App() {
                       </div>
                     </div>
 
-                    {!isHistory && showClientCommissionForm && <div className="mb-4"><ClientCommissionForm initial={editingClientCommission} clients={editingClientCommission ? clients : availableClients} existingReps={existingReps} onSave={handleSaveClientCommission} onCancel={() => { setShowClientCommissionForm(false); setEditingClientCommission(null); }} /></div>}
+                    {!isHistory && showClientCommissionForm && <FormHost item={editingClientCommission}><ClientCommissionForm initial={editingClientCommission} clients={editingClientCommission ? clients : availableClients} existingReps={existingReps} onSave={handleSaveClientCommission} onCancel={() => { setShowClientCommissionForm(false); setEditingClientCommission(null); }} /></FormHost>}
 
                     {visibleRows.length === 0 ? (
                       <div className="rounded-2xl border p-8 text-center text-sm" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.inkMuted }}>Nenhum cliente com representante atribuído {commissionRepFilter ? `para ${commissionRepFilter}` : ""}.</div>
@@ -10379,7 +10439,7 @@ function App() {
                           <button onClick={() => exportPettyCashPDF(cashOfMonth, monthLabelStr, orcamentoMes, totalSaidas, saldoCaixa)} disabled={cashOfMonth.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                           <button onClick={() => { setEditingPettyCash(null); setShowPettyCashForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo lançamento</button>
                         </div>
-                        {showPettyCashForm && <div className="mb-4"><PettyCashForm initial={editingPettyCash} onSave={handleSavePettyCash} onCancel={() => { setShowPettyCashForm(false); setEditingPettyCash(null); }} /></div>}
+                        {showPettyCashForm && <FormHost item={editingPettyCash}><PettyCashForm initial={editingPettyCash} onSave={handleSavePettyCash} onCancel={() => { setShowPettyCashForm(false); setEditingPettyCash(null); }} /></FormHost>}
 
                         <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                           {cashOfMonth.length === 0 ? (
@@ -10453,7 +10513,7 @@ function App() {
                           <button onClick={() => exportLunchPDF(lunchDespesas, monthLabelStr, totalLunch, totalLunchEntrada, saldoLunch)} disabled={lunchOfMonth.length === 0} className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                           <button onClick={() => { setEditingLunch(null); setShowLunchForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo lançamento</button>
                         </div>
-                        {showLunchForm && <div className="mb-4"><LunchForm initial={editingLunch} onSave={handleSaveLunch} onCancel={() => { setShowLunchForm(false); setEditingLunch(null); }} /></div>}
+                        {showLunchForm && <FormHost item={editingLunch}><LunchForm initial={editingLunch} onSave={handleSaveLunch} onCancel={() => { setShowLunchForm(false); setEditingLunch(null); }} /></FormHost>}
 
                         <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                           {lunchOfMonth.length === 0 ? (
@@ -10540,7 +10600,7 @@ function App() {
                 <button onClick={() => { setEditingImplantacao(null); setShowImplantacaoForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova implantação</button>
               </div>
 
-              {showImplantacaoForm && <div className="mb-4"><ImplantacaoForm initial={editingImplantacao} prospects={prospects} clients={clients} settings={settings} onSaveProspect={handleSaveProspect} onSave={handleSaveImplantacao} onCancel={() => { setShowImplantacaoForm(false); setEditingImplantacao(null); }} /></div>}
+              {showImplantacaoForm && <FormHost item={editingImplantacao}><ImplantacaoForm initial={editingImplantacao} prospects={prospects} clients={clients} settings={settings} onSaveProspect={handleSaveProspect} onSave={handleSaveImplantacao} onCancel={() => { setShowImplantacaoForm(false); setEditingImplantacao(null); }} /></FormHost>}
 
               <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 {(() => {
@@ -10623,7 +10683,7 @@ function App() {
                         <button onClick={() => { setEditingTech(null); setShowTechForm(true); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova ficha técnica</button>
                       </div>
                     )}
-                    {showTechForm && <div className="mb-4"><TechImplementationForm initial={editingTech} onSave={handleSaveTechImplementation} onCancel={() => { setShowTechForm(false); setEditingTech(null); }} /></div>}
+                    {showTechForm && <FormHost item={editingTech}><TechImplementationForm initial={editingTech} onSave={handleSaveTechImplementation} onCancel={() => { setShowTechForm(false); setEditingTech(null); }} /></FormHost>}
 
                     {!showTechForm && (list.length === 0 ? (
                       <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
@@ -10753,7 +10813,7 @@ function App() {
                       </div>
                     )}
 
-                    {showCloudForm && <CloudContratoForm key={editingCloud?.id || "novo"} initial={editingCloud} clients={clients.filter((c) => !c.cancelled)} onSave={handleSaveCloudContrato} onCancel={() => { setShowCloudForm(false); setEditingCloud(null); }} />}
+                    {showCloudForm && <FormHost item={editingCloud} className=""><CloudContratoForm initial={editingCloud} clients={clients.filter((c) => !c.cancelled)} onSave={handleSaveCloudContrato} onCancel={() => { setShowCloudForm(false); setEditingCloud(null); }} /></FormHost>}
 
                     {mostrados.length === 0 ? (
                       <div className="rounded-2xl border p-8 text-center text-sm" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.inkMuted }}>
@@ -10790,7 +10850,7 @@ function App() {
                                 <button onClick={() => sendCloudNotice(c, "whatsapp")} disabled={!cli?.phone} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-30" style={{ borderColor: COLORS.wa, color: COLORS.wa }}>💬 WhatsApp</button>
                                 <button onClick={() => sendCloudNotice(c, "email")} disabled={!cli?.email} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border disabled:opacity-30" style={{ borderColor: COLORS.info, color: COLORS.info }}>✉️ E-mail</button>
                                 <button onClick={() => handleRenewCloudContrato(c)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.success, color: COLORS.success }}>🔄 Renovar</button>
-                                <button onClick={() => { setEditingCloud(c); setShowCloudForm(true); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
+                                <button onClick={() => { setEditingCloud(c); setShowCloudForm(true); }} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
                                 <button onClick={() => handleDeleteCloudContrato(c.id)} className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
                               </div>
                             </div>
@@ -10880,7 +10940,7 @@ function App() {
                       </div>
                     </div>
 
-                    {showSupplierForm && <div className="mb-4"><SupplierOrderForm initial={editingSupplier} onSave={handleSaveSupplierOrder} onCancel={() => { setShowSupplierForm(false); setEditingSupplier(null); }} /></div>}
+                    {showSupplierForm && <FormHost item={editingSupplier}><SupplierOrderForm initial={editingSupplier} onSave={handleSaveSupplierOrder} onCancel={() => { setShowSupplierForm(false); setEditingSupplier(null); }} /></FormHost>}
 
                     {(() => {
                       const isTudoPago = (o) => (o.installments || []).length > 0 && (o.installments || []).every((it) => it.paid);
@@ -11055,7 +11115,7 @@ function App() {
 
                     {payrollSubTab === "pagamentos" && (
                       <>
-                        {showPayrollForm && <div className="mb-4"><PayrollForm initial={editingPayroll} employees={employees} onSave={handleSavePayroll} onCancel={() => { setShowPayrollForm(false); setEditingPayroll(null); }} /></div>}
+                        {showPayrollForm && <FormHost item={editingPayroll}><PayrollForm initial={editingPayroll} employees={employees} onSave={handleSavePayroll} onCancel={() => { setShowPayrollForm(false); setEditingPayroll(null); }} /></FormHost>}
                         {!showPayrollForm && (() => {
                           const abertoList = payrollRecordsSorted.filter((r) => !r.paid);
                           const pagoList = payrollRecordsSorted.filter((r) => r.paid);
@@ -11137,7 +11197,7 @@ function App() {
 
                     {payrollSubTab === "funcionarios" && (
                       <>
-                        {showEmployeeForm && <div className="mb-4"><EmployeeForm initial={editingEmployee} onSave={handleSaveEmployee} onCancel={() => { setShowEmployeeForm(false); setEditingEmployee(null); }} /></div>}
+                        {showEmployeeForm && <FormHost item={editingEmployee}><EmployeeForm initial={editingEmployee} onSave={handleSaveEmployee} onCancel={() => { setShowEmployeeForm(false); setEditingEmployee(null); }} /></FormHost>}
                         {!showEmployeeForm && (
                           <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                             {employees.length === 0 ? (
@@ -11178,7 +11238,7 @@ function App() {
               <div className="flex justify-end mb-4">
                 <button onClick={() => { setEditingSchedule(null); setShowScheduleForm(true); }} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-sm hover:opacity-90 transition" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova escala</button>
               </div>
-              {showScheduleForm && <div className="mb-4"><ScheduleForm initial={editingSchedule} employees={employees} onCreateEmployee={handleCreateEmployee} onSave={handleSaveSchedule} onCancel={() => { setShowScheduleForm(false); setEditingSchedule(null); }} /></div>}
+              {showScheduleForm && <FormHost item={editingSchedule}><ScheduleForm initial={editingSchedule} employees={employees} onCreateEmployee={handleCreateEmployee} onSave={handleSaveSchedule} onCancel={() => { setShowScheduleForm(false); setEditingSchedule(null); }} /></FormHost>}
 
               {saturdaySchedule.length === 0 ? (
                 <div className="rounded-2xl border p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
@@ -11270,7 +11330,7 @@ function App() {
                 </div>
               </div>
 
-              {showVtVrForm && <div className="mb-4"><VtVrForm initial={editingVtVr} employees={employees} onCreateEmployee={handleCreateEmployee} onSave={handleSaveVtVr} onCancel={() => { setShowVtVrForm(false); setEditingVtVr(null); }} /></div>}
+              {showVtVrForm && <FormHost item={editingVtVr}><VtVrForm initial={editingVtVr} employees={employees} onCreateEmployee={handleCreateEmployee} onSave={handleSaveVtVr} onCancel={() => { setShowVtVrForm(false); setEditingVtVr(null); }} /></FormHost>}
 
               <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 {visibleVtVrRecords.length === 0 ? (
@@ -11406,7 +11466,7 @@ function App() {
                       </div>
                     </div>
 
-                    {showExpenseForm && <div className="mb-4"><ExpenseForm initial={editingExpense} onSave={handleSaveExpense} onCancel={() => { setShowExpenseForm(false); setEditingExpense(null); }} /></div>}
+                    {showExpenseForm && <FormHost item={editingExpense}><ExpenseForm initial={editingExpense} onSave={handleSaveExpense} onCancel={() => { setShowExpenseForm(false); setEditingExpense(null); }} /></FormHost>}
 
                     {!showExpenseForm && (
                       <div className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
@@ -11515,7 +11575,7 @@ function App() {
                       <button onClick={() => { setEditingPresentation(null); setShowPresentationForm(true); }} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova apresentação</button>
                     </div>
 
-                    {showPresentationForm && <div className="mb-4"><PresentationForm initial={editingPresentation} onSave={handleSavePresentation} onCancel={() => { setShowPresentationForm(false); setEditingPresentation(null); }} /></div>}
+                    {showPresentationForm && <FormHost item={editingPresentation}><PresentationForm initial={editingPresentation} onSave={handleSavePresentation} onCancel={() => { setShowPresentationForm(false); setEditingPresentation(null); }} /></FormHost>}
 
                     {!showPresentationForm && (
                       filtered.length === 0 ? (

@@ -1897,26 +1897,6 @@ function DonutExpensesByCategory({ expenses }) {
   return <canvas ref={ref} height="220"></canvas>;
 }
 
-function ReceitaChart({ history }) {
-  const ref = useRef(null);
-  useChart(ref, {
-    type: "bar",
-    data: {
-      labels: history.map((h) => h.label),
-      datasets: [
-        { type: "bar", label: "Mensalidade", data: history.map((h) => h.mensalidade), backgroundColor: COLORS.info, borderRadius: 4, order: 2 },
-        { type: "bar", label: "Consultas", data: history.map((h) => h.consultas), backgroundColor: COLORS.success, borderRadius: 4, order: 2 },
-        { type: "line", label: "Total", data: history.map((h) => h.mensalidade + h.consultas), borderColor: COLORS.brandLight, backgroundColor: COLORS.brandLight, tension: 0.35, order: 1 },
-      ],
-    },
-    options: {
-      plugins: { legend: legendDark },
-      scales: { x: { stacked: false, grid: { display: false }, ticks: tickDark }, y: { beginAtZero: true, grid: gridDark, ticks: tickDark } },
-    },
-  }, [JSON.stringify(history)]);
-  return <canvas ref={ref} height="230"></canvas>;
-}
-
 function BarHistory({ history, id }) {
   const ref = useRef(null);
   useChart(ref, {
@@ -5000,7 +4980,6 @@ function App() {
   const [busyId, setBusyId] = useState(null);
   const [toast, setToast] = useState(null);
   const [history, setHistory] = useState([]);
-  const [receitaHistory, setReceitaHistory] = useState([]);
   const [reportYear, setReportYear] = useState(() => new Date().getFullYear());
   const [yearHistory, setYearHistory] = useState([]);
   const [historyClient, setHistoryClient] = useState(null);
@@ -7146,7 +7125,6 @@ function App() {
     }
     const totals = await computeMonthTotals(wanted);
     setHistory(totals);
-    setReceitaHistory(totals);
   }, [clients]);
 
   const loadYearHistory = useCallback(async (year) => {
@@ -8861,14 +8839,6 @@ function App() {
                     <div className="text-sm font-extrabold tnum" style={{ color: s.c }}>{s.v}{s.sub && <span className="font-semibold ml-1" style={{ color: COLORS.inkFaint }}>· {s.sub}</span>}</div>
                   </div>
                 ))}
-              </div>
-
-              {/* Linha 2: gráfico de receita */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                <div className="rounded-2xl p-4 border lg:col-span-3" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                  <div className="text-sm font-bold mb-3" style={{ color: COLORS.ink }}>📈 Receita mensal (mensalidade + consultas)</div>
-                  <ReceitaChart history={receitaHistory} />
-                </div>
               </div>
 
               <div className="text-center text-xs pt-2" style={{ color: COLORS.inkFaint }}>

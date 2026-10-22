@@ -84,6 +84,34 @@
     box-shadow: 0 4px 12px rgba(0,0,0,0.18);
   }
 
+
+  /* Logo MIRÉ: marca d'água no espaço livre da tela principal + tela de descanso */
+  .mire-brand-space { position: relative; min-height: 0; margin-top: 0 !important; }
+  .mire-brand-box { position: absolute; inset: 0; container-type: size; overflow: hidden; }
+  .mire-brand-mark {
+    position: absolute; left: 50%; top: 50%;
+    width: min(62cqw, calc(74cqh * 520 / 183));
+    height: auto; aspect-ratio: 520 / 183;
+    transform: translate(-50%, -50%);
+    opacity: 0.18; pointer-events: none; user-select: none; -webkit-user-drag: none;
+  }
+  @container (max-height: 120px) { .mire-brand-mark { display: none; } }
+  @media (max-width: 767px) { .mire-brand-space { display: none; } }
+
+  @keyframes mireBreath { 0%, 100% { opacity: .82; transform: scale(.985); } 50% { opacity: 1; transform: scale(1); } }
+  @keyframes mireFade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mireOut { from { opacity: 1; } to { opacity: 0; } }
+  .mire-idle {
+    animation: mireFade .9s ease both;
+    background:
+      radial-gradient(ellipse 55% 42% at 50% 48%, rgba(124,92,255,0.20), transparent 72%),
+      radial-gradient(ellipse 40% 30% at 68% 62%, rgba(34,197,94,0.08), transparent 72%),
+      #131D33;
+  }
+  .mire-idle-saindo { animation: mireOut .3s ease forwards; }
+  .mire-idle-logo { animation: mireBreath 7s ease-in-out infinite; width: clamp(240px, 56vw, 720px); height: auto; filter: drop-shadow(0 0 46px rgba(124,92,255,0.38)); }
+  @media (prefers-reduced-motion: reduce) { .mire-idle-logo { animation: none; } }
+
   ::-webkit-scrollbar { width: 10px; height: 10px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #22304A; border-radius: 999px; }
@@ -690,7 +718,15 @@ function SystemFooter({ userRole, session }) {
           {online ? "Online" : "Offline"}
         </span>
       </div>
-      <div className="hidden sm:block font-bold" style={{ color: COLORS.inkFaint }}>ADM/MIRE</div>
+      <div className="hidden sm:flex items-center gap-3">
+        <button type="button" onClick={() => window.dispatchEvent(new Event("mire:descanso"))}
+          className="flex items-center gap-1.5 px-2.5 py-0 rounded-md font-semibold transition-all"
+          style={{ color: COLORS.inkMuted, background: "rgba(255,255,255,0.05)", boxShadow: "none" }}
+          title="Deixa só o logo na tela. Volta ao mexer o mouse ou apertar uma tecla.">
+          <span>🌙</span><span>Tela de descanso</span>
+        </button>
+        <span className="font-bold" style={{ color: COLORS.inkFaint }}>ADM/MIRE</span>
+      </div>
     </div>
   );
 }
@@ -4939,6 +4975,62 @@ function PublicQuestionnaireForm({ token }) {
   );
 }
 
+
+/* Tela de descanso: some tudo e fica só o logo quando ninguém mexe no sistema */
+const IDLE_MINUTES_DEFAULT = 5;
+function IdleScreen({ minutes = IDLE_MINUTES_DEFAULT }) {
+  const [fase, setFase] = useState("off"); // "off" | "on" | "saindo"
+  const faseRef = useRef("off");
+  useEffect(() => {
+    const ms = Number(window.__IDLE_MS) || minutes * 60000;
+    if (!(ms > 0)) return undefined;
+    let timer = null, saida = null, lx = -1, ly = -1, ultimo = 0, livreEm = 0;
+    const mudar = (f) => { faseRef.current = f; setFase(f); };
+    const abrir = (graca) => { clearTimeout(timer); livreEm = Date.now() + graca; mudar("on"); };
+    const armar = () => { ultimo = Date.now(); clearTimeout(timer); timer = setTimeout(() => abrir(900), ms); };
+    const acordar = () => {
+      mudar("saindo"); // some suavemente; durante esse instante ainda segura o clique/toque que acordou a tela
+      clearTimeout(saida);
+      saida = setTimeout(() => { mudar("off"); armar(); }, 320);
+    };
+    const atividade = (e) => {
+      if (!e.isTrusted) return; // ignora cliques "falsos" disparados pelo próprio sistema
+      const f = faseRef.current;
+      if (f === "off") { if (Date.now() - ultimo > 1000) armar(); return; }
+      // com a tela de descanso aberta, a primeira ação só "acorda": não clica nem digita no que está por baixo
+      if (e.cancelable && e.type !== "wheel" && e.type !== "touchstart") e.preventDefault();
+      e.stopPropagation();
+      if (f === "on" && Date.now() >= livreEm) acordar();
+    };
+    const mover = (e) => {
+      if (Math.abs(e.clientX - lx) + Math.abs(e.clientY - ly) < 6) return; // ignora "movimentos" falsos do navegador
+      lx = e.clientX; ly = e.clientY;
+      atividade(e);
+    };
+    const manual = () => abrir(1500);
+    const evs = ["mousedown", "keydown", "touchstart", "wheel", "click"];
+    evs.forEach((n) => window.addEventListener(n, atividade, true));
+    window.addEventListener("mousemove", mover, true);
+    window.addEventListener("mire:descanso", manual);
+    armar();
+    return () => {
+      clearTimeout(timer); clearTimeout(saida);
+      evs.forEach((n) => window.removeEventListener(n, atividade, true));
+      window.removeEventListener("mousemove", mover, true);
+      window.removeEventListener("mire:descanso", manual);
+    };
+  }, [minutes]);
+  if (fase === "off") return null;
+  return (
+    <div className={"mire-idle fixed inset-0 flex flex-col items-center justify-center select-none overflow-hidden" + (fase === "saindo" ? " mire-idle-saindo" : "")} style={{ zIndex: 9999, touchAction: "none" }} aria-label="Tela de descanso">
+      <img src={LOGO_DATA_URI} alt="Miré" className="mire-idle-logo relative" draggable={false} />
+      <div className="absolute bottom-10 text-xs tracking-wide text-center px-6" style={{ color: COLORS.inkFaint, opacity: 0.75 }}>
+        Mova o mouse, toque na tela ou aperte uma tecla para voltar
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [session, setSession] = useState(undefined);
   const [clients, setClients] = useState([]);
@@ -8431,11 +8523,6 @@ function App() {
   return (
     <div className="h-screen w-full flex overflow-hidden" style={{ background: "transparent", fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif" }}>
       <aside className="w-16 sm:w-52 shrink-0 border-r p-2 sm:p-3 flex flex-col gap-3 h-full overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.sidebar }}>
-        <div className="hidden sm:flex justify-center">
-          <img src={LOGO_DATA_URI} alt="Miré" className="w-28 h-auto object-contain" style={{ filter: "drop-shadow(0 0 14px rgba(124,92,255,0.35))" }} />
-        </div>
-        <div className="flex sm:hidden justify-center"><img src={LOGO_DATA_URI} alt="Miré" className="w-12 h-auto object-contain" style={{ filter: "drop-shadow(0 0 10px rgba(124,92,255,0.4))" }} /></div>
-
         {userRole === "admin" && (
           <div className="relative">
             <input
@@ -8663,7 +8750,7 @@ function App() {
 
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto px-5 sm:px-8 py-7">
+        <div className={"max-w-6xl mx-auto px-5 sm:px-8 py-7" + (effectiveTab === "dashboard" ? " flex flex-col" : "")} style={effectiveTab === "dashboard" ? { minHeight: "100%" } : undefined}>
 
           {!(ROLE_ALLOWED_TABS[userRole] && effectiveTab === ROLE_ALLOWED_TABS[userRole][0]) && (
             <div className="flex items-center gap-2 mb-4">
@@ -8724,7 +8811,7 @@ function App() {
           </div>
 
           {effectiveTab === "dashboard" && (
-            <div className="space-y-4">
+            <div className="space-y-4 flex-1 flex flex-col">
               {(() => {
                 const daysSinceBackup = settings.last_backup_at ? Math.floor((new Date() - new Date(settings.last_backup_at + "T00:00:00")) / 86400000) : null;
                 if (daysSinceBackup !== null && daysSinceBackup < 7) return null;
@@ -8839,6 +8926,10 @@ function App() {
                     <div className="text-sm font-extrabold tnum" style={{ color: s.c }}>{s.v}{s.sub && <span className="font-semibold ml-1" style={{ color: COLORS.inkFaint }}>· {s.sub}</span>}</div>
                   </div>
                 ))}
+              </div>
+
+              <div className="mire-brand-space flex-1" aria-hidden="true">
+                <div className="mire-brand-box"><img src={LOGO_DATA_URI} alt="" className="mire-brand-mark" draggable={false} /></div>
               </div>
 
               <div className="text-center text-xs pt-2" style={{ color: COLORS.inkFaint }}>
@@ -12496,6 +12587,7 @@ function App() {
         </div>
       )}
       {historyClient && <ClientHistoryModal client={historyClient} onClose={() => setHistoryClient(null)} />}
+      <IdleScreen />
     </div>
   );
 }

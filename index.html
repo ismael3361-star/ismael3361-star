@@ -14,6 +14,8 @@
 <link rel="manifest" id="pwa-manifest-link" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://tvbemspbjhstjpcwujkl.supabase.co" crossorigin />
+<link rel="dns-prefetch" href="https://tvbemspbjhstjpcwujkl.supabase.co" />
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -223,6 +225,277 @@ function greetingByHour() {
     }
   } catch (e) {}
 })();
+
+// ===== Arquivos do Storage: abrir rápido =========================================================
+// Por que demorava abrir um boleto/PDF: cada clique abria uma aba nova que ia buscar o arquivo no servidor do
+// zero (achar o servidor + conexão segura + baixar), toda vez; e os PDFs gerados pelo sistema eram grandes.
+// Agora: (1) o sistema guarda uma cópia dos arquivos neste aparelho (memória + armazenamento do navegador) e abre
+// a partir dela; (2) começa a baixar quando o mouse para em cima do link (e em segundo plano, os boletos do mês);
+// (3) o que acabou de ser gerado ou anexado já entra no cache. Se qualquer coisa falhar, abre direto do
+// servidor, como sempre foi.
+const FileCache = (() => {
+  const CACHE_NAME = "mire-arquivos-v1";
+  const MARK = "/storage/v1/object/public/";
+  const MARK_BOLETOS = "/storage/v1/object/public/boletos/";
+  const MAX_FILE = 12 * 1024 * 1024;     // arquivos maiores que isso abrem direto do servidor
+  const MAX_MEM = 60 * 1024 * 1024;      // memória usada por esta aba
+  const MAX_DISK = 150;                  // quantos arquivos guardar no navegador
+  const TYPES = { pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp" };
+  const mem = new Map();                 // endereço -> Blob
+  const pend = new Map();                // endereço -> Promise (download em andamento)
+  const blobUrls = new Map();            // endereço -> blob:...
+  const tooBig = new Set();
+  const tried = new Set();
+  let memBytes = 0;
+  let diskPromise = null;
+  let publicOk = true;
+  let publicFails = 0;
+  let installed = false;
+
+  const pathOf = (url) => String(url || "").split("#")[0].split("?")[0];
+  const extOf = (url) => { const m = /\.([a-z0-9]{2,5})$/i.exec(pathOf(url)); return m ? m[1].toLowerCase() : ""; };
+  const isStorage = (url) => typeof url === "string" && url.indexOf(MARK) !== -1;
+  // só PDF e imagem abrem direto no navegador; Word, Excel etc. continuam do jeito de sempre
+  const viewable = (url) => isStorage(url) && !!TYPES[extOf(url)];
+  const typed = (url, blob) => {
+    const want = TYPES[extOf(url)] || blob.type || "application/octet-stream";
+    return blob.type === want ? blob : new Blob([blob], { type: want });
+  };
+  const later = (fn, ms) => setTimeout(fn, ms);
+
+  function disk() {
+    if (!diskPromise) {
+      diskPromise = (typeof caches !== "undefined" && caches && caches.open) ? caches.open(CACHE_NAME).catch(() => null) : Promise.resolve(null);
+    }
+    return diskPromise;
+  }
+  async function saveDisk(url, blob) {
+    try {
+      if (blob.size > MAX_FILE) return;
+      const c = await disk();
+      if (!c) return;
+      await c.put(url, new Response(blob, { headers: { "Content-Type": blob.type || "application/octet-stream" } }));
+      const keys = await c.keys();
+      for (let i = 0; i < keys.length - MAX_DISK; i++) await c.delete(keys[i]);
+    } catch (e) {}
+  }
+  async function loadDisk(url) {
+    try {
+      const c = await disk();
+      if (!c) return null;
+      const r = await c.match(url);
+      return r ? await r.blob() : null;
+    } catch (e) { return null; }
+  }
+  function dropBlobUrl(url) {
+    const u = blobUrls.get(url);
+    if (!u) return;
+    blobUrls.delete(url);
+    later(() => { try { URL.revokeObjectURL(u); } catch (e) {} }, 600000);   // dá tempo de abas já abertas terminarem de carregar
+  }
+  function remember(url, blob) {
+    const old = mem.get(url);
+    if (old) { memBytes -= old.size; mem.delete(url); dropBlobUrl(url); }
+    mem.set(url, blob);
+    memBytes += blob.size;
+    while (memBytes > MAX_MEM && mem.size > 1) {
+      const k = mem.keys().next().value;
+      memBytes -= mem.get(k).size;
+      mem.delete(k);
+      dropBlobUrl(k);
+    }
+  }
+
+  async function fetchPublic(url) {
+    const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = later(() => { try { if (ctl) ctl.abort(); } catch (e) {} }, 25000);
+    try {
+      const res = await fetch(url, ctl ? { signal: ctl.signal } : undefined);
+      if (!res.ok) return { status: res.status };
+      const len = Number(res.headers.get("content-length")) || 0;
+      if (len > MAX_FILE) { try { if (ctl) ctl.abort(); } catch (e) {} return { big: true }; }
+      return { blob: await res.blob() };
+    } finally { clearTimeout(timer); }
+  }
+  async function fetchViaClient(url) {
+    try {
+      const i = url.indexOf(MARK_BOLETOS);
+      if (i === -1) return null;
+      const path = decodeURIComponent(url.slice(i + MARK_BOLETOS.length).split("?")[0]);
+      const { data, error } = await supa.storage.from("boletos").download(path);
+      if (error || !data) return null;
+      if (data.size > MAX_FILE) { tooBig.add(url); return null; }
+      return data;
+    } catch (e) { return null; }
+  }
+  async function fetchNet(url) {
+    let publicFailed = false;
+    if (publicOk) {
+      try {
+        const r = await fetchPublic(url);
+        if (r.big) { tooBig.add(url); return null; }
+        if (r.blob) { publicFails = 0; return r.blob; }
+        if (r.status === 400 || r.status === 404) return null;      // o arquivo não existe mais
+      } catch (e) { publicFailed = true; }                          // rede ou CORS: tenta pelo cliente do Supabase
+    }
+    const viaClient = await fetchViaClient(url);
+    if (viaClient && publicFailed && ++publicFails >= 2) publicOk = false;   // o endereço público falhou 2x seguidas e o cliente deu: usa direto
+    return viaClient;
+  }
+
+  // devolve o arquivo (Blob): memória -> navegador -> servidor. Nunca dá erro: se não conseguir, devolve null.
+  function get(url) {
+    if (mem.has(url)) return Promise.resolve(mem.get(url));
+    if (pend.has(url)) return pend.get(url);
+    if (tooBig.has(url)) return Promise.resolve(null);
+    const p = (async () => {
+      let blob = await loadDisk(url);
+      if (blob) { blob = typed(url, blob); remember(url, blob); return blob; }
+      blob = await fetchNet(url);
+      if (!blob) return null;
+      blob = typed(url, blob);
+      remember(url, blob);
+      saveDisk(url, blob);
+      return blob;
+    })().catch(() => null).then((b) => { pend.delete(url); return b; });
+    pend.set(url, p);
+    return p;
+  }
+  // só olha o que já está guardado aqui (não baixa nada)
+  async function peek(url) {
+    if (mem.has(url)) return mem.get(url);
+    const b = await loadDisk(url);
+    if (!b) return null;
+    const t = typed(url, b);
+    remember(url, t);
+    return t;
+  }
+  // guarda um arquivo que acabou de ser gerado/enviado, para abrir na hora depois
+  function seed(url, blob) {
+    try {
+      if (!installed || !viewable(url) || !(blob instanceof Blob) || blob.size === 0 || blob.size > MAX_FILE) return;
+      const put = (b) => { const t = typed(url, b); remember(url, t); saveDisk(url, t); };
+      if (typeof File !== "undefined" && blob instanceof File) {
+        // copia o conteúdo: se o arquivo original mudar ou sumir do computador, a cópia continua valendo
+        blob.arrayBuffer().then((ab) => put(new Blob([ab], { type: blob.type }))).catch(() => {});
+      } else put(blob);
+    } catch (e) {}
+  }
+  function prefetch(url) {
+    if (!installed || !viewable(url) || mem.has(url) || pend.has(url) || tooBig.has(url)) return;
+    get(url);
+  }
+  // baixa em segundo plano (poucos de cada vez, só em conexão boa)
+  function warm(urls) {
+    if (!installed) return;
+    try {
+      if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) return;   // celular/tablet: só baixa quando tocar no link
+      const c = navigator.connection;
+      if (c && (c.saveData || /(^|-)2g$|3g/.test(c.effectiveType || ""))) return;
+    } catch (e) {}
+    const todo = [];
+    (urls || []).forEach((u) => {
+      if (todo.length < 40 && viewable(u) && !mem.has(u) && !pend.has(u) && !tooBig.has(u) && !tried.has(u)) { tried.add(u); todo.push(u); }
+    });
+    if (!todo.length) return;
+    let i = 0;
+    const next = () => { if (i < todo.length) get(todo[i++]).then(() => later(next, 120)); };
+    later(() => { next(); next(); }, 1500);
+  }
+  function objectUrl(url) {
+    const b = mem.get(url);
+    if (!b) return null;
+    let u = blobUrls.get(url);
+    if (!u) { u = URL.createObjectURL(b); blobUrls.set(url, u); }
+    return u;
+  }
+
+  // ---- abas ----
+  function openBlankTab(message) {
+    let w = null;
+    try { w = window.open("", "_blank"); } catch (e) { w = null; }
+    if (w) {
+      try {
+        w.document.write("<!doctype html><meta charset='utf-8'><title>" + (message || "Abrindo…") + "</title>"
+          + "<body style=\"margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#17233C;color:#90A0BA;font:15px system-ui,sans-serif\">"
+          + (message || "Abrindo arquivo…") + "</body>");
+        w.document.close();
+      } catch (e) {}
+    }
+    return w;
+  }
+  // mostra um PDF recém-gerado (Blob) na aba já aberta; sem aba, abre uma
+  function showBlob(w, blob) {
+    const u = URL.createObjectURL(blob);
+    try { if (w && !w.closed) { w.location.href = u; return true; } } catch (e) {}
+    try { return !!window.open(u, "_blank"); } catch (e) {}
+    return false;
+  }
+  async function openUrlInTab(w, url) {
+    const blob = await get(url);
+    try {
+      if (!w || w.closed) return;
+      if (blob) { w.location.href = objectUrl(url); return; }
+      try { w.opener = null; } catch (e) {}
+      w.location.href = url;                 // não deu pra preparar aqui (arquivo grande, sem rede...): abre direto do servidor
+    } catch (e) {}
+  }
+
+  function install() {
+    if (installed || typeof document === "undefined") return;
+    installed = true;
+    const standaloneIOS = !!(window.navigator && window.navigator.standalone);
+    const linkOf = (e) => {
+      const t = e.target;
+      const a = t && t.closest ? t.closest("a[href]") : null;
+      return a && !a.hasAttribute("download") && viewable(a.href) ? a : null;
+    };
+    document.addEventListener("click", (e) => {
+      if (standaloneIOS || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = linkOf(e);
+      if (!a || a.target !== "_blank") return;
+      const w = openBlankTab("Abrindo arquivo…");   // abre a aba já no clique (senão o navegador bloqueia)
+      if (!w) return;                               // bloqueado: deixa o navegador abrir o link do jeito normal
+      e.preventDefault();
+      openUrlInTab(w, a.href);
+    }, true);
+    let hoverTimer = null, hoverUrl = null;
+    document.addEventListener("mouseover", (e) => {
+      const a = linkOf(e);
+      if (!a || a.href === hoverUrl) return;
+      clearTimeout(hoverTimer);
+      hoverUrl = a.href;
+      hoverTimer = later(() => prefetch(hoverUrl), 120);
+    }, true);
+    document.addEventListener("mouseout", (e) => { if (linkOf(e)) { clearTimeout(hoverTimer); hoverUrl = null; } }, true);
+    document.addEventListener("touchstart", (e) => { const a = linkOf(e); if (a) prefetch(a.href); }, { capture: true, passive: true });
+  }
+  async function clear() {
+    mem.clear(); memBytes = 0; pend.clear(); tried.clear(); tooBig.clear();
+    blobUrls.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) {} });
+    blobUrls.clear();
+    diskPromise = null;
+    try { if (typeof caches !== "undefined" && caches) await caches.delete(CACHE_NAME); } catch (e) {}
+  }
+  return { viewable, get, peek, seed, prefetch, warm, openBlankTab, showBlob, openUrlInTab, install, clear };
+})();
+// (FileCache.install() é chamado no início do sistema logado, no fim do arquivo — as páginas públicas ficam de fora)
+
+// Envia um arquivo ao Storage. Grava com cache longo (os endereços dos arquivos nunca se repetem) e já guarda uma
+// cópia neste aparelho, para o arquivo abrir na hora quando for visto de novo.
+async function storageUpload(path, body, opts) {
+  const api = supa.storage.from("boletos");
+  const res = await api.upload(path, body, Object.assign({ cacheControl: "31536000" }, opts || {}));
+  if (res && !res.error) {
+    try { FileCache.seed(api.getPublicUrl(path).data.publicUrl, body); } catch (e) {}
+  }
+  return res;
+}
+function fmtFileSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1).replace(".", ",") + " MB";
+  return Math.max(1, Math.round(n / 1024)) + " KB";
+}
 
 // PIX: gera o payload EMV (BR Code / copia-e-cola) e o CRC16 exigido pelo padrão
 function crc16Pix(str) {
@@ -858,8 +1131,7 @@ function applyTemplate(tpl, client, monthDate, link) {
 async function autoDownloadBoleto(b, client) {
   if (!b?.file_url) return;
   try {
-    const res = await fetch(b.file_url);
-    const blob = await res.blob();
+    const blob = (await FileCache.get(b.file_url)) || (await (await fetch(b.file_url)).blob());
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1856,7 +2128,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
       setUploading(true);
       try {
         const path = `despesas/${id}-${Date.now()}-${pendingFile.name}`;
-        const { error } = await supa.storage.from("boletos").upload(path, pendingFile, { upsert: true });
+        const { error } = await storageUpload(path, pendingFile, { upsert: true });
         if (error) throw error;
         const { data } = supa.storage.from("boletos").getPublicUrl(path);
         fileUrl = data.publicUrl; fileName = pendingFile.name;
@@ -3689,7 +3961,7 @@ function ItagOrderForm({ initial, nextOrderNumber, existingClients, existingLabe
 
   function previewPDF() {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 80, 10, 50, 15); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -4091,7 +4363,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
     setUploadingProof(true);
     try {
       const path = `comprovantes/${initial?.id || uid()}/${Date.now()}-${file.name}`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       setPaymentProofUrl(data.publicUrl);
@@ -4304,7 +4576,7 @@ function ClientHistoryModal({ client, onClose }) {
     setUploadingAtt(true);
     try {
       const path = `anexos/${client.id}/${Date.now()}-${file.name}`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       const entry = { id: uid(), client_id: client.id, file_name: file.name, file_url: data.publicUrl, uploaded_at: new Date().toISOString() };
@@ -4627,7 +4899,7 @@ function PublicPayrollReceipt({ token }) {
         const blob = await buildSignedReceiptBlob(data.receipt_file_url, signature, data.employee_name);
         const ext = /\.pdf($|\?)/i.test(data.receipt_file_url) ? "pdf" : "png";
         const path = `recibos-folha-assinados/${token}-${Date.now()}.${ext}`;
-        const { error: upErr } = await supa.storage.from("boletos").upload(path, blob, { upsert: true, contentType: blob.type });
+        const { error: upErr } = await storageUpload(path, blob, { upsert: true, contentType: blob.type });
         if (!upErr) {
           const { data: pub } = supa.storage.from("boletos").getPublicUrl(path);
           signedFileUrl = pub.publicUrl;
@@ -5041,6 +5313,7 @@ function App() {
     if (tabHist.current.length > 30) tabHist.current.shift();
   }, [tab]);
   const tabGroupRef = useRef({});
+  const savingDocRef = useRef({});   // trava: evita gravar o mesmo romaneio/proposta duas vezes com clique repetido
   const goBackTab = () => {
     if (iconMenu && tabGroupRef.current[tab]) { setOpenGroup(tabGroupRef.current[tab]); return; } const prev = tabHist.current.pop(); tabGoingBack.current = true; setTab(prev || "dashboard"); if (!prev) tabGoingBack.current = false; };
   const [search, setSearch] = useState("");
@@ -5209,7 +5482,24 @@ function App() {
     if (allowed && !allowed.includes(tab)) setTab(allowed[0]);
   }, [userRole, tab]);
 
-  const showToast = (m) => { setToast(m); setTimeout(() => setToast(null), 2500); };
+  const showToast = (m, ms) => { setToast(m); setTimeout(() => setToast(null), ms || 2500); };
+  // Baixa em segundo plano os boletos do mês que está na tela (primeiro os em aberto): na hora do clique já estão aqui
+  useEffect(() => {
+    const allowedTabs = ROLE_ALLOWED_TABS[userRole];
+    if (allowedTabs && !allowedTabs.includes("boletos")) return;
+    const urls = [];
+    Object.values(boletos || {}).sort((a, b) => (a && a.paid ? 1 : 0) - (b && b.paid ? 1 : 0)).forEach((b) => {
+      if (!b) return;
+      if (b.file_url) urls.push(b.file_url);
+      (b.extra_files || []).forEach((f) => { if (f && f.url) urls.push(f.url); });
+    });
+    if (urls.length) FileCache.warm(urls);
+  }, [boletos, userRole]);
+  useEffect(() => {
+    if (tab !== "propostas" && tab !== "romaneio") return;
+    const list = tab === "propostas" ? proposals : romaneios;
+    FileCache.warm((list || []).slice(0, 12).map((x) => x && x.pdf_url).filter(Boolean));
+  }, [tab, proposals, romaneios]);
 
   const loadClients = useCallback(async () => {
     const { data } = await supa.from("clients").select("*").order("name");
@@ -5352,7 +5642,7 @@ function App() {
     if (!file) return;
     try {
       const path = `caixa/${e.id}-${Date.now()}-${file.name}`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       await supa.from("petty_cash_entries").update({ file_url: data.publicUrl, file_name: file.name }).eq("id", e.id);
@@ -5389,7 +5679,7 @@ function App() {
     if (!file) return;
     try {
       const path = `almoco/${e.id}-${Date.now()}-${file.name}`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       await supa.from("lunch_entries").update({ file_url: data.publicUrl, file_name: file.name }).eq("id", e.id);
@@ -5657,7 +5947,7 @@ function App() {
         const blob = await generatePaidWatermarkBlob(exp.file_url, exp.file_name);
         const ext = /\.pdf($|\?)/i.test(exp.file_name || exp.file_url) ? "pdf" : "png";
         const path = `despesas/${exp.id}-pago-${Date.now()}.${ext}`;
-        const { error } = await supa.storage.from("boletos").upload(path, blob, { upsert: true });
+        const { error } = await storageUpload(path, blob, { upsert: true });
         if (error) throw error;
         const { data } = supa.storage.from("boletos").getPublicUrl(path);
         await supa.from("company_expenses").update({ file_url_watermarked: data.publicUrl }).eq("id", exp.id);
@@ -5672,7 +5962,7 @@ function App() {
     if (!file) return;
     try {
       const path = `despesas/${exp.id}-${Date.now()}-${file.name}`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       await supa.from("company_expenses").update({ file_url: data.publicUrl, file_name: file.name, file_url_watermarked: null }).eq("id", exp.id);
@@ -5688,6 +5978,7 @@ function App() {
   // Baixa o arquivo do storage. Tenta o cliente do Supabase primeiro (sem CORS);
   // se não der, cai pro fetch normal.
   async function downloadFileBytes(fileUrl) {
+    try { const cached = await FileCache.peek(fileUrl); if (cached) return await cached.arrayBuffer(); } catch (e) {}
     const marker = "/storage/v1/object/public/boletos/";
     const idx = fileUrl.indexOf(marker);
     if (idx !== -1) {
@@ -5813,7 +6104,7 @@ function App() {
   }
   function exportExpensesPDF(list) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -5907,7 +6198,7 @@ function App() {
 
   function generateTechImplementationPDF(t) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
     let y = 15;
 
@@ -6147,7 +6438,7 @@ function App() {
   function generateImplantacaoPDF(imp) {
     const prospect = prospects.find((p) => p.id === imp.prospect_id);
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -6247,7 +6538,7 @@ function App() {
   function exportCloudPDF(rows) {
     if (!rows.length) { showToast("Nenhum contrato para exportar."); return; }
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: "landscape" });
+    const doc = new jsPDF({ orientation: "landscape", compress: true });
     const list = cloudExportRows(rows);
     doc.setFontSize(16); doc.setTextColor(30);
     doc.text("Contratos Cloud — controle de vencimentos", 14, 16);
@@ -6348,7 +6639,7 @@ function App() {
           const blob = await generatePaidWatermarkBlob(o.file_url, o.file_name, flags);
           const ext = /\.pdf($|\?)/i.test(o.file_name || o.file_url) ? "pdf" : "png";
           const path = `pedidos-etiquetas/${o.id}-pago-${Date.now()}.${ext}`;
-          const { error } = await supa.storage.from("boletos").upload(path, blob, { upsert: true });
+          const { error } = await storageUpload(path, blob, { upsert: true });
           if (error) throw error;
           const { data } = supa.storage.from("boletos").getPublicUrl(path);
           await supa.from("supplier_orders").update({ file_url_watermarked: data.publicUrl }).eq("id", o.id);
@@ -6365,7 +6656,7 @@ function App() {
     if (!file) return;
     try {
       const path = `pedidos-etiquetas/${o.id}-${Date.now()}-${file.name}`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       await supa.from("supplier_orders").update({ file_url: data.publicUrl, file_name: file.name, file_url_watermarked: null }).eq("id", o.id);
@@ -6444,7 +6735,7 @@ function App() {
     try {
       const token = rec.public_token || (uid() + uid());
       const path = `recibos-folha/${rec.id}-${Date.now()}-${file.name}`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       const { error: upErr } = await supa.from("payroll_records").update({
@@ -6480,7 +6771,7 @@ function App() {
   }
   function generateReciboPDF(rec) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
     const emp = employees.find((e) => e.id === rec.employee_id);
 
@@ -6636,7 +6927,7 @@ function App() {
       return;
     }
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: "landscape" });
+    const doc = new jsPDF({ orientation: "landscape", compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -6714,7 +7005,7 @@ function App() {
 
   function exportVtVrPDF() {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: "landscape" });
+    const doc = new jsPDF({ orientation: "landscape", compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -6775,7 +7066,7 @@ function App() {
     const lista = dbMigrations.filter((m) => !m.paid);
     if (lista.length === 0) { showToast("Não há migrações em aberto para gerar o PDF."); return; }
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: "landscape" });
+    const doc = new jsPDF({ orientation: "landscape", compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
@@ -6883,7 +7174,7 @@ function App() {
 
   function exportClientCommissionsPDF(rows, title = "Comissão de Representantes") {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: "landscape" });
+    const doc = new jsPDF({ orientation: "landscape", compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -6924,7 +7215,7 @@ function App() {
 
   function exportSellerCommissionsPDF() {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: "landscape" });
+    const doc = new jsPDF({ orientation: "landscape", compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -7021,7 +7312,7 @@ function App() {
 
   function exportItagEntriesPDF() {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -7051,7 +7342,7 @@ function App() {
 
   function exportItagBillingsPDF() {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -7082,7 +7373,7 @@ function App() {
 
   function exportItagOrderClosingPDF(rows, clientName, monthLabelStr) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 80, 10, 50, 15); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -7115,7 +7406,7 @@ function App() {
 
   function exportPettyCashPDF(rows, monthLabelStr, orcamentoMes, totalSaidas, saldoCaixa) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -7144,7 +7435,7 @@ function App() {
 
   function exportLunchPDF(rows, monthLabelStr, totalLunch, totalEntrada, saldo) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
@@ -7317,7 +7608,7 @@ function App() {
 
   function generateProposalPDF(p, prospect) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
     const COMPANY_ADDRESS_1 = "Rua Ribeiro de Lima, 282 - 6º andar - Sala 602 - Bairro: Bom Retiro";
     const COMPANY_ADDRESS_2 = "CEP: 01122-000  ·  Tel.: (11) 99246-0999  ·  São Paulo - SP";
@@ -7515,24 +7806,30 @@ function App() {
   }
 
   async function handleSaveProposal(p) {
+    if (savingDocRef.current.proposal) return;   // já está gravando: ignora clique repetido
+    savingDocRef.current.proposal = true;
     const prospect = prospects.find((c) => c.id === p.prospect_id);
     const isNew = !editingProposal;
     try {
       const doc = generateProposalPDF(p, prospect);
       const blob = doc.output("blob");
       const path = `propostas/${p.number}-${p.id}.pdf`;
-      const { error } = await supa.storage.from("boletos").upload(path, blob, { upsert: true, contentType: "application/pdf" });
+      const { error } = await storageUpload(path, blob, { upsert: true, contentType: "application/pdf" });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
-      const record = { ...p, pdf_url: data.publicUrl };
+      // o "?v=" muda a cada gravação: quem já tinha a versão antiga guardada não vê o PDF velho
+      const record = { ...p, pdf_url: `${data.publicUrl}?v=${Date.now()}` };
+      FileCache.seed(record.pdf_url, blob);
       const { error: dbError } = await supa.from("proposals").upsert(record);
       if (dbError) throw dbError;
-      await loadProposals();
+      // atualiza a lista aqui mesmo (antes recarregava a tabela inteira do servidor e só então fechava)
+      setProposals((prev) => (prev.some((x) => x.id === record.id) ? prev.map((x) => (x.id === record.id ? { ...x, ...record } : x)) : [record, ...prev]));
       if (isNew) {
         const currentYear = new Date().getFullYear();
         const usedYear = settings.proposal_next_year === currentYear ? settings.proposal_next_year : currentYear;
         const usedNumber = settings.proposal_next_year === currentYear ? (settings.proposal_next_number || 1) : 1;
-        await saveSettings({ ...settings, proposal_next_number: usedNumber + 1, proposal_next_year: usedYear });
+        saveSettings({ ...settings, proposal_next_number: usedNumber + 1, proposal_next_year: usedYear })
+          .catch(() => showToast("Proposta salva, mas não consegui gravar o próximo número. Confira em Configurações."));
       }
       setShowProposalForm(false);
       setEditingProposal(null);
@@ -7540,6 +7837,8 @@ function App() {
     } catch (e) {
       console.error("Erro ao salvar proposta:", e);
       showToast(`Erro: ${e.message || "não foi possível gerar/salvar a proposta"}`);
+    } finally {
+      savingDocRef.current.proposal = false;
     }
   }
 
@@ -7639,7 +7938,7 @@ function App() {
 
   function generateRomaneioPDF(r, prospect) {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
     const COMPANY_ADDRESS_1 = "Rua Ribeiro de Lima, 282 - 6º andar - Sala 602 - Bairro: Bom Retiro";
     const COMPANY_ADDRESS_2 = "CEP: 01122-000  ·  Tel.: (11) 99246-0999  ·  São Paulo - SP";
@@ -7788,37 +8087,50 @@ function App() {
   }
 
   async function handleSaveRomaneio(r) {
+    if (savingDocRef.current.romaneio) return;   // já está gravando: ignora clique repetido
+    savingDocRef.current.romaneio = true;
     const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
     const isNew = !editingRomaneio;
-    // abre a aba já no clique (evita bloqueio de pop-up) e carrega o PDF depois de salvar
-    let previewWin = null;
-    try { previewWin = window.open("", "_blank"); if (previewWin) previewWin.document.write("<p style='font-family:sans-serif'>Gerando romaneio...</p>"); } catch (e) {}
+    // abre a aba já no clique (evita bloqueio de pop-up); o PDF aparece nela assim que fica pronto,
+    // sem esperar a gravação no servidor
+    const previewWin = FileCache.openBlankTab("Gerando romaneio...");
+    let shown = false;
     try {
       const doc = generateRomaneioPDF(r, prospect);
       const blob = doc.output("blob");
+      shown = FileCache.showBlob(previewWin, blob);
       const path = `romaneios/${r.number.replace(/[^a-zA-Z0-9-_]/g, "_")}-${r.id}.pdf`;
-      const { error } = await supa.storage.from("boletos").upload(path, blob, { upsert: true, contentType: "application/pdf" });
+      const { error } = await storageUpload(path, blob, { upsert: true, contentType: "application/pdf" });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
-      const { error: dbError } = await supa.from("romaneios").upsert({ ...r, pdf_url: data.publicUrl });
+      // o "?v=" muda a cada gravação: quem já tinha a versão antiga guardada não vê o PDF velho
+      const record = { ...r, pdf_url: `${data.publicUrl}?v=${Date.now()}` };
+      FileCache.seed(record.pdf_url, blob);
+      const { error: dbError } = await supa.from("romaneios").upsert(record);
       if (dbError) throw dbError;
-      await loadRomaneios();
+      // atualiza a lista aqui mesmo (antes recarregava a tabela inteira do servidor e só então mostrava o PDF)
+      setRomaneios((prev) => (prev.some((x) => x.id === record.id) ? prev.map((x) => (x.id === record.id ? { ...x, ...record } : x)) : [record, ...prev]));
       if (isNew) {
         const currentYear = new Date().getFullYear();
         const usedYear = settings.romaneio_next_year === currentYear ? settings.romaneio_next_year : currentYear;
         const usedNumber = settings.romaneio_next_year === currentYear ? (settings.romaneio_next_number || 1) : 1;
-        await saveSettings({ ...settings, romaneio_next_number: usedNumber + 1, romaneio_next_year: usedYear });
+        saveSettings({ ...settings, romaneio_next_number: usedNumber + 1, romaneio_next_year: usedYear })
+          .catch(() => showToast("Romaneio salvo, mas não consegui gravar o próximo número. Confira em Configurações."));
       }
       setShowRomaneioForm(false);
       setEditingRomaneio(null);
       showToast("Romaneio gerado e salvo.");
-      const viewUrl = URL.createObjectURL(blob);
-      if (previewWin && !previewWin.closed) previewWin.location.href = viewUrl;
-      else window.open(viewUrl, "_blank");
     } catch (e) {
-      try { if (previewWin && !previewWin.closed) previewWin.close(); } catch (e2) {}
       console.error("Erro ao salvar romaneio:", e);
-      showToast(`Erro: ${e.message || "não foi possível gerar/salvar o romaneio"}`);
+      if (shown) {
+        // o PDF já está aberto em outra aba, então o aviso precisa chamar atenção
+        alert(`O romaneio NÃO foi salvo no sistema: ${e.message || "erro ao gravar"}.\n\nO PDF aberto na outra aba é só uma visualização. Clique em "Gerar e salvar romaneio" de novo para tentar outra vez.`);
+      } else {
+        try { if (previewWin && !previewWin.closed) previewWin.close(); } catch (e2) {}
+        showToast(`Erro: ${e.message || "não foi possível gerar/salvar o romaneio"}`);
+      }
+    } finally {
+      savingDocRef.current.romaneio = false;
     }
   }
 
@@ -7881,7 +8193,7 @@ function App() {
     if (!file) return;
     try {
       const path = `comprovantes/${r.id}/${Date.now()}-${file.name}`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       await supa.from("romaneios").update({ payment_proof_url: data.publicUrl }).eq("id", r.id);
@@ -8201,11 +8513,12 @@ function App() {
     setBusyId(client.id);
     try {
       const path = `${mKey}/${client.id}-${Date.now()}.pdf`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       await upsertBoleto(client.id, { file_url: data.publicUrl, file_name: file.name });
-      showToast("Boleto enviado para o servidor.");
+      if (file.size > 1.5 * 1024 * 1024) showToast(`Boleto enviado (arquivo grande: ${fmtFileSize(file.size)} — arquivos grandes demoram mais para abrir).`, 6000);
+      else showToast("Boleto enviado para o servidor.");
     } catch (e) {
       console.error("Erro ao enviar boleto:", e);
       showToast(`Erro: ${e.message || "não foi possível enviar o arquivo"}`);
@@ -8218,13 +8531,14 @@ function App() {
     setBusyId(client.id);
     try {
       const path = `${mKey}/${client.id}-extra-${Date.now()}.pdf`;
-      const { error } = await supa.storage.from("boletos").upload(path, file, { upsert: true });
+      const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
       const b = boletos[client.id];
       const extra = [...(b?.extra_files || []), { name: file.name, url: data.publicUrl }];
       await upsertBoleto(client.id, { extra_files: extra });
-      showToast("Boleto extra anexado.");
+      if (file.size > 1.5 * 1024 * 1024) showToast(`Boleto extra anexado (arquivo grande: ${fmtFileSize(file.size)} — arquivos grandes demoram mais para abrir).`, 6000);
+      else showToast("Boleto extra anexado.");
     } catch (e) {
       showToast(`Erro: ${e.message || "não foi possível enviar o arquivo"}`);
     }
@@ -8461,7 +8775,7 @@ function App() {
 
   function exportPDF() {
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     doc.setFontSize(16);
     doc.text(`Relatório de Mensalidades - ${MONTHS_PT[monthDate.getMonth()]}/${monthDate.getFullYear()}`, 14, 18);
     doc.setFontSize(10); doc.setTextColor(100);
@@ -8739,7 +9053,7 @@ function App() {
               <button onClick={() => setShowChangePassword(true)} className="text-[11px] font-semibold hover:underline leading-tight self-start whitespace-nowrap" style={{ color: COLORS.brandLight }}>Trocar senha</button>
             )}
           </div>
-          <button onClick={() => supa.auth.signOut()} className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: "rgba(239,68,68,0.12)", color: COLORS.danger, fontSize: 14 }} title="Sair do sistema"
+          <button onClick={() => { FileCache.clear(); supa.auth.signOut(); }} className="flex items-center justify-center rounded-lg shrink-0 transition-all" style={{ width: 30, height: 30, background: "rgba(239,68,68,0.12)", color: COLORS.danger, fontSize: 14 }} title="Sair do sistema"
             onMouseEnter={(e) => e.currentTarget.style.background = "rgba(239,68,68,0.25)"}
             onMouseLeave={(e) => e.currentTarget.style.background = "rgba(239,68,68,0.12)"}>⏻</button>
         </div>
@@ -12596,7 +12910,7 @@ function App() {
   const root = ReactDOM.createRoot(document.getElementById("root"));
   if (questToken) root.render(<PublicQuestionnaireForm token={questToken} />);
   else if (reciboToken) root.render(<PublicPayrollReceipt token={reciboToken} />);
-  else root.render(<App />);
+  else { FileCache.install(); root.render(<App />); }
 })();
 </script>
 </body>

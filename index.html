@@ -1198,6 +1198,30 @@ function buildProposalBody(c) {
   if (c.aceiteOn) blocks.push(PROPOSAL_ACEITE_TITLE + "\n" + PROPOSAL_ACEITE_TEXT);
   return blocks.join("\n\n");
 }
+// ===== O que aparece de verdade na proposta (PDF, lista e formulário usam as mesmas regras) =====
+function proposalIsLoja(it) { return it.kind ? it.kind === "loja" : String((it && it.desc) || "").startsWith("Loja"); }
+// "Loja 1" que o formulário cria sozinho e ninguém preencheu (nome padrão e valor 0) não é um item de verdade:
+// numa proposta só de integração ela sairia como "Loja 1 - R$ 0,00". Se alguma loja tem preço, todas continuam como foram montadas.
+function proposalDropEmptyStores(items) {
+  const list = Array.isArray(items) ? items.filter(Boolean) : [];
+  if (list.filter(proposalIsLoja).some((it) => Number(it.value) > 0)) return list;
+  return list.filter((it) => !(proposalIsLoja(it) && /^Loja( \d+)?$/i.test(String(it.desc || "").trim())));
+}
+// Nome do valor cobrado uma única vez: se a integração é a única coisa nele, chama "Integração"; senão, "Implantação".
+function proposalOneTimeLabel(hasInstall, hasCloud, hasCustom, hasIntegration) {
+  return hasIntegration && !hasInstall && !hasCloud && !hasCustom ? "Integração" : "Implantação";
+}
+// Linha-resumo da lista de propostas: mostra a integração e não inventa "Implantação R$ 0,00" quando ela não existe.
+function proposalListParts(p) {
+  const integ = Number(p.integration_setup_value) || 0;
+  const hasInteg = integ > 0 || Number(p.integration_monthly_value) > 0;
+  const parts = [];
+  if (Number(p.installation_value) > 0 || !hasInteg) parts.push(["Implantação", p.installation_value]);
+  if (Number(p.training_value) > 0 || !hasInteg) parts.push(["Treinamento", p.training_value]);
+  if (integ > 0) parts.push(["Integração", integ]);
+  parts.push(["Mensalidade", p.monthly_value]);
+  return parts;
+}
 // Monta o estado do editor: seções do texto salvo (ligadas) + seções padrão que não estão no texto (desligadas).
 // "std" marca as seções do texto padrão (essas só se desligam; as criadas pelo usuário também podem ser apagadas).
 function proposalContentFromBody(body, isNew) {
@@ -1242,7 +1266,8 @@ function buildProposalPdf(p, prospect) {
   try { doc.setProperties({ title: `Proposta comercial nº ${p.number}${clientName ? " - " + clientName : ""}`, author: "MireData", creator: "ADM / MIRE" }); } catch (e) {}
 
   // ---------- valores (mesmas contas do modelo antigo) ----------
-  const items = p.monthly_items || [];
+  // a "Loja 1" vazia que o formulário cria sozinho não entra (numa proposta só de integração sairia "Loja 1 - R$ 0,00")
+  const items = proposalDropEmptyStores(p.monthly_items || []);
   const isKindPdf = (it, kind, legacyTest) => (it.kind ? it.kind === kind : legacyTest(it));
   const rows6 = [], rows3 = [];
   function pushRow(desc, qtd, valorImplantacao, valorMensal) {
@@ -1279,6 +1304,12 @@ function buildProposalPdf(p, prospect) {
   const mensalidadeTotalPdf = p.monthly_value != null ? p.monthly_value : mensalidadeBaseTotalPdf;
   const descontoImplantacaoPdf = Math.max(0, implantacaoBaseTotalPdf - implantacaoTotalPdf);
   const descontoMensalidadePdf = p.discount_value || Math.max(0, mensalidadeBaseTotalPdf - mensalidadeTotalPdf);
+  // O PDF fala só do que foi marcado: se a integração é a única coisa cobrada uma vez, o valor único se chama "Integração"
+  // (e não "Implantação"); e o lado (único ou mensal) que não tem nada fica de fora, para não sair "Implantação R$ 0,00".
+  const oneLabel = proposalOneTimeLabel(installBundle > 0, !!cloudItem, customItemsPdf.length > 0, p.integration_setup_value > 0);
+  let showOne = rows3.some((r) => r[1] !== "—") || implantacaoTotalPdf > 0 || descontoImplantacaoPdf > 0;
+  let showMon = rows3.some((r) => r[2] !== "—") || mensalidadeTotalPdf > 0 || descontoMensalidadePdf > 0;
+  if (!showOne && !showMon) { showOne = true; showMon = true; } // proposta sem nenhum item: mostra os dois, como antes
 
   // ---------- página, cabeçalho, rodapé ----------
   let y = 0;
@@ -1413,11 +1444,12 @@ function buildProposalPdf(p, prospect) {
   }
   function drawValueCards() {
     ensureSpace(42);
-    const gap = 5, w = (CW - gap) / 2, h = 28;
-    const cards = [
-      { x: ML, bg: NAVY, label: "IMPLANTAÇÃO", value: fmtMoney(implantacaoTotalPdf), cap: descontoImplantacaoPdf > 0 ? "já com desconto de " + fmtMoney(descontoImplantacaoPdf) : "pagamento único", capc: [190, 202, 226] },
-      { x: ML + w + gap, bg: GREEN_DK, label: "MENSALIDADE", value: fmtMoney(mensalidadeTotalPdf), cap: descontoMensalidadePdf > 0 ? "já com desconto de " + fmtMoney(descontoMensalidadePdf) : "por mês", capc: [222, 238, 200] },
-    ];
+    const gap = 5, h = 28;
+    const cards = [];
+    if (showOne) cards.push({ bg: NAVY, label: oneLabel.toUpperCase(), value: fmtMoney(implantacaoTotalPdf), cap: descontoImplantacaoPdf > 0 ? "já com desconto de " + fmtMoney(descontoImplantacaoPdf) : "pagamento único", capc: [190, 202, 226] });
+    if (showMon) cards.push({ bg: GREEN_DK, label: "MENSALIDADE", value: fmtMoney(mensalidadeTotalPdf), cap: descontoMensalidadePdf > 0 ? "já com desconto de " + fmtMoney(descontoMensalidadePdf) : "por mês", capc: [222, 238, 200] });
+    const w = (CW - gap * (cards.length - 1)) / cards.length;
+    cards.forEach((c, i) => { c.x = ML + i * (w + gap); });
     cards.forEach((c) => {
       fill(c.bg); doc.roundedRect(c.x, y, w, h, 2.5, 2.5, "F");
       font("bold", 7.6, [255, 255, 255]); doc.text(c.label, c.x + 6, y + 8.2);
@@ -1434,25 +1466,31 @@ function buildProposalPdf(p, prospect) {
   function drawInvestment() {
     ensureSpace(46);
     heading("Detalhamento do investimento", 30);
-    const body = rows3.map((r) => r.slice());
-    const differ = Math.abs(implantacaoTotalPdf - implantacaoBaseTotalPdf) > 0.004 || Math.abs(mensalidadeTotalPdf - mensalidadeBaseTotalPdf) > 0.004;
+    // colunas de valor: só as que existem (só integração = "Integração (única)" + "Mensalidade"; sem mensalidade, some a coluna)
+    const cols = [];
+    if (showOne) cols.push({ idx: 1, title: oneLabel + " (única)", total: implantacaoTotalPdf, base: implantacaoBaseTotalPdf, disc: descontoImplantacaoPdf });
+    if (showMon) cols.push({ idx: 2, title: "Mensalidade", total: mensalidadeTotalPdf, base: mensalidadeBaseTotalPdf, disc: descontoMensalidadePdf });
+    const body = rows3.map((r) => [r[0], ...cols.map((c) => r[c.idx])]);
+    const differ = cols.some((c) => Math.abs(c.total - c.base) > 0.004);
     if (differ) {
-      body.push(["Subtotal", fmtMoney(implantacaoBaseTotalPdf), fmtMoney(mensalidadeBaseTotalPdf)]);
-      body.push(["Desconto aplicado", descontoImplantacaoPdf > 0 ? "-" + fmtMoney(descontoImplantacaoPdf) : "—", descontoMensalidadePdf > 0 ? "-" + fmtMoney(descontoMensalidadePdf) : "—"]);
+      body.push(["Subtotal", ...cols.map((c) => fmtMoney(c.base))]);
+      body.push(["Desconto aplicado", ...cols.map((c) => (c.disc > 0 ? "-" + fmtMoney(c.disc) : "—"))]);
     }
-    if (!body.length) body.push(["Nenhum item informado", "—", "—"]);
+    if (!body.length) body.push(["Nenhum item informado", ...cols.map(() => "—")]);
+    const columnStyles = { 0: { cellWidth: "auto" } };
+    cols.forEach((c, i) => { columnStyles[i + 1] = { halign: "right", cellWidth: 40 }; });
     doc.autoTable({
       startY: y,
-      head: [["Módulos / Serviços", "Implantação (única)", "Mensalidade"]],
+      head: [["Módulos / Serviços", ...cols.map((c) => c.title)]],
       body,
-      foot: [["TOTAL", fmtMoney(implantacaoTotalPdf), fmtMoney(mensalidadeTotalPdf)]],
+      foot: [["TOTAL", ...cols.map((c) => fmtMoney(c.total))]],
       theme: "plain",
       showFoot: "lastPage",
       styles: { font: "helvetica", fontSize: 8.6, textColor: INK, cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 }, lineWidth: 0 },
       headStyles: { fillColor: NAVY, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
       alternateRowStyles: { fillColor: [249, 250, 253] },
       footStyles: { fillColor: [232, 242, 218], textColor: NAVY, fontStyle: "bold", fontSize: 9.6 },
-      columnStyles: { 0: { cellWidth: "auto" }, 1: { halign: "right", cellWidth: 40 }, 2: { halign: "right", cellWidth: 40 } },
+      columnStyles,
       margin: { left: ML, right: ML, top: 24, bottom: 22 },
       didParseCell: (d) => {
         if ((d.section === "head" || d.section === "foot") && d.column.index > 0) d.cell.styles.halign = "right";
@@ -2142,6 +2180,8 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
 
   const canSave = prospectId && number.trim();
 
+  // nome do valor cobrado uma vez (o mesmo do PDF): se só a integração entra nele, chama "Integração"
+  const oneLbl = proposalOneTimeLabel(installationTotal + trainingTotal + dbTransferTotal > 0, hasCloud, customizations.some((it) => String(it.desc || "").trim() || Number(it.value) > 0), integrationSetupTotal > 0);
   // ----- Conteúdo da proposta: ligar/desligar, editar, reordenar, copiar -----
   function updateSection(id, patch) { setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s))); }
   function moveSection(id, dir) {
@@ -2337,7 +2377,7 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
             <input value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} type="number" placeholder="0" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
           </div>
           <div className="flex items-center gap-3">
-            <label className="text-sm font-semibold w-40 shrink-0" style={{ color: COLORS.warn }}>Desconto na Implantação (R$)</label>
+            <label className="text-sm font-semibold w-40 shrink-0" style={{ color: COLORS.warn }}>Desconto na {oneLbl} (R$)</label>
             <input value={discountImplantacaoValue} onChange={(e) => setDiscountImplantacaoValue(e.target.value)} type="number" placeholder="0" className="w-32 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
           </div>
         </div>
@@ -2351,9 +2391,9 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
               <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Loja + Fábrica + Produção</div>
             </div>
             <div className="rounded-lg p-3" style={{ background: "rgba(34,197,94,0.10)" }}>
-              <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Valor total da implantação</div>
+              <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Valor total da {oneLbl.toLowerCase()}</div>
               <div className="text-lg font-extrabold" style={{ color: COLORS.success }}>{fmtMoney(implantacaoTotal)}</div>
-              <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Implantação + Treinamento + Customização + Cloud + Integração</div>
+              <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{oneLbl === "Integração" ? "Só a integração (valor único)" : "Implantação + Treinamento + Customização + Cloud + Integração"}</div>
             </div>
           </div>
           {hasFactory && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.inkMuted }}>· Fábrica (dentro da mensalidade)</span><span className="font-bold" style={{ color: COLORS.ink }}>{fmtMoney(factoryTotal)}</span></div>}
@@ -2363,7 +2403,7 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
           )}
           {customTotal > 0 && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.inkMuted }}>· Customização (dentro da implantação)</span><span className="font-bold" style={{ color: COLORS.ink }}>{fmtMoney(customTotal)}</span></div>}
           {Number(discountValue) > 0 && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.warn }}>Desconto na mensalidade</span><span className="font-bold" style={{ color: COLORS.warn }}>-{fmtMoney(discountValue)}</span></div>}
-          {Number(discountImplantacaoValue) > 0 && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.warn }}>Desconto na implantação</span><span className="font-bold" style={{ color: COLORS.warn }}>-{fmtMoney(discountImplantacaoValue)}</span></div>}
+          {Number(discountImplantacaoValue) > 0 && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.warn }}>Desconto na {oneLbl.toLowerCase()}</span><span className="font-bold" style={{ color: COLORS.warn }}>-{fmtMoney(discountImplantacaoValue)}</span></div>}
           <div className="flex items-center justify-between text-sm pt-1 border-t" style={{ borderColor: COLORS.cardBorder }}><span style={{ color: COLORS.ink }}>Total geral da proposta</span><span className="font-bold" style={{ color: COLORS.ink }}>{fmtMoney(grandTotal)}</span></div>
         </div>
       </div>
@@ -10429,10 +10469,10 @@ function App() {
                           <div>
                             <div className="font-bold text-sm" style={{ color: COLORS.ink }}>{prospect?.name || "Cliente removido"} <span className="font-normal" style={{ color: COLORS.inkMuted }}>· nº {p.number}</span></div>
                             <div className="text-xs" style={{ color: COLORS.inkMuted }}>
-                              Implantação {money(p.installation_value)} · Treinamento {money(p.training_value)} · Mensalidade {money(p.monthly_value)} · válida até {p.valid_until ? new Date(p.valid_until + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
+                              {proposalListParts(p).map(([lb, v]) => `${lb} ${money(v)}`).join(" · ")} · válida até {p.valid_until ? new Date(p.valid_until + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
                             </div>
-                            {p.monthly_items?.length > 0 && (
-                              <div className="text-xs" style={{ color: COLORS.inkFaint }}>{p.monthly_items.map((it) => `${it.desc}: ${money(it.value)}`).join(" · ")}</div>
+                            {proposalDropEmptyStores(p.monthly_items).length > 0 && (
+                              <div className="text-xs" style={{ color: COLORS.inkFaint }}>{proposalDropEmptyStores(p.monthly_items).map((it) => `${it.desc}: ${money(it.value)}`).join(" · ")}</div>
                             )}
                           </div>
                         </div>

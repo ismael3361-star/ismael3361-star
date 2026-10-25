@@ -1120,6 +1120,427 @@ SUPORTE TÉCNICO (HELP DESK)
 CONFIDENCIALIDADE
 - As informações desta proposta são de caráter confidencial e de conhecimento exclusivo do solicitante, não podendo ser divulgadas sem autorização prévia da MireData.`;
 
+// ===== Conteúdo da proposta: texto simples (mesmo formato de sempre) lido e escrito por seções =====
+// O PDF e o formulário usam o mesmo formato de texto que já era salvo em "body_text": nada muda no banco.
+//   Texto de abertura (sem título)
+//
+//   TÍTULO DA SEÇÃO
+//   - item com marcador
+//   - outro item
+//
+//   RESPONSÁVEL COMERCIAL   (nome na 1ª linha, contato nas seguintes)
+//   ACEITE DA PROPOSTA      (quando existe, o PDF ganha o quadro de assinaturas)
+const PROPOSAL_RESP_TITLE = "RESPONSÁVEL COMERCIAL";
+const PROPOSAL_ACEITE_TITLE = "ACEITE DA PROPOSTA";
+const PROPOSAL_ACEITE_TEXT = "Ao assinar abaixo, o cliente declara estar de acordo com os valores e as condições descritos nesta proposta.";
+const PROPOSAL_EXTRA_SECTIONS = ["Observações", "Condições especiais", "Cronograma de implantação"];
+function normTitle(t) {
+  return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
+}
+// Linha de abertura toda em MAIÚSCULAS parece título; um caractere invisível no começo evita que seja confundida (ver protectIntro).
+const PROPOSAL_ZW = "\u200b";
+function isProposalHeading(line, prevBlank) {
+  const t = String(line || "").trim();
+  if (!t || !prevBlank) return false;
+  if (/^[-•]/.test(t) || t.length > 80 || t.charAt(0) === PROPOSAL_ZW) return false;
+  if ((t.match(/[A-Za-zÀ-ÿ]/g) || []).length < 2) return false;
+  return t === t.toUpperCase() && t !== t.toLowerCase();
+}
+function parseProposalBody(text) {
+  const out = { intro: "", sections: [], respNome: "", respContato: "", aceite: false };
+  const rawSecs = [];
+  const introLines = [];
+  let cur = null, prevBlank = true;
+  String(text || "").replace(/\r/g, "").split("\n").forEach((raw) => {
+    const line = raw.replace(/\s+$/, "");
+    if (isProposalHeading(line, prevBlank)) { cur = { title: line.trim(), lines: [] }; rawSecs.push(cur); }
+    else if (cur) cur.lines.push(line);
+    else introLines.push(line);
+    prevBlank = !line.trim();
+  });
+  out.intro = introLines.join("\n").trim();
+  rawSecs.forEach((s) => {
+    const body = s.lines.filter((l) => l.trim());
+    const nt = normTitle(s.title);
+    if (nt === normTitle(PROPOSAL_RESP_TITLE)) { out.respNome = (body[0] || "").trim(); out.respContato = body.slice(1).map((l) => l.trim()).join(" · "); return; }
+    if (nt === normTitle(PROPOSAL_ACEITE_TITLE)) { out.aceite = true; return; }
+    const bullets = body.length === 0 || body.every((l) => /^\s*[-•]\s+/.test(l));
+    out.sections.push({ title: s.title, text: (bullets ? body.map((l) => l.replace(/^\s*[-•]\s+/, "")) : body).join("\n"), bullets });
+  });
+  return out;
+}
+function protectIntro(text) {
+  let prevBlank = true;
+  return String(text || "").replace(/\r/g, "").split("\n").map((raw) => {
+    const l = raw.replace(/\s+$/, "").replace(/\u200b/g, "");
+    const out = isProposalHeading(l, prevBlank) ? PROPOSAL_ZW + l.trim() : l;
+    prevBlank = !l.trim();
+    return out;
+  }).join("\n").trim();
+}
+function buildProposalBody(c) {
+  const blocks = [];
+  if ((c.intro || "").replace(/\u200b/g, "").trim()) blocks.push(protectIntro(c.intro));
+  (c.sections || []).forEach((s) => {
+    if (s.on === false) return;
+    const items = String(s.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!items.length) return;
+    // o título precisa continuar sendo reconhecido como título quando o texto for lido de novo
+    let title = String(s.title || "").replace(/\s+/g, " ").replace(/^[-•\s]+/, "").trim().toUpperCase();
+    if ((title.match(/[A-Za-zÀ-ÿ]/g) || []).length < 2) title = ("SEÇÃO " + title).trim();
+    if (title.length > 80) title = title.slice(0, 80).trim();
+    const nt = normTitle(title);
+    if (nt === normTitle(PROPOSAL_RESP_TITLE) || nt === normTitle(PROPOSAL_ACEITE_TITLE)) title += " (SEÇÃO)";
+    blocks.push(title + "\n" + items.map((l) => (s.bullets ? "- " + l.replace(/^[-•]\s+/, "") : l)).join("\n"));
+  });
+  const rn = String(c.respNome || "").trim(), rc = String(c.respContato || "").trim();
+  if (rn || rc) blocks.push(PROPOSAL_RESP_TITLE + "\n" + [rn, rc].filter(Boolean).join("\n"));
+  if (c.aceiteOn) blocks.push(PROPOSAL_ACEITE_TITLE + "\n" + PROPOSAL_ACEITE_TEXT);
+  return blocks.join("\n\n");
+}
+// Monta o estado do editor: seções do texto salvo (ligadas) + seções padrão que não estão no texto (desligadas).
+// "std" marca as seções do texto padrão (essas só se desligam; as criadas pelo usuário também podem ser apagadas).
+function proposalContentFromBody(body, isNew) {
+  const parsed = parseProposalBody(body || DEFAULT_PROPOSAL_BODY);
+  const defaults = parseProposalBody(DEFAULT_PROPOSAL_BODY).sections;
+  const defTitles = new Set(defaults.map((d) => normTitle(d.title)));
+  const have = new Set(parsed.sections.map((s) => normTitle(s.title)));
+  const sections = parsed.sections.map((s) => ({ id: uid(), title: s.title, text: s.text, bullets: s.bullets, on: true, open: false, std: defTitles.has(normTitle(s.title)) }));
+  defaults.forEach((d) => {
+    if (!have.has(normTitle(d.title))) sections.push({ id: uid(), title: d.title, text: d.text, bullets: d.bullets, on: false, open: false, std: true });
+  });
+  let respNome = parsed.respNome, respContato = parsed.respContato;
+  if (isNew && !respNome && !respContato) {
+    try { const r = JSON.parse(localStorage.getItem("adm_prop_resp") || "null"); if (r) { respNome = r.n || ""; respContato = r.c || ""; } } catch (e) {}
+  }
+  return { intro: parsed.intro.replace(/\u200b/g, ""), sections, respNome, respContato, aceiteOn: isNew ? true : parsed.aceite };
+}
+
+// ===== PDF da proposta: modelo novo =====
+// Faixa escura no topo com o logo (ele foi feito para fundo escuro), valores em destaque já na 1ª página,
+// seções com título, tabela enxuta (item, implantação, mensalidade), pagamento com PIX, aceite e rodapé sem sobreposição.
+// Os valores usam as mesmas contas do modelo antigo (que continua no sistema como reserva).
+function buildProposalPdf(p, prospect) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ compress: true });
+  const PW = doc.internal.pageSize.getWidth(), PH = doc.internal.pageSize.getHeight();
+  const ML = 14, CW = PW - ML * 2, BOTTOM = PH - 22;
+  const NAVY = [19, 29, 51], INK = [38, 48, 72], GRAY = [104, 114, 134], LINE = [224, 229, 238];
+  const SOFT = [245, 247, 251], GREEN = [155, 197, 105], GREEN_DK = [74, 120, 40], AMBER = [176, 112, 0];
+  const ADDR_1 = "Rua Ribeiro de Lima, 282 - 6º andar - Sala 602 - Bairro: Bom Retiro";
+  const ADDR_2 = "CEP: 01122-000  ·  São Paulo - SP  ·  Tel.: (11) 99246-0999";
+  const dateBR = (d) => d.toLocaleDateString("pt-BR");
+  const validTxt = p.valid_until ? dateBR(new Date(p.valid_until + "T00:00:00")) : "-";
+  const createdAt = p.created_at ? new Date(p.created_at) : null;
+  const issuedTxt = dateBR(createdAt && !isNaN(createdAt) ? createdAt : new Date());
+  const clientName = (prospect && prospect.name) || "";
+  const parsed = parseProposalBody(p.body_text || "");
+  let logoRatio = 520 / 183;
+  try { const ip = doc.getImageProperties(LOGO_DATA_URI); if (ip && ip.width && ip.height) logoRatio = ip.width / ip.height; } catch (e) {}
+  const font = (style, size, c) => { doc.setFont("helvetica", style); doc.setFontSize(size); doc.setTextColor(c[0], c[1], c[2]); };
+  const fill = (c) => doc.setFillColor(c[0], c[1], c[2]);
+  try { doc.setProperties({ title: `Proposta comercial nº ${p.number}${clientName ? " - " + clientName : ""}`, author: "MireData", creator: "ADM / MIRE" }); } catch (e) {}
+
+  // ---------- valores (mesmas contas do modelo antigo) ----------
+  const items = p.monthly_items || [];
+  const isKindPdf = (it, kind, legacyTest) => (it.kind ? it.kind === kind : legacyTest(it));
+  const rows6 = [], rows3 = [];
+  function pushRow(desc, qtd, valorImplantacao, valorMensal) {
+    const q = Number(qtd) || 1;
+    rows6.push([
+      desc, String(q),
+      valorImplantacao != null ? fmtMoney(valorImplantacao) : "--",
+      valorMensal != null ? fmtMoney(valorMensal) : "--",
+      valorImplantacao != null ? fmtMoney(valorImplantacao * q) : "--",
+      valorMensal != null ? fmtMoney(valorMensal * q) : "--",
+    ]);
+    rows3.push([desc, valorImplantacao != null ? fmtMoney(valorImplantacao * q) : "—", valorMensal != null ? fmtMoney(valorMensal * q) : "—"]);
+  }
+  items.filter((it) => isKindPdf(it, "loja", (x) => (x.desc || "").startsWith("Loja"))).forEach((it) => pushRow(it.desc, 1, null, it.value));
+  const fabricaItem = items.find((it) => isKindPdf(it, "fabrica", (x) => x.desc === "Fábrica"));
+  if (fabricaItem) pushRow("Fábrica", 1, null, fabricaItem.value);
+  const producaoItem = items.find((it) => isKindPdf(it, "producao", (x) => x.desc === "Produção"));
+  if (producaoItem) pushRow("Produção", 1, null, producaoItem.value);
+  if (p.integration_monthly_value > 0) pushRow(`Mensalidade integração${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, null, p.integration_monthly_value);
+  const installBundle = (p.installation_value || 0) + (p.training_value || 0) + (p.db_transfer_value || 0);
+  if (installBundle > 0) pushRow("Implantação (inclui treinamento e transferência de banco de dados, quando houver)", 1, installBundle, null);
+  const cloudItem = items.find((it) => isKindPdf(it, "cloud", (x) => x.desc === "Cloud"));
+  if (cloudItem) pushRow(`Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, 1, cloudItem.value, null);
+  if (p.integration_setup_value > 0) pushRow(`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, p.integration_setup_value, null);
+  const customItemsPdf = items.filter((it) => it.kind ? it.kind === "custom" : (!(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")));
+  customItemsPdf.forEach((it) => pushRow(it.desc, 1, it.value, null));
+  const customTotalPdf = customItemsPdf.reduce((s, it) => s + (Number(it.value) || 0), 0);
+  const implantacaoBaseTotalPdf = installBundle + (cloudItem?.value || 0) + (p.integration_setup_value || 0) + customTotalPdf;
+  const mensalidadeBaseTotalPdf = rows6.reduce((s, r) => {
+    const v = r[5] === "--" ? 0 : Number(String(r[5]).replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
+    return s + v;
+  }, 0);
+  const implantacaoTotalPdf = p.implantacao_value != null ? p.implantacao_value : implantacaoBaseTotalPdf;
+  const mensalidadeTotalPdf = p.monthly_value != null ? p.monthly_value : mensalidadeBaseTotalPdf;
+  const descontoImplantacaoPdf = Math.max(0, implantacaoBaseTotalPdf - implantacaoTotalPdf);
+  const descontoMensalidadePdf = p.discount_value || Math.max(0, mensalidadeBaseTotalPdf - mensalidadeTotalPdf);
+
+  // ---------- página, cabeçalho, rodapé ----------
+  let y = 0;
+  const headerDone = new Set();
+  function drawHeader(pageNo) {
+    if (headerDone.has(pageNo)) return;
+    headerDone.add(pageNo);
+    if (pageNo === 1) {
+      fill(NAVY); doc.rect(0, 0, PW, 34, "F");
+      fill(GREEN); doc.rect(0, 34, PW, 1.3, "F");
+      const lh = 16, lw = lh * logoRatio;
+      try { doc.addImage(LOGO_DATA_URI, "PNG", ML, 9, lw, lh); } catch (e) {}
+      font("bold", 15, [255, 255, 255]); doc.text("PROPOSTA COMERCIAL", PW - ML, 16, { align: "right" });
+      font("normal", 9.5, [206, 214, 231]); doc.text(`Nº ${p.number}`, PW - ML, 22, { align: "right" });
+      font("normal", 8, [160, 172, 196]); doc.text(`Emitida em ${issuedTxt}  ·  Válida até ${validTxt}`, PW - ML, 27.5, { align: "right" });
+    } else {
+      fill(NAVY); doc.rect(0, 0, PW, 15, "F");
+      fill(GREEN); doc.rect(0, 15, PW, 0.8, "F");
+      const lh = 8, lw = lh * logoRatio;
+      try { doc.addImage(LOGO_DATA_URI, "PNG", ML, 3.5, lw, lh); } catch (e) {}
+      font("normal", 8, [206, 214, 231]);
+      const t = `Proposta comercial nº ${p.number}${clientName ? "  ·  " + clientName : ""}`;
+      doc.text(doc.splitTextToSize(t, CW - lw - 8)[0], PW - ML, 9.5, { align: "right" });
+    }
+  }
+  function newPage() { doc.addPage(); drawHeader(doc.internal.getNumberOfPages()); y = 25; }
+  function ensureSpace(h) { if (y + h > BOTTOM) newPage(); }
+  function drawFooters() {
+    const n = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= n; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.25); doc.line(ML, PH - 19, PW - ML, PH - 19);
+      font("normal", 7.2, GRAY);
+      doc.text(ADDR_1, ML, PH - 14.5);
+      doc.text(ADDR_2, ML, PH - 10.5);
+      font("bold", 7.2, GRAY);
+      doc.text(`Página ${i} de ${n}`, PW - ML, PH - 14.5, { align: "right" });
+    }
+  }
+
+  // ---------- blocos ----------
+  const LH = 4.7;
+  // quebra o texto na largura da página; palavra muito longa (ex.: um link) é quebrada no meio para não passar da margem
+  function wrap(text, width) {
+    const out = [];
+    doc.splitTextToSize(String(text), width).forEach((ln) => {
+      if (doc.getTextWidth(ln) <= width + 0.4) { out.push(ln); return; }
+      let cur = "";
+      for (const ch of ln) {
+        if (cur && doc.getTextWidth(cur + ch) > width) { out.push(cur); cur = ch; } else cur += ch;
+      }
+      if (cur) out.push(cur);
+    });
+    return out;
+  }
+  function heading(title, minAfter) {
+    ensureSpace(10 + (minAfter || 8));
+    fill(GREEN); doc.rect(ML, y - 3.4, 1.7, 4.8, "F");
+    font("bold", 9.5, NAVY); doc.text(String(title).toUpperCase(), ML + 4.5, y);
+    doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.25); doc.line(ML, y + 2.4, PW - ML, y + 2.4);
+    y += 8;
+  }
+  function drawIntro(text) {
+    String(text).split("\n").forEach((ln) => {
+      if (!ln.trim()) { y += 2.2; return; }
+      font("normal", 9.5, INK);
+      font("normal", 9.5, INK);
+      wrap(ln.trim(), CW).forEach((w) => { ensureSpace(LH); font("normal", 9.5, INK); doc.text(w, ML, y); y += LH + 0.2; });
+    });
+    y += 4;
+  }
+  function drawSection(s) {
+    const lines = String(s.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+    const isB = (l) => !!s.bullets || /^[-•]\s+/.test(l);
+    const strip = (l) => l.replace(/^[-•]\s+/, "");
+    font("normal", 9, INK);
+    heading(s.title, wrap(strip(lines[0]), CW - 6).length * LH);
+    lines.forEach((l) => {
+      font("normal", 9, INK);
+      const b = isB(l);
+      const wrapped = wrap(strip(l), CW - (b ? 6 : 0));
+      const h = wrapped.length * LH;
+      ensureSpace(h);
+      font("normal", 9, INK);
+      if (b) { fill(GREEN); doc.circle(ML + 2, y - 1.15, 0.75, "F"); }
+      wrapped.forEach((w, i) => doc.text(w, ML + (b ? 6 : 0), y + i * LH));
+      y += h + 1;
+    });
+    y += 4;
+  }
+  function drawClientCard() {
+    const hasResp = !!(parsed.respNome || parsed.respContato);
+    const leftW = hasResp ? 92 : CW - 14;
+    const rx = ML + 104, rw = CW - 104 - 6;
+    font("bold", 12.5, NAVY);
+    const nameLines = doc.splitTextToSize(clientName || "-", leftW);
+    font("normal", 8.6, GRAY);
+    const det = [];
+    if (prospect && addressLine(prospect)) det.push(addressLine(prospect));
+    if (prospect && prospect.cnpj) det.push("CNPJ: " + prospect.cnpj);
+    const contact = [prospect && prospect.phone, prospect && prospect.email].filter(Boolean).join("  ·  ");
+    if (contact) det.push(contact);
+    const detLines = [];
+    det.forEach((d) => doc.splitTextToSize(d, leftW).forEach((l) => detLines.push(l)));
+    const lastName = 11.8 + 5.4 * (nameLines.length - 1);
+    const leftLast = detLines.length ? lastName + 4.8 + 4.4 * (detLines.length - 1) : lastName;
+    let respNameLines = [], respLines = [], rightLast = 0;
+    if (hasResp) {
+      font("bold", 9.6, NAVY); respNameLines = doc.splitTextToSize(parsed.respNome || "", rw);
+      font("normal", 8.6, GRAY); respLines = doc.splitTextToSize(parsed.respContato || "", rw);
+      const rn = respNameLines.length ? 11.8 + 4.8 * (respNameLines.length - 1) : 6.2;
+      rightLast = respLines.length ? rn + 4.6 + 4.4 * (respLines.length - 1) : rn;
+    }
+    const h = Math.max(leftLast, rightLast) + 5;
+    fill(SOFT); doc.roundedRect(ML, y, CW, h, 2, 2, "F");
+    fill(GREEN); doc.rect(ML, y + 2.5, 1.8, h - 5, "F");
+    let ty = y + 6.2;
+    font("bold", 7, GREEN_DK); doc.text("PREPARADA PARA", ML + 6, ty);
+    ty = y + 11.8;
+    font("bold", 12.5, NAVY); nameLines.forEach((l) => { doc.text(l, ML + 6, ty); ty += 5.4; });
+    ty = y + lastName + 4.8;
+    font("normal", 8.6, GRAY); detLines.forEach((l) => { doc.text(l, ML + 6, ty); ty += 4.4; });
+    if (hasResp) {
+      font("bold", 7, GREEN_DK); doc.text("RESPONSÁVEL COMERCIAL", rx, y + 6.2);
+      let ry = y + 11.8;
+      font("bold", 9.6, NAVY); respNameLines.forEach((l) => { doc.text(l, rx, ry); ry += 4.8; });
+      ry = y + (respNameLines.length ? 11.8 + 4.8 * (respNameLines.length - 1) + 4.6 : 11.8);
+      font("normal", 8.6, GRAY); respLines.forEach((l) => { doc.text(l, rx, ry); ry += 4.4; });
+    }
+    y += h + 7;
+  }
+  function drawValueCards() {
+    ensureSpace(42);
+    const gap = 5, w = (CW - gap) / 2, h = 28;
+    const cards = [
+      { x: ML, bg: NAVY, label: "IMPLANTAÇÃO", value: fmtMoney(implantacaoTotalPdf), cap: descontoImplantacaoPdf > 0 ? "já com desconto de " + fmtMoney(descontoImplantacaoPdf) : "pagamento único", capc: [190, 202, 226] },
+      { x: ML + w + gap, bg: GREEN_DK, label: "MENSALIDADE", value: fmtMoney(mensalidadeTotalPdf), cap: descontoMensalidadePdf > 0 ? "já com desconto de " + fmtMoney(descontoMensalidadePdf) : "por mês", capc: [222, 238, 200] },
+    ];
+    cards.forEach((c) => {
+      fill(c.bg); doc.roundedRect(c.x, y, w, h, 2.5, 2.5, "F");
+      font("bold", 7.6, [255, 255, 255]); doc.text(c.label, c.x + 6, y + 8.2);
+      font("bold", 20, [255, 255, 255]); doc.text(c.value, c.x + 6, y + 18.6);
+      font("normal", 7.8, c.capc); doc.text(c.cap, c.x + 6, y + 24.2);
+    });
+    y += h + 6;
+    font("normal", 8.6, GRAY);
+    const meta = ["Proposta válida até " + validTxt];
+    if (p.payment_method) meta.push("Pagamento: " + p.payment_method);
+    doc.splitTextToSize(meta.join("   ·   "), CW).forEach((l) => { doc.text(l, ML, y); y += 4.4; });
+    y += 5;
+  }
+  function drawInvestment() {
+    ensureSpace(46);
+    heading("Detalhamento do investimento", 30);
+    const body = rows3.map((r) => r.slice());
+    const differ = Math.abs(implantacaoTotalPdf - implantacaoBaseTotalPdf) > 0.004 || Math.abs(mensalidadeTotalPdf - mensalidadeBaseTotalPdf) > 0.004;
+    if (differ) {
+      body.push(["Subtotal", fmtMoney(implantacaoBaseTotalPdf), fmtMoney(mensalidadeBaseTotalPdf)]);
+      body.push(["Desconto aplicado", descontoImplantacaoPdf > 0 ? "-" + fmtMoney(descontoImplantacaoPdf) : "—", descontoMensalidadePdf > 0 ? "-" + fmtMoney(descontoMensalidadePdf) : "—"]);
+    }
+    if (!body.length) body.push(["Nenhum item informado", "—", "—"]);
+    doc.autoTable({
+      startY: y,
+      head: [["Módulos / Serviços", "Implantação (única)", "Mensalidade"]],
+      body,
+      foot: [["TOTAL", fmtMoney(implantacaoTotalPdf), fmtMoney(mensalidadeTotalPdf)]],
+      theme: "plain",
+      showFoot: "lastPage",
+      styles: { font: "helvetica", fontSize: 8.6, textColor: INK, cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 }, lineWidth: 0 },
+      headStyles: { fillColor: NAVY, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+      alternateRowStyles: { fillColor: [249, 250, 253] },
+      footStyles: { fillColor: [232, 242, 218], textColor: NAVY, fontStyle: "bold", fontSize: 9.6 },
+      columnStyles: { 0: { cellWidth: "auto" }, 1: { halign: "right", cellWidth: 40 }, 2: { halign: "right", cellWidth: 40 } },
+      margin: { left: ML, right: ML, top: 24, bottom: 22 },
+      didParseCell: (d) => {
+        if ((d.section === "head" || d.section === "foot") && d.column.index > 0) d.cell.styles.halign = "right";
+        if (d.section === "body" && d.row.raw) {
+          const first = d.row.raw[0];
+          if (first === "Subtotal") { d.cell.styles.fontStyle = "bold"; d.cell.styles.textColor = GRAY; }
+          if (first === "Desconto aplicado") { d.cell.styles.textColor = AMBER; }
+        }
+      },
+      didDrawCell: (d) => {
+        if (d.section === "body") {
+          doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.2);
+          doc.line(d.cell.x, d.cell.y + d.cell.height, d.cell.x + d.cell.width, d.cell.y + d.cell.height);
+        }
+      },
+      didDrawPage: (d) => { drawHeader(d.pageNumber); },
+    });
+    y = doc.lastAutoTable.finalY + 9;
+  }
+  function drawPayment() {
+    const rowsP = [];
+    if (p.payment_method) rowsP.push(["Forma de pagamento", String(p.payment_method)]);
+    if (p.pix_key) rowsP.push(["Chave PIX", String(p.pix_key)]);
+    if (p.pix_favorecido) rowsP.push(["Favorecido", String(p.pix_favorecido)]);
+    if (!rowsP.length) return;
+    let qrData = null;
+    if (p.pix_key) {
+      try { qrData = generatePixQRDataURL(generatePixPayload({ key: p.pix_key, name: p.pix_favorecido, city: "SAO PAULO", value: null, txid: p.number }), 200); } catch (e) {}
+    }
+    const qrW = qrData ? 30 : 0;
+    const vx = ML + 44, vw = CW - 44 - 6 - (qrData ? qrW + 10 : 0);
+    font("bold", 9.2, NAVY);
+    const wrapped = rowsP.map((r) => doc.splitTextToSize(r[1], vw));
+    let textH = 0; wrapped.forEach((w) => { textH += w.length * 4.6 + 2.8; });
+    const h = Math.max(textH + 7, qrData ? qrW + 13 : 0);
+    ensureSpace(h + 14);
+    heading("Pagamento", h);
+    const top = y - 1;
+    fill(SOFT); doc.roundedRect(ML, top, CW, h, 2, 2, "F");
+    let ty = top + 6.4;
+    rowsP.forEach((r, i) => {
+      font("normal", 8, GRAY); doc.text(r[0], ML + 6, ty);
+      font("bold", 9.2, NAVY); wrapped[i].forEach((l, k) => doc.text(l, vx, ty + k * 4.6));
+      ty += wrapped[i].length * 4.6 + 2.8;
+    });
+    if (qrData) {
+      const qx = ML + CW - qrW - 6;
+      fill([255, 255, 255]); doc.roundedRect(qx - 2, top + 3, qrW + 4, qrW + 9, 1.5, 1.5, "F");
+      try { doc.addImage(qrData, "PNG", qx, top + 5, qrW, qrW); } catch (e) {}
+      font("normal", 6.8, GRAY); doc.text("Pague com o PIX", qx + qrW / 2, top + 5 + qrW + 3.4, { align: "center" });
+    }
+    y = top + h + 8;
+  }
+  function drawAceite() {
+    ensureSpace(60);
+    heading("Aceite da proposta", 34);
+    font("normal", 8.8, GRAY);
+    doc.splitTextToSize(PROPOSAL_ACEITE_TEXT, CW).forEach((l) => { doc.text(l, ML, y); y += 4.4; });
+    y += 20;
+    const colW = (CW - 14) / 2, x1 = ML, x2 = ML + colW + 14;
+    doc.setDrawColor(INK[0], INK[1], INK[2]); doc.setLineWidth(0.3);
+    doc.line(x1, y, x1 + colW, y); doc.line(x2, y, x2 + colW, y);
+    font("bold", 8.8, INK);
+    const nameLines = doc.splitTextToSize(clientName || "Cliente", colW).slice(0, 2);
+    nameLines.forEach((l, i) => doc.text(l, x1, y + 5 + i * 4.2));
+    doc.text("MireData", x2, y + 5);
+    font("normal", 7.8, GRAY);
+    doc.text("Cliente  ·  Data: ____/____/________", x1, y + 9.6 + (nameLines.length - 1) * 4.2);
+    const respTxt = [parsed.respNome, parsed.respContato].filter(Boolean).join("  ·  ") || "Responsável comercial";
+    const respLines = doc.splitTextToSize(respTxt, colW).slice(0, 3);
+    respLines.forEach((l, i) => doc.text(l, x2, y + 9.6 + i * 3.8));
+    y += 16 + Math.max((nameLines.length - 1) * 4.2, (respLines.length - 1) * 3.8);
+  }
+
+  // ---------- montagem ----------
+  drawHeader(1);
+  y = 45;
+  drawClientCard();
+  if (parsed.intro) drawIntro(parsed.intro.replace(/\u200b/g, ""));
+  drawValueCards();
+  parsed.sections.forEach(drawSection);
+  drawInvestment();
+  drawPayment();
+  if (parsed.aceite) drawAceite();
+  drawFooters();
+  return doc;
+}
+
 function applyTemplate(tpl, client, monthDate, link) {
   return (tpl || "")
     .replaceAll("{nome}", client.name || "")
@@ -1634,7 +2055,7 @@ function RomaneioClientPicker({ romaneioClients, value, onSelect }) {
   );
 }
 
-function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, onSave, onPreview, onCancel }) {
+function ProposalForm({ initial, proposals, prospects, clients, settings, onSaveProspect, onSave, onPreview, onCancel }) {
   const [prospectId, setProspectId] = useState(initial?.prospect_id || "");
   const [showNewProspect, setShowNewProspect] = useState(false);
   const currentYear = new Date().getFullYear();
@@ -1649,7 +2070,13 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
   const [pixFavorecido, setPixFavorecido] = useState(initial?.pix_favorecido || "");
   const [cloudDescription, setCloudDescription] = useState(initial?.cloud_description || "");
   const [validUntil, setValidUntil] = useState(initial?.valid_until || (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10); })());
-  const [bodyText, setBodyText] = useState(initial?.body_text || DEFAULT_PROPOSAL_BODY);
+  // Conteúdo da proposta por seções. O que é gravado continua sendo o mesmo texto simples de sempre (body_text).
+  const initialContent = useMemo(() => proposalContentFromBody(initial?.body_text, !initial), []);
+  const [introText, setIntroText] = useState(initialContent.intro);
+  const [sections, setSections] = useState(initialContent.sections);
+  const [respNome, setRespNome] = useState(initialContent.respNome);
+  const [respContato, setRespContato] = useState(initialContent.respContato);
+  const [aceiteOn, setAceiteOn] = useState(initialContent.aceiteOn);
 
   // Reconstrói os campos estruturados a partir dos itens salvos (quando está editando)
   const existingItems = initial?.monthly_items || [];
@@ -1715,10 +2142,54 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
 
   const canSave = prospectId && number.trim();
 
+  // ----- Conteúdo da proposta: ligar/desligar, editar, reordenar, copiar -----
+  function updateSection(id, patch) { setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s))); }
+  function moveSection(id, dir) {
+    setSections((prev) => {
+      const i = prev.findIndex((s) => s.id === id), j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = prev.slice();
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+  function removeSection(id) { setSections((prev) => prev.filter((s) => s.id !== id)); }
+  function addSection(title) {
+    const id = uid();
+    setSections((prev) => [...prev, { id, title: title || "", text: "", bullets: true, on: true, open: true, std: false, fresh: !title }]);
+    setTimeout(() => { const el = document.getElementById("prop-sec-" + id); if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" }); }, 80);
+  }
+  function setAllSectionsOpen(open) { setSections((prev) => prev.map((s) => ({ ...s, open }))); }
+  function restoreDefaultContent() {
+    if (!confirm("Voltar ao texto padrão?\n\nO conteúdo das seções e o texto de abertura serão trocados pelo texto padrão da MireData. Valores, pagamento e responsável não mudam.")) return;
+    const c = proposalContentFromBody(DEFAULT_PROPOSAL_BODY, true);
+    setIntroText(c.intro); setSections(c.sections); setAceiteOn(c.aceiteOn);
+  }
+  const copyOptions = (proposals || [])
+    .filter((x) => x && x.id !== initial?.id && String(x.body_text || "").trim())
+    .slice(0, 40)
+    .map((x) => ({ id: x.id, label: `Nº ${x.number} — ${(prospects.find((c) => c.id === x.prospect_id) || {}).name || "cliente"}` }));
+  function copyFromProposal(id) {
+    const src = (proposals || []).find((x) => x.id === id);
+    if (!src) return;
+    if (!confirm(`Copiar o texto da proposta Nº ${src.number}?\n\nO conteúdo atual das seções será substituído. Valores e pagamento não mudam.`)) return;
+    const c = proposalContentFromBody(src.body_text, false);
+    setIntroText(c.intro); setSections(c.sections); setAceiteOn(c.aceiteOn);
+    if (c.respNome || c.respContato) { setRespNome(c.respNome); setRespContato(c.respContato); }
+  }
+  function currentBody() { return buildProposalBody({ intro: introText, sections, respNome, respContato, aceiteOn }); }
+  // ao salvar, guarda o responsável neste aparelho para já vir preenchido na próxima proposta
+  function bodyForSave() {
+    try { if (respNome.trim() || respContato.trim()) localStorage.setItem("adm_prop_resp", JSON.stringify({ n: respNome.trim(), c: respContato.trim() })); } catch (e) {}
+    return currentBody();
+  }
+  const sectionsOnCount = sections.filter((s) => s.on && String(s.text || "").trim()).length;
+
+
   return (
     <div className="rounded-2xl p-5 border shadow-sm space-y-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
       <div className="flex items-center justify-between">
-        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Nova proposta comercial</div>
+        <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar proposta comercial" : "Nova proposta comercial"}</div>
         <button onClick={onCancel} className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>← Voltar</button>
       </div>
 
@@ -1897,10 +2368,92 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
         </div>
       </div>
 
-      <label className="block">
-        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Conteúdo da proposta (editável)</span>
-        <textarea value={bodyText} onChange={(e) => setBodyText(e.target.value)} rows={14} className="w-full rounded-lg border px-3 py-2 text-xs outline-none font-mono" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
-      </label>
+      {/* Conteúdo da proposta: cada seção pode ser ligada/desligada, editada e reordenada */}
+      <div className="rounded-xl p-4 border space-y-4" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.02)" }}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex-1" style={{ minWidth: 240 }}>
+            <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Conteúdo da proposta</div>
+            <p className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>
+              Escreva o que vai aparecer no PDF. Desmarque uma seção para ela não entrar, use ▲ ▼ para mudar a ordem e “Editar” para mudar o texto (uma linha = um item). Valores e tabela vêm dos campos acima.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {copyOptions.length > 0 && (
+              <select value="" onChange={(e) => copyFromProposal(e.target.value)} className="rounded-lg border px-2 py-1.5 text-xs outline-none" style={{ maxWidth: 230, borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
+                <option value="">Copiar texto de outra proposta…</option>
+                {copyOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+            )}
+            <button onClick={restoreDefaultContent} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>↺ Voltar ao texto padrão</button>
+          </div>
+        </div>
+
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Texto de abertura (parágrafo logo no início da proposta)</span>
+          <textarea value={introText} onChange={(e) => setIntroText(e.target.value)} rows={Math.min(9, Math.max(3, introText.split("\n").length + Math.floor(introText.length / 55)))} placeholder="Ex: Esta proposta apresenta as condições para a contratação do Sistema Miré…" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+        </label>
+
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <span className="text-xs font-semibold" style={{ color: COLORS.inkMuted }}>Seções ({sectionsOnCount} {sectionsOnCount === 1 ? "incluída" : "incluídas"} no PDF)</span>
+            <span className="text-xs">
+              <span role="button" tabIndex={0} onClick={() => setAllSectionsOpen(true)} className="cursor-pointer hover:underline" style={{ color: COLORS.brandLight }}>Abrir todas</span>
+              <span style={{ color: COLORS.inkMuted }}> · </span>
+              <span role="button" tabIndex={0} onClick={() => setAllSectionsOpen(false)} className="cursor-pointer hover:underline" style={{ color: COLORS.brandLight }}>Recolher todas</span>
+            </span>
+          </div>
+          <div className="space-y-2">
+            {sections.map((s, i) => {
+              const lines = String(s.text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+              return (
+                <div key={s.id} id={"prop-sec-" + s.id} className="rounded-lg border" style={{ borderColor: s.on ? "rgba(155,197,105,0.5)" : COLORS.cardBorder, background: s.on ? "rgba(155,197,105,0.06)" : "rgba(255,255,255,0.02)" }}>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1.5">
+                    <input type="checkbox" checked={!!s.on} onChange={(e) => updateSection(s.id, { on: e.target.checked })} title="Incluir esta seção no PDF" className="w-4 h-4 shrink-0 cursor-pointer" />
+                    <div role="button" tabIndex={0} onClick={() => updateSection(s.id, { open: !s.open, fresh: false })} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); updateSection(s.id, { open: !s.open, fresh: false }); } }} title="Clique para editar" className="text-sm font-semibold uppercase break-words px-1 py-1 cursor-pointer select-none" style={{ flex: "1 1 140px", minWidth: 0, color: s.on ? COLORS.ink : COLORS.inkMuted }}>{String(s.title || "").trim() || "(sem título)"}</div>
+                    <div className="flex items-center gap-1 ml-auto">
+                      <button onClick={() => updateSection(s.id, { open: !s.open, fresh: false })} className="px-2.5 py-1 rounded-md text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.brandLight }}>{s.open ? "Fechar" : "Editar"}</button>
+                      <button onClick={() => moveSection(s.id, -1)} disabled={i === 0} title="Subir" className="px-2.5 py-1.5 text-xs rounded-md hover:bg-white/5 disabled:opacity-30" style={{ color: COLORS.inkMuted }}>▲</button>
+                      <button onClick={() => moveSection(s.id, 1)} disabled={i === sections.length - 1} title="Descer" className="px-2.5 py-1.5 text-xs rounded-md hover:bg-white/5 disabled:opacity-30" style={{ color: COLORS.inkMuted }}>▼</button>
+                      {!s.std && <button onClick={() => removeSection(s.id)} title="Apagar esta seção" className="px-2 py-1 text-sm shrink-0" style={{ color: COLORS.danger }}>🗑️</button>}
+                    </div>
+                  </div>
+                  {s.open ? (
+                    <div className="px-3 pb-3 space-y-2">
+                      <input value={s.title} onChange={(e) => updateSection(s.id, { title: e.target.value })} maxLength={70} autoFocus={!!s.fresh} placeholder="Título da seção" className="w-full rounded-lg border px-2.5 py-1.5 text-xs font-semibold uppercase outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+                      <textarea value={s.text} onChange={(e) => updateSection(s.id, { text: e.target.value })} rows={Math.min(12, Math.max(3, lines.length + 1))} placeholder="Escreva um item por linha…" className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+                      <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: COLORS.inkMuted }}>
+                        <input type="checkbox" checked={!!s.bullets} onChange={(e) => updateSection(s.id, { bullets: e.target.checked })} className="w-3.5 h-3.5" />
+                        Mostrar cada linha como item com marcador (●)
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="px-3 pb-2 text-xs truncate" style={{ color: COLORS.inkMuted, opacity: s.on ? 1 : 0.7 }}>
+                      {lines.length ? `${lines.length} ${lines.length === 1 ? "item" : "itens"} · ${lines[0]}` : "Vazia — clique em Editar para escrever"}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            <button onClick={() => addSection("")} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>＋ Adicionar seção</button>
+            {PROPOSAL_EXTRA_SECTIONS.filter((t) => !sections.some((s) => normTitle(s.title) === normTitle(t))).map((t) => (
+              <button key={t} onClick={() => addSection(t)} className="px-2.5 py-1.5 rounded-full text-xs border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>＋ {t}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="pt-3 border-t space-y-3" style={{ borderColor: COLORS.cardBorder }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <TextField label="Responsável comercial (nome)" value={respNome} onChange={setRespNome} placeholder="Quem assina pela MireData" />
+            <TextField label="Contato do responsável" value={respContato} onChange={setRespContato} placeholder="Telefone e e-mail" />
+          </div>
+          <label className="flex items-start gap-2 text-sm cursor-pointer" style={{ color: COLORS.ink }}>
+            <input type="checkbox" checked={aceiteOn} onChange={(e) => setAceiteOn(e.target.checked)} className="mt-0.5 w-4 h-4 shrink-0" />
+            <span>Incluir o quadro de <b>aceite e assinaturas</b> no final do PDF<span className="block text-xs" style={{ color: COLORS.inkMuted }}>O cliente assina e coloca a data; a MireData também.</span></span>
+          </label>
+        </div>
+      </div>
 
       <div className="flex gap-2">
         <button
@@ -1925,7 +2478,7 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
               integration_setup_value: hasIntegration ? Number(integrationSetupValue) || 0 : 0,
               integration_monthly_value: hasIntegration ? Number(integrationMonthlyValue) || 0 : 0,
               monthly_value: monthlyTotal, implantacao_value: implantacaoTotal, monthly_due_day: null,
-              valid_until: validUntil || null, body_text: bodyText,
+              valid_until: validUntil || null, body_text: currentBody(),
             }, prospect);
           }}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold border disabled:opacity-40 hover:bg-white/5 transition"
@@ -1955,7 +2508,7 @@ function ProposalForm({ initial, prospects, clients, settings, onSaveProspect, o
               integration_setup_value: hasIntegration ? Number(integrationSetupValue) || 0 : 0,
               integration_monthly_value: hasIntegration ? Number(integrationMonthlyValue) || 0 : 0,
               monthly_value: monthlyTotal, implantacao_value: implantacaoTotal, monthly_due_day: null,
-              valid_until: validUntil || null, body_text: bodyText,
+              valid_until: validUntil || null, body_text: bodyForSave(),
             });
           }}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 shadow-sm hover:opacity-90 transition"
@@ -7608,7 +8161,15 @@ function App() {
     showToast(willCancel ? (effDate > todayStr() ? `Cancelamento agendado para ${new Date(effDate + "T00:00:00").toLocaleDateString("pt-BR")}. Segue cobrando até lá.` : "Loja marcada como cancelada.") : "Loja reativada.");
   }
 
+  // Modelo novo da proposta (faixa escura, valores em destaque, seções, aceite). O modelo antigo fica de reserva, caso algo dê erro.
   function generateProposalPDF(p, prospect) {
+    // proposta já existente: o PDF mantém a data de emissão original (essa data não vai para o banco, só para o desenho)
+    const pp = (!p.created_at && editingProposal && editingProposal.id === p.id && editingProposal.created_at) ? { ...p, created_at: editingProposal.created_at } : p;
+    try { return buildProposalPdf(pp, prospect); }
+    catch (e) { console.error("Modelo novo da proposta falhou; usando o modelo antigo:", e); return generateProposalPDFLegacy(p, prospect); }
+  }
+
+  function generateProposalPDFLegacy(p, prospect) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -9849,7 +10410,7 @@ function App() {
 
               {showProposalForm && (
                 <FormHost item={editingProposal}>
-                  <ProposalForm initial={editingProposal} prospects={prospects} clients={clients} settings={settings} onSaveProspect={handleSaveProspect} onSave={handleSaveProposal} onPreview={previewProposalPDF} onCancel={() => { setShowProposalForm(false); setEditingProposal(null); }} />
+                  <ProposalForm initial={editingProposal} proposals={proposals} prospects={prospects} clients={clients} settings={settings} onSaveProspect={handleSaveProspect} onSave={handleSaveProposal} onPreview={previewProposalPDF} onCancel={() => { setShowProposalForm(false); setEditingProposal(null); }} />
                 </FormHost>
               )}
 

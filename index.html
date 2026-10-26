@@ -1579,6 +1579,19 @@ function buildProposalPdf(p, prospect) {
   return doc;
 }
 
+// Rodapé dos PDFs de cabeçalho centralizado (pedido de etiqueta e modelo antigo da proposta): endereço em 2 linhas centralizadas
+// e "Página X de Y" no canto direito da 1ª linha. Sempre em Helvetica (não herda a fonte do corpo do documento) e sem cruzar o endereço.
+function drawCenteredFooter(doc, addr1, addr2) {
+  const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight();
+  const n = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(140);
+    doc.text(addr1, pw / 2, ph - 10.5, { align: "center" });
+    doc.text(addr2, pw / 2, ph - 6.5, { align: "center" });
+    doc.text(`Página ${i} de ${n}`, pw - 14, ph - 10.5, { align: "right" });
+  }
+}
 function applyTemplate(tpl, client, monthDate, link) {
   return (tpl || "")
     .replaceAll("{nome}", client.name || "")
@@ -8385,14 +8398,7 @@ function App() {
       }
     }
 
-    const pageCountP = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCountP; i++) {
-      doc.setPage(i);
-      doc.setFontSize(7.5);
-      doc.setTextColor(140);
-      doc.text(`${COMPANY_ADDRESS_1}  ·  ${COMPANY_ADDRESS_2}`, pageWidth / 2, 290, { align: "center" });
-      doc.text(`Página ${i} de ${pageCountP}`, pageWidth - 14, 290, { align: "right" });
-    }
+    drawCenteredFooter(doc, COMPANY_ADDRESS_1, COMPANY_ADDRESS_2);
     return doc;
   }
 
@@ -8592,6 +8598,11 @@ function App() {
     }
     function fmtNum(v) { return (Number(v) || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
+    // O conteúdo vai até BOTTOM; abaixo disso fica o rodapé (endereço e "Página X de Y"). Cada bloco só começa onde cabe inteiro.
+    const BOTTOM = doc.internal.pageSize.getHeight() - 17;
+    function newPage() { doc.addPage(); y = 20; doc.setFont("courier", "normal"); }
+    function ensureSpace(h) { if (y + h > BOTTOM) newPage(); }
+
     doc.setFont("courier", "normal");
     dashedLine(y); y += 6;
     doc.setFontSize(9);
@@ -8606,7 +8617,7 @@ function App() {
 
     let totalQtd = 0;
     (r.items || []).forEach((it, idx) => {
-      if (y > 265) { doc.addPage(); y = 20; doc.setFont("courier", "normal"); }
+      ensureSpace(idx === (r.items || []).length - 1 ? 14 : 1);   // o último item leva o Total junto
       const qtd = Number(it.quantidade) || 0;
       totalQtd += qtd;
       const vTotal = qtd * (Number(it.valorUnit) || 0);
@@ -8629,10 +8640,15 @@ function App() {
     dashedLine(y); y += 8;
 
     doc.setFontSize(9);
-    if (r.payment_term) { doc.text(`PRAZO DE ENTREGA: ${r.payment_term.toUpperCase()}`, 14, y); y += 6; }
-    if (r.payment_method) { doc.text(`FORMA DE PAGAMENTO: ${r.payment_method.toUpperCase()}    R$ ${fmtNum(total)}`, 14, y); y += 6; }
-    if (r.pix_key) { doc.text(`CHAVE PIX: ${r.pix_key}${r.pix_favorecido ? " - " + r.pix_favorecido.toUpperCase() : ""}`, 14, y); y += 6; }
-    if (r.freight) { doc.text(`FRETE: ${r.freight.toUpperCase()}`, 14, y); y += 6; }
+    // Prazo, forma de pagamento, chave PIX e frete: o bloco inteiro cabe na página (linha muito longa é quebrada na largura da folha)
+    const payTexts = [];
+    if (r.payment_term) payTexts.push(`PRAZO DE ENTREGA: ${r.payment_term.toUpperCase()}`);
+    if (r.payment_method) payTexts.push(`FORMA DE PAGAMENTO: ${r.payment_method.toUpperCase()}    R$ ${fmtNum(total)}`);
+    if (r.pix_key) payTexts.push(`CHAVE PIX: ${r.pix_key}${r.pix_favorecido ? " - " + r.pix_favorecido.toUpperCase() : ""}`);
+    if (r.freight) payTexts.push(`FRETE: ${r.freight.toUpperCase()}`);
+    const payWrapped = payTexts.map((t) => doc.splitTextToSize(t, 182));
+    ensureSpace(payWrapped.reduce((sum, w) => sum + 6 + (w.length - 1) * 4.5, 0) + 2);
+    payWrapped.forEach((w) => { w.forEach((ln, k) => doc.text(ln, 14, y + k * 4.5)); y += 6 + (w.length - 1) * 4.5; });
     y += 2;
     dashedLine(y); y += 8;
     doc.setFont(undefined, "normal");
@@ -8641,43 +8657,35 @@ function App() {
       const qrPayload = generatePixPayload({ key: r.pix_key, name: r.pix_favorecido, city: "SAO PAULO", value: total, txid: r.number });
       const qrData = generatePixQRDataURL(qrPayload, 200);
       if (qrData) {
-        if (y > 210) { doc.addPage(); y = 20; }
+        ensureSpace(32);
         try { doc.addImage(qrData, "PNG", 14, y, 32, 32); } catch (e) {}
         doc.setFontSize(7.5);
         doc.setTextColor(100);
         doc.text("Aponte a câmera do seu banco pra pagar", 48, y + 18);
-        y += 36;
+        y += 34;
       }
     }
 
-    y += 12;
-    if (y > 230) { doc.addPage(); y = 20; }
+    y += 8;
+    // Assinatura e OBS. andam juntos: se não couberem embaixo, vão inteiros para a página seguinte (o OBS. nunca fica sozinho).
+    const notesTxt = (r.notes && r.notes.trim()) || "";
+    const obsLines = notesTxt ? doc.splitTextToSize(notesTxt, 166) : [];
+    ensureSpace(9 + 9 + 14 + 18 + Math.max(0, obsLines.length - 1) * 3.8 + 1);
     doc.setDrawColor(220);
     doc.line(14, y, 196, y);
-    y += 10;
-    doc.text("RECEBIDO:", 14, y); y += 10;
-    doc.text("NOME: ______________________________________     Data: ___/___/_____", 14, y); y += 16;
+    y += 9;
+    doc.text("RECEBIDO:", 14, y); y += 9;
+    doc.text("NOME: ______________________________________     Data: ___/___/_____", 14, y); y += 14;
     doc.text("CARIMBO DA EMPRESA", 14, y);
-    y += 22;
-    if (r.notes && r.notes.trim()) {
-      const obsLines = doc.splitTextToSize(r.notes.trim(), 175);
-      if (y + obsLines.length * 5.5 > 275) { doc.addPage(); y = 20; }
+    y += 18;
+    if (obsLines.length) {
       doc.text("OBS.:", 14, y);
       doc.text(obsLines, 30, y);
-      y += obsLines.length * 5.5;
     } else {
-      if (y > 270) { doc.addPage(); y = 20; }
       doc.text("OBS.: ________________________________________________________________________", 14, y);
     }
 
-    const pageCount = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(7.5);
-      doc.setTextColor(140);
-      doc.text(`${COMPANY_ADDRESS_1}  ·  ${COMPANY_ADDRESS_2}`, pageWidth / 2, 290, { align: "center" });
-      doc.text(`Página ${i} de ${pageCount}`, pageWidth - 14, 290, { align: "right" });
-    }
+    drawCenteredFooter(doc, COMPANY_ADDRESS_1, COMPANY_ADDRESS_2);
     return doc;
   }
 

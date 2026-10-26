@@ -1222,6 +1222,13 @@ function proposalListParts(p) {
   parts.push(["Mensalidade", p.monthly_value]);
   return parts;
 }
+// Descrição da integração (texto livre do formulário). Fica guardada nos itens da integração (monthly_items -> "note"),
+// por isso não precisa de coluna nova no banco; propostas antigas não têm e continuam iguais.
+function proposalIntegrationNote(p) {
+  const list = Array.isArray(p && p.monthly_items) ? p.monthly_items : [];
+  const it = list.find((x) => x && /^integracao/.test(String(x.kind || "")) && String(x.note || "").trim());
+  return it ? String(it.note).trim() : "";
+}
 // Monta o estado do editor: seções do texto salvo (ligadas) + seções padrão que não estão no texto (desligadas).
 // "std" marca as seções do texto padrão (essas só se desligam; as criadas pelo usuário também podem ser apagadas).
 function proposalContentFromBody(body, isNew) {
@@ -1270,7 +1277,7 @@ function buildProposalPdf(p, prospect) {
   const items = proposalDropEmptyStores(p.monthly_items || []);
   const isKindPdf = (it, kind, legacyTest) => (it.kind ? it.kind === kind : legacyTest(it));
   const rows6 = [], rows3 = [];
-  function pushRow(desc, qtd, valorImplantacao, valorMensal) {
+  function pushRow(desc, qtd, valorImplantacao, valorMensal, detail) {
     const q = Number(qtd) || 1;
     rows6.push([
       desc, String(q),
@@ -1279,19 +1286,21 @@ function buildProposalPdf(p, prospect) {
       valorImplantacao != null ? fmtMoney(valorImplantacao * q) : "--",
       valorMensal != null ? fmtMoney(valorMensal * q) : "--",
     ]);
-    rows3.push([desc, valorImplantacao != null ? fmtMoney(valorImplantacao * q) : "—", valorMensal != null ? fmtMoney(valorMensal * q) : "—"]);
+    rows3.push([desc, valorImplantacao != null ? fmtMoney(valorImplantacao * q) : "—", valorMensal != null ? fmtMoney(valorMensal * q) : "—", detail || ""]);
   }
   items.filter((it) => isKindPdf(it, "loja", (x) => (x.desc || "").startsWith("Loja"))).forEach((it) => pushRow(it.desc, 1, null, it.value));
   const fabricaItem = items.find((it) => isKindPdf(it, "fabrica", (x) => x.desc === "Fábrica"));
   if (fabricaItem) pushRow("Fábrica", 1, null, fabricaItem.value);
   const producaoItem = items.find((it) => isKindPdf(it, "producao", (x) => x.desc === "Produção"));
   if (producaoItem) pushRow("Produção", 1, null, producaoItem.value);
-  if (p.integration_monthly_value > 0) pushRow(`Mensalidade integração${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, null, p.integration_monthly_value);
+  // a descrição da integração sai embaixo da linha do valor único; se a integração só tem mensalidade, sai embaixo da mensalidade
+  const integNotePdf = proposalIntegrationNote(p);
+  if (p.integration_monthly_value > 0) pushRow(`Mensalidade integração${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, null, p.integration_monthly_value, p.integration_setup_value > 0 ? "" : integNotePdf);
   const installBundle = (p.installation_value || 0) + (p.training_value || 0) + (p.db_transfer_value || 0);
   if (installBundle > 0) pushRow("Implantação (inclui treinamento e transferência de banco de dados, quando houver)", 1, installBundle, null);
   const cloudItem = items.find((it) => isKindPdf(it, "cloud", (x) => x.desc === "Cloud"));
   if (cloudItem) pushRow(`Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, 1, cloudItem.value, null);
-  if (p.integration_setup_value > 0) pushRow(`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, p.integration_setup_value, null);
+  if (p.integration_setup_value > 0) pushRow(`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, p.integration_setup_value, null, integNotePdf);
   const customItemsPdf = items.filter((it) => it.kind ? it.kind === "custom" : (!(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")));
   customItemsPdf.forEach((it) => pushRow(it.desc, 1, it.value, null));
   const customTotalPdf = customItemsPdf.reduce((s, it) => s + (Number(it.value) || 0), 0);
@@ -1470,7 +1479,13 @@ function buildProposalPdf(p, prospect) {
     const cols = [];
     if (showOne) cols.push({ idx: 1, title: oneLabel + " (única)", total: implantacaoTotalPdf, base: implantacaoBaseTotalPdf, disc: descontoImplantacaoPdf });
     if (showMon) cols.push({ idx: 2, title: "Mensalidade", total: mensalidadeTotalPdf, base: mensalidadeBaseTotalPdf, disc: descontoMensalidadePdf });
-    const body = rows3.map((r) => [r[0], ...cols.map((c) => r[c.idx])]);
+    // descrição embaixo do item (ex.: da integração): quebrada na largura da 1ª coluna; a linha da tabela cresce o necessário
+    const DET_FS = 7.8, DET_LH = 3.5, w0 = CW - 40 * cols.length - 6;
+    font("normal", DET_FS, GRAY);
+    const body = rows3.map((r) => {
+      const det = r[3] ? String(r[3]).split("\n").map((l) => l.trim()).filter(Boolean).reduce((acc, l) => acc.concat(wrap(l, w0)), []) : [];
+      return [det.length ? { content: r[0], _det: det } : r[0], ...cols.map((c) => r[c.idx])];
+    });
     const differ = cols.some((c) => Math.abs(c.total - c.base) > 0.004);
     if (differ) {
       body.push(["Subtotal", ...cols.map((c) => fmtMoney(c.base))]);
@@ -1494,6 +1509,7 @@ function buildProposalPdf(p, prospect) {
       margin: { left: ML, right: ML, top: 24, bottom: 22 },
       didParseCell: (d) => {
         if ((d.section === "head" || d.section === "foot") && d.column.index > 0) d.cell.styles.halign = "right";
+        if (d.section === "body" && d.column.index === 0 && d.cell.raw && d.cell.raw._det) d.cell.styles.cellPadding = { top: 2.5, bottom: 2.5 + d.cell.raw._det.length * DET_LH + 0.6, left: 3, right: 3 };
         if (d.section === "body" && d.row.raw) {
           const first = d.row.raw[0];
           if (first === "Subtotal") { d.cell.styles.fontStyle = "bold"; d.cell.styles.textColor = GRAY; }
@@ -1501,6 +1517,11 @@ function buildProposalPdf(p, prospect) {
         }
       },
       didDrawCell: (d) => {
+        if (d.section === "body" && d.column.index === 0 && d.cell.raw && d.cell.raw._det) {
+          font("normal", DET_FS, GRAY);
+          let yy = d.cell.y + 2.5 + d.cell.text.length * (d.cell.styles.fontSize * 1.15 * 0.352778) + 0.3;
+          d.cell.raw._det.forEach((ln) => { doc.text(ln, d.cell.x + 3, yy, { baseline: "top" }); yy += DET_LH; });
+        }
         if (d.section === "body") {
           doc.setDrawColor(LINE[0], LINE[1], LINE[2]); doc.setLineWidth(0.2);
           doc.line(d.cell.x, d.cell.y + d.cell.height, d.cell.x + d.cell.width, d.cell.y + d.cell.height);
@@ -2146,6 +2167,7 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
   const [integrationSetupValue, setIntegrationSetupValue] = useState(initial?.integration_setup_value ?? "");
   const [integrationMonthlyValue, setIntegrationMonthlyValue] = useState(initial?.integration_monthly_value ?? "");
   const [integrationPlatforms, setIntegrationPlatforms] = useState(() => initial?.integration_platforms ? initial.integration_platforms.split(",").map((s) => s.trim()).filter(Boolean) : []);
+  const [integrationDescription, setIntegrationDescription] = useState(() => proposalIntegrationNote(initial));
   const [hasCloud, setHasCloud] = useState(() => existingItems.some((it) => isKind(it, "cloud", (x) => x.desc === "Cloud")));
   const [cloudValue, setCloudValue] = useState(() => existingItems.find((it) => isKind(it, "cloud", (x) => x.desc === "Cloud"))?.value ?? "");
   const [customizations, setCustomizations] = useState(() => {
@@ -2195,6 +2217,8 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
 
   // nome do valor cobrado uma vez (o mesmo do PDF): se só a integração entra nele, chama "Integração"
   const oneLbl = proposalOneTimeLabel(installationTotal + trainingTotal + dbTransferTotal > 0, hasCloud, customizations.some((it) => String(it.desc || "").trim() || Number(it.value) > 0), integrationSetupTotal > 0);
+  // descrição da integração: vai junto dos itens da integração (os dois, quando existem)
+  const integNote = hasIntegration && integrationDescription.trim() ? { note: integrationDescription.trim() } : {};
   // ----- Conteúdo da proposta: ligar/desligar, editar, reordenar, copiar -----
   function updateSection(id, patch) { setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s))); }
   function moveSection(id, dir) {
@@ -2366,6 +2390,14 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
               ))}
             </div>
           )}
+          {hasIntegration && (
+            <div className="mt-2 sm:ml-[168px]">
+              <span className="block text-[11px] font-semibold mb-0.5" style={{ color: COLORS.inkMuted }}>Descrição da integração <span className="font-normal" style={{ color: COLORS.inkFaint }}>(sai na proposta, embaixo do item)</span>{integrationDescription.length >= 1200 && <span className="font-normal float-right" style={{ color: COLORS.warn }}>{integrationDescription.length}/1500</span>}</span>
+              <textarea value={integrationDescription} onChange={(e) => setIntegrationDescription(e.target.value)} rows={3} maxLength={1500}
+                placeholder="Ex: Integração do sistema com a loja virtual: pedidos, estoque e preços sincronizados automaticamente."
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none resize-y" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
+            </div>
+          )}
         </div>
 
         {/* Customizações */}
@@ -2516,8 +2548,8 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
               ...stores.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Loja", value: Number(it.value) || 0, kind: "loja" })),
               ...(hasFactory ? [{ desc: "Fábrica", value: Number(factoryValue) || 0, kind: "fabrica" }] : []),
               ...(hasProduction ? [{ desc: "Produção", value: Number(productionValue) || 0, kind: "producao" }] : []),
-              ...(hasIntegration && Number(integrationSetupValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - único`, value: Number(integrationSetupValue) || 0, kind: "integracao_setup" }] : []),
-              ...(hasIntegration && Number(integrationMonthlyValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - mensal`, value: Number(integrationMonthlyValue) || 0, kind: "integracao_mensal" }] : []),
+              ...(hasIntegration && Number(integrationSetupValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - único`, value: Number(integrationSetupValue) || 0, kind: "integracao_setup", ...integNote }] : []),
+              ...(hasIntegration && Number(integrationMonthlyValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - mensal`, value: Number(integrationMonthlyValue) || 0, kind: "integracao_mensal", ...integNote }] : []),
               ...(hasCloud ? [{ desc: "Cloud", value: Number(cloudValue) || 0, kind: "cloud" }] : []),
               ...customizations.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Customização", value: Number(it.value) || 0, kind: "custom" })),
             ];
@@ -2546,8 +2578,8 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
               ...stores.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Loja", value: Number(it.value) || 0, kind: "loja" })),
               ...(hasFactory ? [{ desc: "Fábrica", value: Number(factoryValue) || 0, kind: "fabrica" }] : []),
               ...(hasProduction ? [{ desc: "Produção", value: Number(productionValue) || 0, kind: "producao" }] : []),
-              ...(hasIntegration && Number(integrationSetupValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - único`, value: Number(integrationSetupValue) || 0, kind: "integracao_setup" }] : []),
-              ...(hasIntegration && Number(integrationMonthlyValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - mensal`, value: Number(integrationMonthlyValue) || 0, kind: "integracao_mensal" }] : []),
+              ...(hasIntegration && Number(integrationSetupValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - único`, value: Number(integrationSetupValue) || 0, kind: "integracao_setup", ...integNote }] : []),
+              ...(hasIntegration && Number(integrationMonthlyValue) > 0 ? [{ desc: `Integração${integrationPlatforms.length ? " (" + integrationPlatforms.join(", ") + ")" : ""} - mensal`, value: Number(integrationMonthlyValue) || 0, kind: "integracao_mensal", ...integNote }] : []),
               ...(hasCloud ? [{ desc: "Cloud", value: Number(cloudValue) || 0, kind: "cloud" }] : []),
               ...customizations.filter((it) => it.desc.trim() || Number(it.value) > 0).map((it) => ({ desc: it.desc.trim() || "Customização", value: Number(it.value) || 0, kind: "custom" })),
             ];
@@ -8334,13 +8366,14 @@ function App() {
     if (fabricaItem) pushRow("Fábrica", 1, null, fabricaItem.value);
     const producaoItem = items.find((it) => isKindPdf(it, "producao", (x) => x.desc === "Produção"));
     if (producaoItem) pushRow("Produção", 1, null, producaoItem.value);
-    if (p.integration_monthly_value > 0) pushRow(`Mensalidade integração${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, null, p.integration_monthly_value);
+    const integNoteL = proposalIntegrationNote(p).replace(/\s*\n+\s*/g, " ");
+    if (p.integration_monthly_value > 0) pushRow(`Mensalidade integração${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}${p.integration_setup_value > 0 || !integNoteL ? "" : " - " + integNoteL}`, 1, null, p.integration_monthly_value);
 
     const installBundle = (p.installation_value || 0) + (p.training_value || 0) + (p.db_transfer_value || 0);
     if (installBundle > 0) pushRow("Implantação (inclui treinamento e transferência de banco de dados, quando houver)", 1, installBundle, null);
     const cloudItem = items.find((it) => isKindPdf(it, "cloud", (x) => x.desc === "Cloud"));
     if (cloudItem) pushRow(`Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, 1, cloudItem.value, null);
-    if (p.integration_setup_value > 0) pushRow(`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, p.integration_setup_value, null);
+    if (p.integration_setup_value > 0) pushRow(`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}${integNoteL ? " - " + integNoteL : ""}`, 1, p.integration_setup_value, null);
     const customItemsPdf = items.filter((it) => it.kind ? it.kind === "custom" : (!(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")));
     customItemsPdf.forEach((it) => pushRow(it.desc, 1, it.value, null));
 

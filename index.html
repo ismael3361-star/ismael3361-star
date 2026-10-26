@@ -4986,6 +4986,16 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
   const total = items.reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
   const canSave = clientId && number.trim();
 
+  // Qual botão está gravando agora ("gerar" = Gerar e salvar romaneio; "salvar" = Só salvar). Enquanto grava, os dois ficam travados.
+  const [saving, setSaving] = useState("");
+  async function runSave(kind) {
+    if (saving) return;
+    setSaving(kind);
+    // O onSave é chamado já no clique (antes de qualquer espera): "Gerar e salvar" precisa abrir a aba do PDF nesse instante,
+    // senão o navegador bloqueia. "Só salvar" grava o pedido e o PDF no servidor, mas não abre o PDF.
+    try { await onSave(buildPayload(), { abrirPdf: kind !== "salvar" }); } finally { setSaving(""); }
+  }
+
   function buildPayload() {
     const validItems = items.filter((it) => it.descricao.trim() || Number(it.quantidade) > 0);
     const total = validItems.reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
@@ -5134,14 +5144,18 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
         <button onClick={addItem} className="mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>＋ Adicionar item</button>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button disabled={!canSave} onClick={() => onPreview(buildPayload(), prospect)}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold border disabled:opacity-40 hover:bg-white/5 transition" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>
           👁️ Visualizar
         </button>
-        <button disabled={!canSave} onClick={() => onSave(buildPayload())}
+        <button disabled={!canSave || !!saving} onClick={() => runSave("salvar")} title="Só grava o pedido, sem abrir o PDF. O PDF fica guardado e abre depois em Ver / imprimir."
+          className="px-5 py-2.5 rounded-lg text-sm font-semibold border disabled:opacity-40 hover:bg-white/5 transition" style={{ borderColor: COLORS.success, color: COLORS.success }}>
+          {saving === "salvar" ? "💾 Salvando…" : "💾 Só salvar"}
+        </button>
+        <button disabled={!canSave || !!saving} onClick={() => runSave("gerar")}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40 shadow-sm hover:opacity-90 transition" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>
-          Gerar e salvar romaneio
+          {saving === "gerar" ? "Salvando…" : "Gerar e salvar romaneio"}
         </button>
         <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-white/5 transition" style={{ color: COLORS.inkMuted }}>← Voltar</button>
       </div>
@@ -8697,19 +8711,21 @@ function App() {
     } catch (e) { showToast("Erro ao gerar a visualização."); console.error(e); }
   }
 
-  async function handleSaveRomaneio(r) {
+  async function handleSaveRomaneio(r, opts) {
     if (savingDocRef.current.romaneio) return;   // já está gravando: ignora clique repetido
+    // "Só salvar" (abrirPdf: false): grava o pedido e guarda o PDF no servidor, mas não abre o PDF numa aba
+    const abrirPdf = !opts || opts.abrirPdf !== false;
     savingDocRef.current.romaneio = true;
     const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
     const isNew = !editingRomaneio;
     // abre a aba já no clique (evita bloqueio de pop-up); o PDF aparece nela assim que fica pronto,
     // sem esperar a gravação no servidor
-    const previewWin = FileCache.openBlankTab("Gerando romaneio...");
+    const previewWin = abrirPdf ? FileCache.openBlankTab("Gerando romaneio...") : null;
     let shown = false;
     try {
       const doc = generateRomaneioPDF(r, prospect);
       const blob = doc.output("blob");
-      shown = FileCache.showBlob(previewWin, blob);
+      if (abrirPdf) shown = FileCache.showBlob(previewWin, blob);
       const path = `romaneios/${r.number.replace(/[^a-zA-Z0-9-_]/g, "_")}-${r.id}.pdf`;
       const { error } = await storageUpload(path, blob, { upsert: true, contentType: "application/pdf" });
       if (error) throw error;
@@ -8730,7 +8746,7 @@ function App() {
       }
       setShowRomaneioForm(false);
       setEditingRomaneio(null);
-      showToast("Romaneio gerado e salvo.");
+      showToast(abrirPdf ? "Romaneio gerado e salvo." : "Romaneio salvo.");
     } catch (e) {
       console.error("Erro ao salvar romaneio:", e);
       if (shown) {
@@ -10655,8 +10671,25 @@ function App() {
                 }
                 const abertoList = romaneios.filter((r) => !r.paid);
                 const pagoList = romaneios.filter((r) => r.paid);
+                // Pedidos em aberto = os que ainda estão "Pendente" (mesma lista que aparece logo abaixo); o valor é o total de itens de cada pedido
+                const abertoTotal = abertoList.reduce((s, r) => s + romaneioVenda(r), 0);
+                const kpiCard = "rounded-2xl p-4 border";
+                const kpiBg = { background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder };
                 return (
                   <>
+                    {romaneios.length > 0 && (
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className={kpiCard + " col-span-2 sm:col-span-1"} style={kpiBg}>
+                          <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.inkMuted }}>Pedidos em aberto</div>
+                          <div className="text-2xl font-extrabold tnum" style={{ color: COLORS.ink }}>{abertoList.length}</div>
+                        </div>
+                        {/* no celular o total ocupa a linha toda e vem primeiro (o valor não cabe em meia largura) */}
+                        <div className={kpiCard + " col-span-2 sm:col-span-1 order-first sm:order-last"} style={kpiBg}>
+                          <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Total de pedidos em aberto</div>
+                          <div className="text-2xl font-extrabold tnum whitespace-nowrap" style={{ color: COLORS.ink }}>{money(abertoTotal)}</div>
+                        </div>
+                      </div>
+                    )}
                     <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                       {romaneios.length === 0 ? (
                         <div className="p-10 text-center"><div className="text-3xl mb-2">📦</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio gerado ainda.</div></div>

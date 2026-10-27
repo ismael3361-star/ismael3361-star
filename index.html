@@ -6060,7 +6060,11 @@ function App() {
   const [editingSchedule, setEditingSchedule] = useState(null);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
-  const [expenseFilter, setExpenseFilter] = useState("todos");
+  // Contas a Pagar abre só com as contas em aberto; "Pagos" e "Todos" continuam nos botões. A categoria escolhida vale junto com a situação.
+  const [expenseFilter, setExpenseFilter] = useState("aberto");
+  const [expenseCategory, setExpenseCategory] = useState("");
+  // ao sair de Contas a Pagar os botões voltam ao padrão: da próxima vez que a tela abrir, só as contas em aberto
+  useEffect(() => { if (tab !== "despesas") { setExpenseFilter("aberto"); setExpenseCategory(""); } }, [tab]);
   const [hideValues, setHideValues] = useState(false);
   const [iconMenu, setIconMenu] = useState(() => { try { return localStorage.getItem("adm_icon_menu") !== "0"; } catch (e) { return true; } });
   const [openGroup, setOpenGroup] = useState(null);
@@ -6593,9 +6597,12 @@ function App() {
   }
   async function handleToggleExpensePaid(exp) {
     const willPay = !exp.paid;
-    await supa.from("company_expenses").update({ paid: willPay, paid_date: willPay ? todayStr() : null, paid_value: willPay ? exp.value : null }).eq("id", exp.id);
+    const { error: payError } = await supa.from("company_expenses").update({ paid: willPay, paid_date: willPay ? todayStr() : null, paid_value: willPay ? exp.value : null }).eq("id", exp.id);
     await loadExpenses();
+    if (payError) { showToast(`Erro: ${payError.message || "não foi possível atualizar a conta"}`); return; }
     if (willPay) logActivity(`Despesa paga: ${exp.category} — ${exp.description || ""}`);
+    // na lista de contas em aberto a conta paga some da tela: o aviso diz para onde ela foi
+    if (willPay && (expenseFilter === "aberto" || expenseFilter === "atrasado")) showToast("Conta paga ✓ Ela saiu da lista de contas em aberto — veja em “Pagos”.");
     if (willPay && exp.file_url && !exp.file_url_watermarked) {
       try {
         const blob = await generatePaidWatermarkBlob(exp.file_url, exp.file_name);
@@ -12454,12 +12461,14 @@ function App() {
                 const venceHoje = expenses.filter((e) => !e.paid && e.due_date === today);
                 const venceEmBreve = expenses.filter((e) => !e.paid && e.due_date && e.due_date >= today && e.due_date <= in7);
                 const filtered = expenses.filter((e) => {
-                  if (expenseFilter === "todos") return true;
+                  if (expenseCategory && e.category !== expenseCategory) return false;
                   if (expenseFilter === "aberto") return !e.paid;
-                  if (expenseFilter === "pago") return e.paid;
-                  if (expenseFilter === "atrasado") return !e.paid && e.due_date && e.due_date < today;
-                  return e.category === expenseFilter;
-                }).sort((a, b) => (a.paid === b.paid ? 0 : a.paid ? 1 : -1));
+                  if (expenseFilter === "pago") return !!e.paid;
+                  if (expenseFilter === "atrasado") return !e.paid && !!e.due_date && e.due_date < today;
+                  return true;
+                }).sort((a, b) => (!!a.paid === !!b.paid ? 0 : a.paid ? 1 : -1));
+                // abriu em "Em aberto" e não sobrou nenhuma: mensagem própria (e diz onde estão as pagas)
+                const nenhumaEmAberto = filtered.length === 0 && expenses.length > 0 && expenseFilter === "aberto" && !expenseCategory;
                 function sendTodayDueWhatsApp() {
                   const hojeFmt = new Date(today + "T00:00:00").toLocaleDateString("pt-BR");
                   const linhas = venceHoje.map((e) => `• ${e.category}${e.description ? " (" + e.description + ")" : ""}: ${fmtMoney(e.value)}`).join("\n");
@@ -12525,10 +12534,16 @@ function App() {
                     )}
 
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                      <div className="flex flex-wrap gap-1.5">
-                        {["todos", "aberto", "pago", "atrasado", ...EXPENSE_CATEGORIES].map((f) => (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {["todos", "aberto", "pago", "atrasado"].map((f) => (
                           <button key={f} onClick={() => setExpenseFilter(f)} className="text-xs font-semibold px-2.5 py-1.5 rounded-full border" style={{ borderColor: expenseFilter === f ? COLORS.brandLight : COLORS.cardBorder, color: expenseFilter === f ? COLORS.brandLight : COLORS.inkMuted, background: expenseFilter === f ? "rgba(124,92,255,0.1)" : "transparent" }}>
-                            {f === "todos" ? "Todos" : f === "aberto" ? "Em aberto" : f === "pago" ? "Pagos" : f === "atrasado" ? "Atrasados" : f}
+                            {f === "todos" ? "Todos" : f === "aberto" ? "Em aberto" : f === "pago" ? "Pagos" : "Atrasados"}
+                          </button>
+                        ))}
+                        <span className="self-stretch w-px mx-1" style={{ background: COLORS.cardBorder }} />
+                        {EXPENSE_CATEGORIES.map((c) => (
+                          <button key={c} onClick={() => setExpenseCategory(expenseCategory === c ? "" : c)} title={expenseCategory === c ? "Toque de novo para tirar o filtro desta categoria" : undefined} className="text-xs font-semibold px-2.5 py-1.5 rounded-full border" style={{ borderColor: expenseCategory === c ? COLORS.brandLight : COLORS.cardBorder, color: expenseCategory === c ? COLORS.brandLight : COLORS.inkMuted, background: expenseCategory === c ? "rgba(124,92,255,0.1)" : "transparent" }}>
+                            {c}
                           </button>
                         ))}
                       </div>
@@ -12543,7 +12558,11 @@ function App() {
                     {!showExpenseForm && (
                       <div className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                         {filtered.length === 0 ? (
-                          <div className="p-10 text-center"><div className="text-3xl mb-2">🧾</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma despesa encontrada.</div></div>
+                          nenhumaEmAberto ? (
+                            <div className="p-10 text-center"><div className="text-3xl mb-2">✅</div><div className="text-sm font-semibold" style={{ color: COLORS.ink }}>Nenhuma conta em aberto.</div><div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>As contas pagas estão no botão “Pagos”.</div></div>
+                          ) : (
+                            <div className="p-10 text-center"><div className="text-3xl mb-2">🧾</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma despesa encontrada.</div></div>
+                          )
                         ) : filtered.map((e, i) => {
                           const isLate = !e.paid && e.due_date && e.due_date < today;
                           return (

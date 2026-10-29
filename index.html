@@ -8017,7 +8017,8 @@ function App() {
       startY,
       head: [["Cliente", "Solicitado por", "Migrado por", { content: "Data", styles: { halign: "center" } }, "Banco migrado", "O que foi migrado", { content: "Valor", styles: { halign: "center" } }, "Status", { content: "Conclusão", styles: { halign: "center" } }, "O que foi feito (justificativa do valor)"]],
       body: rows,
-      foot: [[{ content: "TOTAL EM ABERTO", colSpan: 6, styles: { halign: "left" } }, { content: fmtMoney(totalValor), styles: { halign: "center" } }, { content: "", colSpan: 3 }]],
+      foot: [[{ content: "TOTAL EM ABERTO", colSpan: 6, styles: { halign: "left" } }, { content: fmtMoney(totalValor), styles: { halign: "center", overflow: "visible" } }, { content: "", colSpan: 3 }]],
+      showFoot: "lastPage", // o total geral sai só no fim da última folha (por padrão a tabela repete o rodapé em todas)
       styles: { fontSize: 7.5, cellPadding: 2, valign: "top", overflow: "linebreak" },
       headStyles: { fillColor: [124, 92, 255], fontSize: 7.5 },
       footStyles: { fillColor: [230, 230, 245], textColor: [30, 30, 30], fontStyle: "bold", fontSize: 7.5 },

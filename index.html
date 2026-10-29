@@ -704,17 +704,169 @@ function todayStr() {
 }
 function waNumber(phone) { let d = onlyDigits(phone); if (d.length <= 11) d = "55" + d; return d; }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-// Valor da mensalidade conforme o mês: se o cliente tem reajuste agendado ("new_value" a partir de "new_value_from"),
-// os meses a partir dessa data usam o valor novo; os anteriores continuam com o valor antigo.
-function valueForMonth(c, mk) {
-  if (c && c.new_value_from && c.new_value != null && mk && mk >= c.new_value_from) return Number(c.new_value) || 0;
-  return Number(c?.value) || 0;
+// ---------------------------------------------------------------------------
+// Mensalidade mês a mês.
+// Cada cliente tem um valor base ("value") e, quando precisa, mudanças com data: "de AAAA-MM em diante o valor é X".
+// Assim dá para reajustar sem mexer no mês atual nem nos meses anteriores. As mudanças ficam na lista "price_history"
+// ([{ from: "AAAA-MM", value: N }]); o reajuste agendado da versão anterior (new_value / new_value_from) também é lido.
+// ---------------------------------------------------------------------------
+const PRICE_MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+function priceSteps(c) {
+  const hasHist = !!c && Array.isArray(c.price_history) && c.price_history.length > 0;
+  const hasOld = !!c && !!c.new_value_from && c.new_value != null;
+  if (!hasHist && !hasOld) return [];
+  const byFrom = new Map();
+  if (hasOld) byFrom.set(String(c.new_value_from), { from: String(c.new_value_from), value: Number(c.new_value) || 0 });
+  if (hasHist) c.price_history.forEach((h) => {
+    if (h && PRICE_MONTH_RE.test(String(h.from || "")) && h.value != null && h.value !== "") byFrom.set(String(h.from), { from: String(h.from), value: Number(h.value) || 0 });
+  });
+  return [...byFrom.values()].sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
 }
-function effectiveValue(c, b) {
-  return valueForMonth(c, b?.month_key)
+// Valor da mensalidade em um mês ("AAAA-MM"); sem informar o mês, vale o mês de hoje.
+function valueForMonth(c, mk) {
+  const base = Number(c?.value) || 0;
+  const steps = priceSteps(c);
+  if (!steps.length) return base;
+  const key = mk || monthKey(new Date());
+  let v = base;
+  for (const st of steps) { if (key >= st.from) v = st.value; else break; }
+  return v;
+}
+// mk = mês que está na tela: cliente sem boleto lançado nesse mês também usa o valor do mês (e não o valor antigo)
+function effectiveValueAt(c, b, mk) {
+  return valueForMonth(c, (b && b.month_key) || mk)
     + Number(b?.consultations_value ?? c?.consultations_value ?? 0)
     + Number(b?.vpn_value || 0)
     + Number(b?.server_change_value || 0);
+}
+function effectiveValue(c, b) { return effectiveValueAt(c, b); }
+// cliente que tem (ou terá) mensalidade: valor base ou alguma mudança de valor com data
+function hasMonthlyValue(c) { return (Number(c?.value) || 0) > 0 || priceSteps(c).some((st) => st.value > 0); }
+// valor de hoje para mostrar em campos (vazio se o cliente nunca teve valor)
+function currentPriceOrBlank(c) {
+  if (!c) return "";
+  if (!priceSteps(c).length) return c.value ?? "";
+  return valueForMonth(c);
+}
+function addMonthsKey(mk, n) { const [y, m] = String(mk).split("-").map(Number); const t = y * 12 + (m - 1) + n; return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, "0")}`; }
+function nextMonthKey(mk) { return addMonthsKey(mk, 1); }
+function monthLabelPT(mk) { const [y, m] = String(mk).split("-").map(Number); return `${MONTHS_PT[(m || 1) - 1].toLowerCase()}/${y}`; }
+// mesmo dia em outro mês (no último dia, se o mês for mais curto)
+function dateInMonth(dateStr, mk) {
+  const [y, m] = String(mk).split("-").map(Number);
+  const day = Number(String(dateStr || "").slice(8, 10)) || new Date().getDate();
+  const last = new Date(y, m, 0).getDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(Math.min(day, last)).padStart(2, "0")}`;
+}
+// Aplica uma mudança de valor "de AAAA-MM em diante": vale desse mês para a frente e substitui as mudanças marcadas depois dele.
+function applyStepChange(steps, base, newValue, from) {
+  const v = Number(newValue) || 0;
+  const kept = steps.filter((st) => st.from < from);
+  const dropped = steps.filter((st) => st.from >= from);
+  const before = kept.length ? kept[kept.length - 1].value : (Number(base) || 0);
+  return { steps: before === v ? kept : kept.concat([{ from, value: v }]), dropped };
+}
+const PRICE_SQL_MSG = "Falta rodar UMA vez o arquivo adicionar-historico-mensalidade-clientes.sql no SQL Editor do Supabase (ele guarda o histórico de valores). Depois é só tentar de novo — nada foi alterado.";
+// O que gravar no cliente para guardar a lista de mudanças. cols diz quais colunas existem no banco: { history, legacy }.
+function priceStepsPatch(c, steps, cols) {
+  const k = cols || {};
+  const hadAny = !!c && ((Array.isArray(c.price_history) && c.price_history.length > 0) || !!c.new_value_from);
+  if (k.history) {
+    if (!steps.length && !hadAny) return { patch: {} };
+    const patch = { price_history: steps };
+    if (c && ("new_value_from" in c)) { patch.new_value = null; patch.new_value_from = null; }   // o reajuste agendado antigo passa para a lista nova
+    return { patch };
+  }
+  if (!steps.length) return { patch: (k.legacy && c && c.new_value_from) ? { new_value: null, new_value_from: null } : {} };
+  if (steps.length === 1 && k.legacy) return { patch: { new_value: steps[0].value, new_value_from: steps[0].from } };
+  return { error: PRICE_SQL_MSG };
+}
+function resolvePriceFrom(choice, steps, defaultFrom) {
+  const mode = choice.mode === "all" && steps.length ? "next" : choice.mode;
+  return { mode, from: mode === "all" ? null : mode === "other" ? (choice.from || defaultFrom) : defaultFrom };
+}
+function priceMonthOptions(nowKey, extra) {
+  const out = [];
+  for (let i = -12; i <= 24; i++) out.push(addMonthsKey(nowKey, i));
+  if (extra && !out.includes(extra)) out.push(extra);
+  return out.sort();
+}
+// Escolha de "a partir de qual mês vale o valor novo": usada no formulário do cliente e na janela da tela de Mensalidades.
+function PriceFromPicker({ oldValue, newValue, steps, nowKey, defaultFrom, choice, setChoice }) {
+  const canAll = steps.length === 0;
+  const { mode, from } = resolvePriceFrom(choice, steps, defaultFrom);
+  const dropped = from ? steps.filter((st) => st.from >= from) : [];
+  const touchesNow = mode === "all" || from <= nowKey;
+  const nowLbl = monthLabelPT(nowKey);
+  const optStyle = { color: COLORS.ink };
+  return (
+    <div className="rounded-xl border p-3 space-y-2" data-price-picker="1" style={{ borderColor: touchesNow ? COLORS.warn : COLORS.brandLight, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold" style={{ color: COLORS.ink }}>A partir de qual mês vale o valor novo?</div>
+      <div className="text-xs" style={{ color: COLORS.inkMuted }}>{fmtMoney(oldValue)} → <b style={{ color: COLORS.ink }}>{fmtMoney(newValue)}</b></div>
+      <label className="flex items-start gap-2 text-sm cursor-pointer" style={optStyle}>
+        <input type="radio" name="price-from" className="mt-1" checked={mode === "next"} onChange={() => setChoice({ ...choice, mode: "next" })} />
+        <span>
+          <b>A partir de {monthLabelPT(defaultFrom)}</b>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1.5" style={{ background: "rgba(34,197,94,0.18)", color: COLORS.success }}>recomendado</span>
+          <span className="block text-xs" style={{ color: COLORS.inkMuted }}>{nowLbl} e os meses anteriores continuam como estão.</span>
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-sm cursor-pointer" style={optStyle}>
+        <input type="radio" name="price-from" className="mt-1.5" checked={mode === "other"} onChange={() => setChoice({ ...choice, mode: "other", from: choice.from || defaultFrom })} />
+        <span className="flex-1">Outro mês:
+          <select value={choice.from || defaultFrom} onChange={(e) => setChoice({ mode: "other", from: e.target.value })} className="ml-2 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
+            {priceMonthOptions(nowKey, choice.from || defaultFrom).map((k) => <option key={k} value={k}>{monthLabelPT(k)}</option>)}
+          </select>
+        </span>
+      </label>
+      {canAll && (
+        <label className="flex items-start gap-2 text-sm cursor-pointer" style={optStyle}>
+          <input type="radio" name="price-from" className="mt-1" checked={mode === "all"} onChange={() => setChoice({ ...choice, mode: "all" })} />
+          <span>Em todos os meses <span className="text-xs" style={{ color: COLORS.inkMuted }}>(só para corrigir um valor que estava errado desde o cadastro)</span></span>
+        </label>
+      )}
+      {touchesNow && (
+        <div className="text-xs font-semibold" style={{ color: COLORS.warn }}>
+          ⚠ {mode === "all" ? "Muda todos os meses, inclusive o mês atual e os anteriores." : from === nowKey ? `Isso muda o mês atual (${nowLbl}).` : `Isso muda o mês atual (${nowLbl}) e os meses a partir de ${monthLabelPT(from)}.`}
+        </div>
+      )}
+      {dropped.length > 0 && (
+        <div className="text-xs" style={{ color: COLORS.inkMuted }}>Substitui {dropped.length > 1 ? "os reajustes" : "o reajuste"} de {dropped.map((st) => `${monthLabelPT(st.from)} (${fmtMoney(st.value)})`).join(", ")}.</div>
+      )}
+    </div>
+  );
+}
+// Janela da tela de Mensalidades: aparece quando o valor da mensalidade é mudado no campo do cliente.
+function PriceChangeDialog({ client, oldValue, newValue, nowKey, defaultFrom, onConfirm, onCancel }) {
+  const steps = priceSteps(client);
+  const [choice, setChoice] = useState({ mode: "next", from: defaultFrom });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const { from } = resolvePriceFrom(choice, steps, defaultFrom);
+  async function save() {
+    setSaving(true); setErr("");
+    const msg = await onConfirm(from);
+    if (msg) { setErr(msg); setSaving(false); }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-price-dialog="1" style={{ background: "rgba(0,0,0,0.6)" }} onClick={saving ? undefined : onCancel}>
+      <div className="rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto border p-4 space-y-3" style={{ background: COLORS.card, borderColor: COLORS.cardBorder }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="font-bold text-sm" style={{ color: COLORS.ink }}>Mudar a mensalidade</div>
+            <div className="text-xs" style={{ color: COLORS.inkMuted }}>{client.name}</div>
+          </div>
+          <button type="button" onClick={onCancel} disabled={saving} className="text-lg px-2" style={{ color: COLORS.inkMuted }}>✕</button>
+        </div>
+        <PriceFromPicker oldValue={oldValue} newValue={newValue} steps={steps} nowKey={nowKey} defaultFrom={defaultFrom} choice={choice} setChoice={setChoice} />
+        {err && <div className="text-xs rounded-lg p-2" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.1)" }}>{err}</div>}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" onClick={save} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>{saving ? "Salvando..." : from ? `Salvar a partir de ${monthLabelPT(from)}` : "Salvar em todos os meses"}</button>
+          <button type="button" onClick={onCancel} disabled={saving} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // Uma consulta pode ter sido feita por mais de um cliente (mesmo CNPJ consultado por lojas diferentes),
@@ -804,6 +956,14 @@ function isCancelledInMonth(client, monthDate) {
   }
   return true;
 }
+// A 1ª cobrança do cliente já chegou neste mês? (sem data de 1ª cobrança, sempre sim)
+function billingStarted(client, monthDate) {
+  if (!client.next_due_date) return true;
+  const nd = new Date(client.next_due_date + "T00:00:00");
+  return nd.getFullYear() * 12 + nd.getMonth() <= monthDate.getFullYear() * 12 + monthDate.getMonth();
+}
+// Já entra nos números do mês da tela? (1ª cobrança já chegou, é anual, ou já existe lançamento nesse mês)
+function inBillingMonth(client, monthDate, b) { return !!client.annual || billingStarted(client, monthDate) || !!b; }
 function isInCurrentMonthCycle(client, monthDate, paid) {
   if (client.annual) return false;
   if (!client.due_day) return false;
@@ -1034,7 +1194,7 @@ function addressLine(c) {
 function exportClientsCSV(clients) {
   const header = ["Nome", "CNPJ", "WhatsApp", "Email", "Valor", "Valor_Consultas", "Dia_Vencimento", "Plano", "Codigo_Banco", "Integracao", "Mensalidade_Anual", "Cliente_Cloud", "Marketplace", "CEP", "Rua", "Numero", "Complemento", "Bairro", "Cidade", "Estado", "Observacoes"];
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const rows = clients.map((c) => [c.name, c.cnpj, c.phone, c.email, c.value, c.consultations_value, c.due_day, c.plan, c.bank_number, c.integration, c.annual ? "Sim" : "Não", c.cloud ? "Sim" : "Não", c.marketplace, c.cep, c.street, c.number, c.complement, c.neighborhood, c.city, c.state, c.notes].map(esc).join(","));
+  const rows = clients.map((c) => [c.name, c.cnpj, c.phone, c.email, valueForMonth(c), c.consultations_value, c.due_day, c.plan, c.bank_number, c.integration, c.annual ? "Sim" : "Não", c.cloud ? "Sim" : "Não", c.marketplace, c.cep, c.street, c.number, c.complement, c.neighborhood, c.city, c.state, c.notes].map(esc).join(","));
   const csv = [header.join(","), ...rows].join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -1726,13 +1886,14 @@ function FormHost({ item, className = "mb-4", children }) {
   return <FormHostInner key={formItemKey(item)} className={className}>{children}</FormHostInner>;
 }
 
-function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
+function ClientForm({ initial, existingReps = [], priceCols = {}, onSave, onCancel }) {
   const [name, setName] = useState(initial?.name || "");
   const [contactName, setContactName] = useState(initial?.contact_name || "");
   const [phone, setPhone] = useState(initial?.phone || "");
   const [email, setEmail] = useState(initial?.email || "");
-  const [value, setValue] = useState(initial?.value ?? "");
-  const [nextDueDate, setNextDueDate] = useState(initial?.next_due_date || initial?.annual_due_date || "");
+  const [value, setValue] = useState(() => (initial ? currentPriceOrBlank(initial) : ""));
+  // cliente novo: a 1ª cobrança já vem sugerida para o mês que vem (o mês atual não muda)
+  const [nextDueDate, setNextDueDate] = useState(initial ? (initial.next_due_date || initial.annual_due_date || "") : dateInMonth(todayStr(), nextMonthKey(monthKey(new Date()))));
   const [plan, setPlan] = useState(initial?.plan || "");
   const [notes, setNotes] = useState(initial?.notes || "");
   const [cnpj, setCnpj] = useState(initial?.cnpj || "");
@@ -1755,6 +1916,53 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
   const [representativeName, setRepresentativeName] = useState(initial?.representative_name || "");
   const [additionalStores, setAdditionalStores] = useState(initial?.additional_stores?.length ? initial.additional_stores : []);
   const canSave = name.trim();
+
+  // --- mensalidade mês a mês: mudar o valor não mexe no mês atual (vale a partir do mês escolhido) ---
+  const nowKey = monthKey(new Date());
+  const nextKey = nextMonthKey(nowKey);
+  const [removedSteps, setRemovedSteps] = useState([]);
+  const [priceChoice, setPriceChoice] = useState({ mode: "next", from: nextKey });
+  const [priceError, setPriceError] = useState("");
+  const stagedSteps = initial ? priceSteps(initial).filter((st) => !removedSteps.includes(st.from)) : [];
+  const currentPrice = initial ? valueForMonth(initial, nowKey) : 0;
+  const priceDirty = !!initial && (Number(value) || 0) !== (Number(currentPriceOrBlank(initial)) || 0);
+  const inEffectStep = stagedSteps.filter((st) => st.from <= nowKey).pop();
+  // 1ª data de vencimento do cliente (cliente novo, ou cliente que ainda não tinha data): avisa em que mês ele começa a contar
+  const startKey = nextDueDate ? nextDueDate.slice(0, 7) : "";
+  const isFirstDate = !initial || (!initial.next_due_date && !initial.annual_due_date);
+  let firstDateHint = null;
+  if (!annual && isFirstDate) {
+    if (!startKey) firstDateHint = <span style={{ color: COLORS.inkFaint }}>Sem data de vencimento o cliente ainda não entra na cobrança de nenhum mês.</span>;
+    else if (startKey > nowKey) firstDateHint = <span style={{ color: COLORS.success }}>✓ 1ª cobrança em {monthLabelPT(startKey)}. {monthLabelPT(nowKey)} não muda.</span>;
+    else firstDateHint = (
+      <span style={{ color: COLORS.warn }}>⚠ Essa data é de {monthLabelPT(startKey)}: o cliente já passa a contar {startKey === nowKey ? "neste mês" : "nos meses anteriores também"}.{" "}
+        <button type="button" onClick={() => setNextDueDate(dateInMonth(nextDueDate, nextKey))} className="underline font-semibold">Começar só em {monthLabelPT(nextKey)}</button>
+      </span>
+    );
+  }
+  function submitClient(payload) {
+    setPriceError("");
+    if (!initial) { onSave(payload, null); return; }
+    const newV = Number(value) || 0;
+    payload.value = Number(initial.value) || 0;      // o valor base só muda em "Em todos os meses"
+    const { mode, from } = resolvePriceFrom(priceChoice, stagedSteps, nextKey);
+    let finalSteps = stagedSteps, touched = removedSteps.length > 0, msg = "";
+    if (priceDirty) {
+      touched = true;
+      if (mode === "all") { payload.value = newV; msg = `Valor corrigido para ${fmtMoney(newV)} em todos os meses.`; }
+      else {
+        finalSteps = applyStepChange(stagedSteps, initial.value, newV, from).steps;
+        msg = from > nowKey ? `Novo valor de ${fmtMoney(newV)} vale a partir de ${monthLabelPT(from)}. ${monthLabelPT(nowKey)} e os meses anteriores não mudaram.` : `Novo valor de ${fmtMoney(newV)} vale a partir de ${monthLabelPT(from)} (inclui o mês atual).`;
+      }
+    }
+    if (touched) {
+      const sp = priceStepsPatch(initial, finalSteps, priceCols);
+      if (sp.error) { setPriceError(sp.error); return; }
+      Object.assign(payload, sp.patch);
+      if (!msg) msg = "Reajuste agendado removido.";
+    }
+    onSave(payload, { priceMsg: msg });
+  }
 
   function addStore() { setAdditionalStores((prev) => [...prev, { name: "", address: "" }]); }
   function updateStore(i, field, val) { setAdditionalStores((prev) => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s)); }
@@ -1825,6 +2033,26 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento (dia/mês/ano)</span>
           <input type="date" value={nextDueDate} onChange={(e) => setNextDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
         </label>
+        {firstDateHint && <div className="sm:col-span-2 text-xs -mt-1" data-first-date-hint="1">{firstDateHint}</div>}
+        {initial && (stagedSteps.length > 0 || priceDirty) && (
+          <div className="sm:col-span-2 space-y-2" data-price-panel="1">
+            {stagedSteps.length > 0 && (
+              <div className="rounded-xl border p-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.02)" }}>
+                <div className="text-xs font-bold mb-1.5" style={{ color: COLORS.ink }}>Valores da mensalidade ao longo dos meses</div>
+                <div className="text-xs space-y-1" style={{ color: COLORS.inkMuted }}>
+                  <div>Até {monthLabelPT(addMonthsKey(stagedSteps[0].from, -1))}: <b style={{ color: COLORS.ink }}>{fmtMoney(initial.value)}</b></div>
+                  {stagedSteps.map((st) => (
+                    <div key={st.from} className="flex items-center gap-2 flex-wrap">
+                      <span>{st.from > nowKey ? "Agendado a partir de" : "A partir de"} {monthLabelPT(st.from)}: <b style={{ color: COLORS.ink }}>{fmtMoney(st.value)}</b>{inEffectStep && st.from === inEffectStep.from ? " (valor de hoje)" : ""}</span>
+                      {st.from > nowKey && <button type="button" onClick={() => setRemovedSteps((r) => [...r, st.from])} className="underline text-[11px]" style={{ color: COLORS.danger }}>remover</button>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {priceDirty && <PriceFromPicker oldValue={currentPrice} newValue={Number(value) || 0} steps={stagedSteps} nowKey={nowKey} defaultFrom={nextKey} choice={priceChoice} setChoice={setPriceChoice} />}
+          </div>
+        )}
         <TextField label="Plano / serviço" value={plan} onChange={setPlan} placeholder="Ex: Plano Premium" />
         <TextField label="Código do banco" value={bankNumber} onChange={setBankNumber} placeholder="Ex: 341 (Itaú)" />
         <TextField label="Integração" value={integration} onChange={setIntegration} placeholder="Ex: API própria, ERP..." />
@@ -1888,9 +2116,9 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
       <div className="flex items-center gap-2 mt-5 flex-wrap">
         <button
           disabled={!canSave}
-          onClick={() => onSave({
+          onClick={() => submitClient({
             id: initial?.id || uid(), name: name.trim(), contact_name: contactName.trim() || null, phone: phone.trim(), email: email.trim(),
-            value: Number(value) || 0, due_day: nextDueDate ? Number(nextDueDate.slice(8, 10)) : null, next_due_date: nextDueDate || null, annual_due_date: annual ? (nextDueDate || null) : null,
+            value: Number(value) || 0, due_day: nextDueDate ? Number(nextDueDate.slice(8, 10)) : (initial && !initial.next_due_date && !initial.annual_due_date && initial.due_day ? initial.due_day : null), next_due_date: nextDueDate || null, annual_due_date: annual ? (nextDueDate || null) : null,
             plan: plan.trim(), notes: notes.trim(), cnpj: cnpj.trim(), state_registration: stateRegistration.trim() || null, cep: cep.trim(), street: street.trim(), number: number.trim(),
             complement: complement.trim(), neighborhood: neighborhood.trim(), city: city.trim(), state: state.trim(),
             bank_number: padBankNumber(bankNumber.trim()), integration: integration.trim(), annual, cloud, marketplace: marketplace.trim(),
@@ -1904,6 +2132,7 @@ function ClientForm({ initial, existingReps = [], onSave, onCancel }) {
         </button>
         <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-white/5 transition" style={{ color: COLORS.inkMuted }}>← Voltar</button>
         {!canSave && <span className="text-xs" style={{ color: COLORS.inkFaint }}>Preencha ao menos o nome do cliente para poder salvar.</span>}
+        {priceError && <div className="w-full text-xs rounded-lg p-2" data-price-error="1" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.1)" }}>{priceError}</div>}
       </div>
     </div>
   );
@@ -2901,7 +3130,7 @@ function CommissionClientPicker({ clients, value, onSelect, disabled }) {
             <button key={c.id} type="button" onMouseDown={() => { onSelect(c.id); setOpen(false); setQuery(""); }}
               className="w-full text-left px-3 py-2 text-xs hover:bg-white/5" style={{ color: COLORS.ink }}>
               {c.bank_number && <span className="font-bold mr-1.5" style={{ color: COLORS.info }}>{c.bank_number}</span>}
-              {c.name} <span style={{ color: COLORS.inkFaint }}>— {fmtMoney(c.value)}</span>
+              {c.name} <span style={{ color: COLORS.inkFaint }}>— {fmtMoney(valueForMonth(c))}</span>
             </button>
           ))}
         </div>
@@ -2942,7 +3171,7 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
   const [notes, setNotes] = useState(initial?.notes || "");
   const selectedClient = clients.find((x) => x.id === clientId);
   const [useCustomValue, setUseCustomValue] = useState(initial?.monthly_value_override != null);
-  const [customValue, setCustomValue] = useState(initial?.monthly_value_override ?? selectedClient?.value ?? "");
+  const [customValue, setCustomValue] = useState(initial?.monthly_value_override ?? currentPriceOrBlank(selectedClient));
   const [useManualCommission, setUseManualCommission] = useState(initial?.commission_override != null);
   const [manualCommission, setManualCommission] = useState(initial?.commission_override ?? "");
 
@@ -2950,11 +3179,11 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
     setClientId(id);
     if (!useCustomValue) {
       const c = clients.find((x) => x.id === id);
-      setCustomValue(c?.value ?? "");
+      setCustomValue(currentPriceOrBlank(c));
     }
   }
 
-  const effectiveValue = useCustomValue ? (Number(customValue) || 0) : (Number(selectedClient?.value) || 0);
+  const effectiveValue = useCustomValue ? (Number(customValue) || 0) : (valueForMonth(selectedClient) || 0);
   const commissionPreview = useManualCommission ? (Number(manualCommission) || 0) : effectiveValue * (Number(percentage) || 0) / 100;
   const canSave = clientId && representativeName.trim() && (useManualCommission ? manualCommission !== "" : Number(percentage) > 0);
 
@@ -2976,13 +3205,13 @@ function ClientCommissionForm({ initial, clients, existingReps, onSave, onCancel
       </div>
       <div className="rounded-lg border p-3" style={{ borderColor: COLORS.cardBorder }}>
         <label className="flex items-center gap-2 text-xs font-semibold mb-2" style={{ color: COLORS.inkMuted }}>
-          <input type="checkbox" checked={useCustomValue} onChange={(e) => { setUseCustomValue(e.target.checked); if (!e.target.checked) setCustomValue(selectedClient?.value ?? ""); }} />
+          <input type="checkbox" checked={useCustomValue} onChange={(e) => { setUseCustomValue(e.target.checked); if (!e.target.checked) setCustomValue(currentPriceOrBlank(selectedClient)); }} />
           Usar um valor de mensalidade diferente do cadastro do cliente (pra base da comissão)
         </label>
         {useCustomValue ? (
           <TextField label="Valor da mensalidade (comissão)" value={customValue} onChange={setCustomValue} type="number" placeholder="0" />
         ) : (
-          <div className="text-xs" style={{ color: COLORS.inkMuted }}>Usando o valor atual do cliente: <strong style={{ color: COLORS.ink }}>{fmtMoney(selectedClient?.value)}</strong> (acompanha automaticamente se a mensalidade mudar)</div>
+          <div className="text-xs" style={{ color: COLORS.inkMuted }}>Usando o valor atual do cliente: <strong style={{ color: COLORS.ink }}>{fmtMoney(valueForMonth(selectedClient))}</strong> (acompanha automaticamente se a mensalidade mudar)</div>
         )}
       </div>
       {selectedClient && <div className="text-sm font-bold" style={{ color: commissionPreview < 0 ? COLORS.danger : COLORS.success }}>{useManualCommission ? "Comissão (valor manual)" : `Comissão sobre ${fmtMoney(effectiveValue)}`}: {fmtMoney(commissionPreview)}</div>}
@@ -6101,6 +6330,8 @@ function App() {
   const [searchImplantacao, setSearchImplantacao] = useState("");
   const [showQuitadas, setShowQuitadas] = useState(false);
   const [pixModal, setPixModal] = useState(null);
+  const [priceDialog, setPriceDialog] = useState(null);   // janela "a partir de qual mês?" da mensalidade
+  const [priceTick, setPriceTick] = useState(0);          // muda para o campo da mensalidade voltar ao valor que vale no mês da tela
   const [signatureModal, setSignatureModal] = useState(null);
   const [editingNameId, setEditingNameId] = useState(null);
   const [showDetailedReports, setShowDetailedReports] = useState(false);
@@ -6118,6 +6349,10 @@ function App() {
   const [editingPresentation, setEditingPresentation] = useState(null);
   const [presentationFilter, setPresentationFilter] = useState("proximas");
   const mKey = monthKey(monthDate);
+  // Todos os totais usam o valor do mês que está na tela (cliente sem boleto lançado nesse mês também)
+  const effectiveValue = (c, b) => effectiveValueAt(c, b, mKey);
+  // quais colunas de valor existem no banco (o Supabase devolve todas as colunas, mesmo vazias)
+  const priceCols = useMemo(() => ({ history: clients.some((c) => "price_history" in c), legacy: clients.some((c) => "new_value_from" in c) }), [clients]);
 
   useEffect(() => {
     supa.auth.getSession().then(({ data }) => setSession(data.session));
@@ -8188,7 +8423,7 @@ function App() {
   useEffect(() => { if (session) loadPrevMonth(); }, [session, clients, monthDate]);
   useEffect(() => { if (session) loadRecentSent(); }, [session, mKey, boletos]);
 
-  async function handleSaveClient(c) {
+  async function handleSaveClient(c, info) {
     const { error: clientSaveError } = await supa.from("clients").upsert(c);
     if (clientSaveError) { showToast(`Erro ao salvar cliente: ${clientSaveError.message}`); return; }
     if (c.representative_name) {
@@ -8205,8 +8440,8 @@ function App() {
     }
     setShowForm(false); setEditing(null);
     await loadClients();
-    logActivity(`Cliente salvo: ${c.name}`);
-    showToast("Cliente salvo.");
+    logActivity(`Cliente salvo: ${c.name}${info && info.priceMsg ? " — " + info.priceMsg : ""}`);
+    showToast(info && info.priceMsg ? `Cliente salvo. ${info.priceMsg}` : "Cliente salvo.", info && info.priceMsg ? 8000 : undefined);
   }
   async function handleRenameClient(clientId, newName) {
     if (!newName.trim()) { setEditingNameId(null); return; }
@@ -8215,31 +8450,51 @@ function App() {
     setEditingNameId(null);
     showToast("Nome atualizado.");
   }
-  async function handleUpdateClientValue(clientId, newValue) {
+  // Mudar a mensalidade pela tela de Mensalidades: não grava direto; abre a janela "a partir de qual mês?".
+  // Sugere o próximo mês (ou o mês da tela, se ele for futuro): assim o mês atual e os anteriores não mudam.
+  function handleUpdateClientValue(clientId, newValue) {
     const v = Number(newValue) || 0;
     const cli = clients.find((x) => x.id === clientId);
+    if (!cli) return;
     const nowKey = monthKey(new Date());
-    let patch;
-    if (cli?.new_value_from && mKey >= cli.new_value_from) patch = { new_value: v };               // reajuste já vigora neste mês: ajusta o valor novo
-    else if (mKey > nowKey) patch = { new_value: v, new_value_from: mKey };                         // mês futuro: vale só a partir dele, meses anteriores não mudam
-    else patch = { value: v };                                                                      // mês atual/passado: muda o valor base
-    const { error } = await supa.from("clients").update(patch).eq("id", clientId);
-    if (error) { showToast(`Erro: ${error.message} (rodou o SQL do reajuste agendado?)`); return; }
+    setPriceDialog({ clientId, newValue: v, oldValue: valueForMonth(cli, mKey), nowKey, defaultFrom: mKey > nowKey ? mKey : nextMonthKey(nowKey) });
+  }
+  // Confirmou na janela: grava a mudança (de AAAA-MM em diante; from = null corrige o valor base). Devolve "" se deu certo, ou o texto do problema.
+  async function confirmPriceChange(from) {
+    const d = priceDialog;
+    const cli = d && clients.find((x) => x.id === d.clientId);
+    if (!cli) { setPriceDialog(null); return ""; }
+    const steps = priceSteps(cli);
+    let patch = {};
+    if (from == null) {
+      if (steps.length) return "Este cliente já tem reajustes cadastrados: escolha um mês.";
+      patch = { value: d.newValue };
+    } else {
+      const sp = priceStepsPatch(cli, applyStepChange(steps, cli.value, d.newValue, from).steps, priceCols);
+      if (sp.error) return sp.error;
+      patch = sp.patch;
+    }
+    if (Object.keys(patch).length) {
+      const { error } = await supa.from("clients").update(patch).eq("id", cli.id);
+      if (error) return `Não foi possível salvar: ${error.message}`;
+    }
     await loadClients();
-    if (patch.new_value_from && !(cli?.new_value_from && mKey >= cli.new_value_from)) {
-      const [yy, mm] = mKey.split("-");
-      showToast(`Novo valor vale a partir de ${mm}/${yy}. Os meses anteriores continuam com o valor antigo.`);
+    setPriceDialog(null); setPriceTick((t) => t + 1);
+    // se a mudança alcança o mês da tela e a mensalidade dele já está paga, o "valor pago" acompanha (como antes)
+    if (from == null || from <= mKey) {
+      const b = boletos[cli.id];
+      if (b?.paid) {
+        const next = { ...b, paid_value: effectiveValue({ ...cli, ...patch }, b), updated_at: new Date().toISOString() };
+        await supa.from("boletos").upsert(next);
+        setBoletos((prev) => ({ ...prev, [cli.id]: next }));
+      }
     }
-    // Se a mensalidade desse mês já está marcada como paga, resincroniza o valor pago
-    // pra não ficar desatualizado (evita diferença entre Previsto e Pago no Dashboard).
-    const b = boletos[clientId];
-    if (b?.paid) {
-      const updatedClient = { ...cli, ...patch };
-      const newPaidValue = effectiveValue(updatedClient, b);
-      const next = { ...b, paid_value: newPaidValue, updated_at: new Date().toISOString() };
-      await supa.from("boletos").upsert(next);
-      setBoletos((prev) => ({ ...prev, [clientId]: next }));
-    }
+    const msg = from == null ? `Valor corrigido para ${fmtMoney(d.newValue)} em todos os meses.`
+      : from > d.nowKey ? `Novo valor de ${fmtMoney(d.newValue)} vale a partir de ${monthLabelPT(from)}. ${monthLabelPT(d.nowKey)} e os meses anteriores não mudaram.`
+      : `Novo valor de ${fmtMoney(d.newValue)} vale a partir de ${monthLabelPT(from)} (inclui o mês atual).`;
+    logActivity(`Mensalidade alterada: ${cli.name} — ${fmtMoney(d.oldValue)} → ${fmtMoney(d.newValue)}${from ? " a partir de " + monthLabelPT(from) : " (todos os meses)"}`);
+    showToast(msg, 8000);
+    return "";
   }
   async function handleDeleteClient(id) {
     if (!confirm("Remover este cliente e os boletos/anotações dele?")) return;
@@ -8961,7 +9216,7 @@ function App() {
 
   function exportConsultasExcel() {
     const rows = clients
-      .filter((c) => !c.cancelled && !c.annual && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
+      .filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id]) && (hasMonthlyValue(c) || Number(boletos[c.id]?.consultations_value) > 0))
       .sort(sortConsultasFirst(boletos))
       .map((c) => ({
         "Banco": c.bank_number || "-",
@@ -8972,9 +9227,9 @@ function App() {
       }));
     rows.push({
       "Banco": "", "Cliente": "TOTAL",
-      "Mensalidade": clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + valueForMonth(c, mKey), 0),
-      "Consultas": clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0),
-      "Total": clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
+      "Mensalidade": clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id])).reduce((s, c) => s + valueForMonth(c, mKey), 0),
+      "Consultas": clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id])).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0),
+      "Total": clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id])).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
     });
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -9321,14 +9576,15 @@ function App() {
   }, [filteredClients, sortBy, sortDir, showCancelled, monthDate]);
 
   const visibleClients = useMemo(() => sortedClients
-    .filter((c) => c.bank_number || (Number(c.value) || 0) > 0 || c.cancelled || c.annual)
+    .filter((c) => c.bank_number || hasMonthlyValue(c) || c.cancelled || c.annual)
     .filter((c) => !filterAnnualOnly || c.annual)
     .filter((c) => !filterCloudOnly || c.cloud),
     [sortedClients, filterAnnualOnly, filterCloudOnly]);
   useEffect(() => { setClientsPage(1); }, [search, sortBy, sortDir, showCancelled, filterAnnualOnly, filterCloudOnly]);
 
   const filteredByStatus = useMemo(() => {
-    const activeClients = filteredClients.filter((c) => !isCancelledInMonth(c, monthDate) && !c.annual && (c.bank_number || (Number(c.value) || 0) > 0));
+    // cliente novo (1ª cobrança num mês seguinte) só aparece a partir do mês dela: nos meses antes disso a lista e o total não mudam (a não ser que já exista boleto lançado)
+    const activeClients = filteredClients.filter((c) => !isCancelledInMonth(c, monthDate) && !c.annual && (c.bank_number || hasMonthlyValue(c)) && (billingStarted(c, monthDate) || !!boletos[c.id]));
     let arr;
     if (statusFilter === "todos") arr = activeClients;
     // Nos demais filtros (Em aberto, Atrasados, Vence em breve, Enviados, Pagos), um cliente cuja
@@ -9361,7 +9617,7 @@ function App() {
     const today = new Date().getDate();
     const dueToday = monthly.filter((c) => c.due_day === today && !boletos[c.id]?.paid);
     return {
-      count: clients.filter((c) => !isCancelledInMonth(c, monthDate) && (c.bank_number || (Number(c.value) || 0) > 0 || c.annual)).length, sent, sentWa, sentEmail, paid, overdue, dueSoon,
+      count: clients.filter((c) => !isCancelledInMonth(c, monthDate) && (c.bank_number || hasMonthlyValue(c) || c.annual) && inBillingMonth(c, monthDate, boletos[c.id])).length, sent, sentWa, sentEmail, paid, overdue, dueSoon,
       countMonthly: monthly.length, totalMonthly: monthly.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
       countAnnual: annualC.length, totalAnnual: annualC.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
       dueTodayCount: dueToday.length, dueTodayValue: dueToday.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0),
@@ -9448,7 +9704,7 @@ function App() {
     doc.setFontSize(10); doc.setTextColor(100);
     // Mesma regra da tela de Clientes: sem cancelados e só quem tem banco ou mensalidade
     const clientesRelatorio = filteredClients
-      .filter((c) => !isCancelledInMonth(c, monthDate) && (c.bank_number || (Number(c.value) || 0) > 0 || c.annual))
+      .filter((c) => !isCancelledInMonth(c, monthDate) && (c.bank_number || hasMonthlyValue(c) || c.annual))
       .sort((a, b) => (a.bank_number || "").localeCompare(b.bank_number || "", "pt-BR", { numeric: true }));
     const cloudCount = clientesRelatorio.filter((c) => c.cloud).length;
     const consultasTotal = clientesRelatorio.filter((c) => !c.annual).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0);
@@ -10025,7 +10281,7 @@ function App() {
                 <span className="text-xs ml-auto" style={{ color: COLORS.inkFaint }}>💾 O backup completo salva clientes, boletos e anotações.</span>
               </div>
 
-              {showForm && <FormHost item={editing}><ClientForm initial={editing} existingReps={[...new Set(clientCommissions.map((cc) => cc.representative_name).filter(Boolean))]} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></FormHost>}
+              {showForm && <FormHost item={editing}><ClientForm initial={editing} existingReps={[...new Set(clientCommissions.map((cc) => cc.representative_name).filter(Boolean))]} priceCols={priceCols} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></FormHost>}
 
               {!showForm && (
               <>
@@ -10146,6 +10402,10 @@ function App() {
                   Total do filtro ({filteredByStatus.length} cliente{filteredByStatus.length === 1 ? "" : "s"}): {money(filteredByStatus.reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}
                 </span>
               </div>
+              {(() => {
+                const nOut = statusFilter === "todos" ? filteredClients.filter((c) => !isCancelledInMonth(c, monthDate) && !c.annual && (c.bank_number || hasMonthlyValue(c)) && !billingStarted(c, monthDate) && !boletos[c.id]).length : 0;
+                return nOut > 0 ? <div className="text-[11px] mb-2 px-1" data-not-started="1" style={{ color: COLORS.inkFaint }}>ℹ️ {nOut} cliente{nOut > 1 ? "s" : ""} {nOut > 1 ? "começam" : "começa"} a cobrar só nos próximos meses e {nOut > 1 ? "não aparecem" : "não aparece"} neste mês.</div> : null;
+              })()}
 
               <div className="rounded-2xl border divide-y overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 <div className="flex items-center gap-3 px-4 py-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted, background: "rgba(255,255,255,0.02)" }}>
@@ -10188,13 +10448,20 @@ function App() {
                             {overdue > 0 && <span className="text-xs font-semibold" style={{ color: COLORS.danger }}>há {overdue} dia{overdue > 1 ? "s" : ""}</span>}
                             {dueSoon && <span className="text-xs font-semibold" style={{ color: COLORS.warn }}>vence em {daysUntilDue(c, monthDate)} dia{daysUntilDue(c, monthDate) !== 1 ? "s" : ""}</span>}
                           </div>
-                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>vence em {clientDueDisplay(c, monthDate)} · {c.annual ? "anual" : "mensal"} · total <b className="text-sm" style={{ color: COLORS.ink }}>{money(effectiveValue(c, boletos[c.id]))}</b>{c.new_value_from && c.new_value != null && mKey < c.new_value_from && <span style={{ color: COLORS.warn }}> · reajuste para {money(c.new_value)} a partir de {c.new_value_from.slice(5)}/{c.new_value_from.slice(0, 4)}</span>}</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>vence em {clientDueDisplay(c, monthDate)} · {c.annual ? "anual" : "mensal"} · total <b className="text-sm" style={{ color: COLORS.ink }}>{money(effectiveValue(c, boletos[c.id]))}</b>{(() => {
+                            const sts = priceSteps(c);
+                            const nx = sts.find((st) => st.from > mKey), cur = sts.find((st) => st.from === mKey);
+                            return (<>
+                              {cur && <span data-price-note="now" style={{ color: COLORS.info }}> · valor novo desde este mês (antes {money(valueForMonth(c, addMonthsKey(mKey, -1)))})</span>}
+                              {nx && <span data-price-note="next" style={{ color: COLORS.warn }}> · reajuste para {money(nx.value)} a partir de {nx.from.slice(5)}/{nx.from.slice(0, 4)}</span>}
+                            </>);
+                          })()}</div>
                         </div>
                       </div>
 
                       {/* LINHA 2: valores em grade alinhada */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-1 pl-[54px]">
-                        <MiniMoneyField label="Mensalidade" value={valueForMonth(c, mKey)} fieldKey={`val-${c.id}-${mKey}`} onSave={(v) => handleUpdateClientValue(c.id, v)} />
+                        <MiniMoneyField label="Mensalidade" value={valueForMonth(c, mKey)} fieldKey={`val-${c.id}-${mKey}-${priceTick}`} onSave={(v) => handleUpdateClientValue(c.id, v)} />
                         <MiniMoneyField label="Consultas" value={b?.consultations_value} fieldKey={`cons-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { consultations_value: v })} />
                         <MiniMoneyField label="VPN" value={b?.vpn_value} fieldKey={`vpn-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { vpn_value: v })} title="Cobrança de VPN nesse mês" />
                         <MiniMoneyField label="Troca servidor" value={b?.server_change_value} fieldKey={`srv-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { server_change_value: v })} title="Cobrança de troca de servidor nesse mês" />
@@ -10308,8 +10575,8 @@ function App() {
                                 <div className="text-xs flex items-center gap-2 flex-wrap" style={{ color: COLORS.inkMuted }}>
                                   <span className="flex items-center gap-1">
                                     Valor/ano:
-                                    <input type="number" key={`val-annual-${c.id}`} defaultValue={c.value || ""} placeholder="0"
-                                      onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (Number(c.value) || 0)) handleUpdateClientValue(c.id, v); }}
+                                    <input type="number" key={`val-annual-${c.id}-${priceTick}`} defaultValue={valueForMonth(c, mKey) || ""} placeholder="0"
+                                      onBlur={(e) => { const v = Number(e.target.value) || 0; if (v !== (valueForMonth(c, mKey) || 0)) handleUpdateClientValue(c.id, v); }}
                                       className="w-20 rounded-lg border px-2 py-1 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
                                   </span>
                                   · vence em {clientDueDisplay(c, monthDate)}
@@ -11209,7 +11476,7 @@ function App() {
                 const liveRows = clientCommissions.map((cc) => {
                   const cli = clients.find((c) => c.id === cc.client_id);
                   if (!cli) return null;
-                  const effectiveValue = cc.monthly_value_override != null ? Number(cc.monthly_value_override) : Number(cli.value) || 0;
+                  const effectiveValue = cc.monthly_value_override != null ? Number(cc.monthly_value_override) : valueForMonth(cli, monthKey(new Date()));
                   const commission = cc.commission_override != null ? Number(cc.commission_override) : effectiveValue * (Number(cc.percentage) || 0) / 100;
                   return {
                     commId: cc.id, client_id: cc.client_id,
@@ -13053,22 +13320,22 @@ function App() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Clientes cloud</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => c.cloud).length}</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => c.cloud && inBillingMonth(c, monthDate, boletos[c.id])).length}</div>
                   <div className="text-xs" style={{ color: COLORS.inkMuted }}>de {stats.count} clientes</div>
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total em consultas</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id])).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</div>
                   <div className="text-xs" style={{ color: COLORS.inkMuted }}>somado à mensalidade</div>
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Só mensalidade</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + valueForMonth(c, mKey), 0))}</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id])).reduce((s, c) => s + valueForMonth(c, mKey), 0))}</div>
                   <div className="text-xs" style={{ color: COLORS.inkMuted }}>sem consultas</div>
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Clientes não cloud</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => !c.cloud).length}</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{clients.filter((c) => !c.cloud && inBillingMonth(c, monthDate, boletos[c.id])).length}</div>
                   <div className="text-xs" style={{ color: COLORS.inkMuted }}>de {stats.count} clientes</div>
                 </div>
               </div>
@@ -13085,7 +13352,7 @@ function App() {
                   <div className="text-sm font-bold" style={{ color: COLORS.ink }}>Mensalidade x Consultas — por cliente ({MONTHS_PT[monthDate.getMonth()]}/{monthDate.getFullYear()})</div>
                   <button onClick={exportConsultasExcel} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
                 </div>
-                {clients.filter((c) => !c.cancelled && !c.annual && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0)).length === 0 ? (
+                {clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id]) && (hasMonthlyValue(c) || Number(boletos[c.id]?.consultations_value) > 0)).length === 0 ? (
                   <div className="p-6 text-center text-sm" style={{ color: COLORS.inkMuted }}>Nenhum cliente com valores cadastrados.</div>
                 ) : (
                   <table className="w-full text-sm" style={{ color: COLORS.ink }}>
@@ -13099,7 +13366,7 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {clients.filter((c) => !c.cancelled && !c.annual && (Number(c.value) > 0 || Number(boletos[c.id]?.consultations_value) > 0))
+                      {clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id]) && (hasMonthlyValue(c) || Number(boletos[c.id]?.consultations_value) > 0))
                         .sort(sortConsultasFirst(boletos))
                         .map((c, i) => (
                           <tr key={c.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
@@ -13115,9 +13382,9 @@ function App() {
                       <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
                         <td className="px-3 py-2"></td>
                         <td className="px-3 py-2 font-bold">TOTAL</td>
-                        <td className="px-3 py-2 font-bold">{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + valueForMonth(c, mKey), 0))}</td>
-                        <td className="px-3 py-2 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
-                        <td className="px-3 py-2 font-bold">{money(clients.filter((c) => !c.cancelled && !c.annual).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
+                        <td className="px-3 py-2 font-bold">{money(clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id])).reduce((s, c) => s + valueForMonth(c, mKey), 0))}</td>
+                        <td className="px-3 py-2 font-bold" style={{ color: COLORS.brandLight }}>{money(clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id])).reduce((s, c) => s + (Number(boletos[c.id]?.consultations_value) || 0), 0))}</td>
+                        <td className="px-3 py-2 font-bold">{money(clients.filter((c) => !c.cancelled && !c.annual && inBillingMonth(c, monthDate, boletos[c.id])).reduce((s, c) => s + effectiveValue(c, boletos[c.id]), 0))}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -13532,6 +13799,10 @@ function App() {
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 px-4 py-2 rounded-lg text-sm font-semibold text-white shadow-lg" style={{ background: COLORS.card, border: `1px solid ${COLORS.cardBorder}` }}>{toast}</div>}
       {pixModal && <PixQRModal {...pixModal} onClose={() => setPixModal(null)} />}
+      {priceDialog && (() => {
+        const cli = clients.find((x) => x.id === priceDialog.clientId);
+        return cli ? <PriceChangeDialog client={cli} oldValue={priceDialog.oldValue} newValue={priceDialog.newValue} nowKey={priceDialog.nowKey} defaultFrom={priceDialog.defaultFrom} onConfirm={confirmPriceChange} onCancel={() => { setPriceDialog(null); setPriceTick((t) => t + 1); }} /> : null;
+      })()}
       {signatureModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setSignatureModal(null)}>
           <div className="rounded-2xl p-4 max-w-sm w-full" style={{ background: "#FFFFFF" }} onClick={(e) => e.stopPropagation()}>

@@ -6308,6 +6308,7 @@ function App() {
   const [showPaidPayroll, setShowPaidPayroll] = useState(false);
   const [showPaidCommissionSellers, setShowPaidCommissionSellers] = useState(() => new Set());
   const [showPaidRomaneios, setShowPaidRomaneios] = useState(false);
+  const [showCancelledRomaneios, setShowCancelledRomaneios] = useState(false);
   const [supplierOrders, setSupplierOrders] = useState([]);
   const [cloudContratos, setCloudContratos] = useState([]);
   const [showCloudForm, setShowCloudForm] = useState(false);
@@ -8124,6 +8125,7 @@ function App() {
     // Só entra no PDF o que é do mês selecionado na tela e ainda está em aberto —
     // o que já foi pago, ou é de outro mês, não aparece mais aqui (igual a tela).
     const abertoRomaneios = [...romaneios]
+      .filter((r) => !r.cancelled)   // pedido cancelado não gera comissão
       .filter((r) => !r.commission_paid)
       .filter((r) => {
         if (!r.order_date) return false;
@@ -9080,6 +9082,31 @@ function App() {
     await supa.from("romaneios").update({ paid: nowPaid, payment_date: nowPaid ? (r.payment_date || todayStr()) : null }).eq("id", r.id);
     await loadRomaneios();
   }
+  // Pedido de etiqueta CANCELADO: só marca (ou desmarca) o pedido, nada é apagado. Cancelado sai do "em aberto", dos totais, da comissão e dos relatórios
+  // e fica guardado na seção "Cancelados" para reativar quando quiser. Usa as colunas cancelled / cancelled_at de "romaneios"
+  // (arquivo adicionar-pedido-cancelado-etiqueta.sql); enquanto não existirem, avisa e não grava nada.
+  async function handleToggleRomaneioCancelled(r) {
+    const willCancel = !r.cancelled;
+    const cli = romaneioClients.find((p) => p.id === r.romaneio_client_id)?.name || "Cliente removido";
+    if (willCancel) {
+      const avisos = [];
+      if (r.paid) avisos.push("• Atenção: este pedido está marcado como PAGO.");
+      if (r.commission_paid) avisos.push("• Atenção: a comissão deste pedido já está marcada como paga.");
+      if (!confirm(`Marcar o pedido nº ${r.number} (${cli}) como CANCELADO?\n\n• Ele sai de "Pedidos em aberto", dos totais e da comissão.\n• Nada é apagado: fica em "Cancelados" e dá para reativar quando quiser.${avisos.length ? "\n" + avisos.join("\n") : ""}`)) return;
+    }
+    let { error } = await supa.from("romaneios").update({ cancelled: willCancel, cancelled_at: willCancel ? todayStr() : null }).eq("id", r.id);
+    // só a coluna da data faltando: grava o cancelamento sem ela
+    if (error && /cancelled_at/i.test(error.message || "")) ({ error } = await supa.from("romaneios").update({ cancelled: willCancel }).eq("id", r.id));
+    if (error) {
+      alert(/cancelled/i.test(error.message || "")
+        ? 'Para usar o "Cancelar pedido" falta rodar, uma vez, o arquivo adicionar-pedido-cancelado-etiqueta.sql no SQL Editor do Supabase e depois recarregar o sistema.\n\nNada foi alterado no pedido.'
+        : `Não consegui ${willCancel ? "cancelar" : "reativar"} o pedido: ${error.message || "erro ao gravar"}.\n\nNada foi alterado no pedido.`);
+      return;
+    }
+    await loadRomaneios();
+    logActivity(`Pedido de etiqueta ${willCancel ? "cancelado" : "reativado"}: nº ${r.number} — ${cli}`);
+    showToast(willCancel ? "Pedido cancelado. Ele está na seção Cancelados." : "Pedido reativado.");
+  }
   async function handleUpdateCommissionPercent(r, newPercent) {
     const lucro = romaneioLucro(r);
     const newValue = lucro * ((Number(newPercent) || 0) / 100);
@@ -9165,7 +9192,7 @@ function App() {
   }
 
   function exportAllRomaneiosExcel() {
-    const rows = romaneios.map((r) => {
+    const rows = romaneios.filter((r) => !r.cancelled).map((r) => {
       const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
       const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
       return {
@@ -10892,15 +10919,16 @@ function App() {
                 function renderRomaneioRow(r, i) {
                   const prospect = romaneioClients.find((p) => p.id === r.romaneio_client_id);
                   const total = (r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
+                  const cancelado = !!r.cancelled;
                   return (
-                    <div key={r.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                    <div key={r.id} className="p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", opacity: cancelado ? 0.8 : 1 }}>
                       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div className="flex items-center gap-3">
                           <Avatar name={prospect?.name || "?"} size={34} />
                           <div>
                             <div className="font-bold text-sm" style={{ color: COLORS.ink }}>{prospect?.name || "Cliente removido"} <span className="font-normal" style={{ color: COLORS.inkMuted }}>· pedido nº {r.number}</span></div>
                             <div className="text-xs" style={{ color: COLORS.inkMuted }}>
-                              {r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {(r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0)} peça(s) · Total {money(total)} · {r.payment_method || "-"}
+                              {r.order_date ? new Date(r.order_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"} · {(r.items || []).reduce((s, it) => s + (Number(it.quantidade) || 0), 0)} peça(s) · Total <span style={cancelado ? { textDecoration: "line-through" } : undefined}>{money(total)}</span> · {r.payment_method || "-"}
                             </div>
                             {r.notes && <div className="text-xs mt-0.5" style={{ color: COLORS.inkFaint }}>📝 {r.notes}</div>}
                           </div>
@@ -10908,9 +10936,12 @@ function App() {
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         {r.pdf_url && <a href={r.pdf_url} target="_blank" className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.brandLight }}>👁️ Ver / imprimir</a>}
-                        <PaidChip paid={!!r.paid} onClick={() => handleToggleRomaneioPaid(r)} labelPaid={`✓ Pago${r.payment_date ? ` em ${new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR")}` : ""}`} labelOpen="○ Pendente" />
+                        {cancelado
+                          ? <span className="inline-flex items-center gap-1 rounded-full font-bold whitespace-nowrap px-2.5 py-1 text-xs" style={{ color: COLORS.danger, background: rgba(COLORS.danger, 0.14), border: `1px solid ${rgba(COLORS.danger, 0.45)}` }}>🚫 Cancelado{r.cancelled_at ? ` em ${fmtDate(String(r.cancelled_at).slice(0, 10))}` : ""}{r.paid ? " · estava pago" : ""}</span>
+                          : <PaidChip paid={!!r.paid} onClick={() => handleToggleRomaneioPaid(r)} labelPaid={`✓ Pago${r.payment_date ? ` em ${new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR")}` : ""}`} labelOpen="○ Pendente" />}
                         {r.payment_proof_url && <span title="Comprovante anexado" className="text-xs font-semibold" style={{ color: COLORS.success }}>📎 comprovante</span>}
                         <button onClick={() => { setEditingRomaneio(r); setShowRomaneioForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
+                        <button onClick={() => handleToggleRomaneioCancelled(r)} title={cancelado ? "Volta o pedido para a lista (em aberto ou pago, como estava)" : "Marca o pedido como cancelado: sai do total em aberto e da comissão (nada é apagado)"} className="px-3 py-1.5 rounded-lg text-xs font-semibold border hover:bg-white/5 transition" style={cancelado ? { borderColor: COLORS.brandLight, color: COLORS.brandLight } : { borderColor: rgba(COLORS.danger, 0.55), color: COLORS.danger }}>{cancelado ? "↩️ Reativar pedido" : "🚫 Cancelar pedido"}</button>
                         <RowMenu items={[
                           r.pdf_url && { label: "⬇️ Baixar PDF", href: r.pdf_url, download: true },
                           { label: "📊 Exportar Excel", onClick: () => exportRomaneioExcel(r) },
@@ -10926,7 +10957,7 @@ function App() {
                   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
                   const mapa = {};
                   romaneios.forEach((r) => {
-                    if (!r.romaneio_client_id || !r.order_date) return;
+                    if (!r.romaneio_client_id || !r.order_date || r.cancelled) return;   // cancelado não é compra
                     const total = (r.items || []).reduce((t, it) => t + (Number(it.quantidade) || 0) * (Number(it.valorUnit) || 0), 0);
                     const m = mapa[r.romaneio_client_id] || (mapa[r.romaneio_client_id] = { id: r.romaneio_client_id, ultima: "", numero: "", total: 0, pedidos: 0, valorUltima: 0 });
                     m.pedidos += 1; m.total += total;
@@ -10977,8 +11008,11 @@ function App() {
                     </div>
                   );
                 }
-                const abertoList = romaneios.filter((r) => !r.paid);
-                const pagoList = romaneios.filter((r) => r.paid);
+                // Cancelado não conta em nada (nem em aberto, nem em pago): fica só na seção "Cancelados"
+                const ativos = romaneios.filter((r) => !r.cancelled);
+                const abertoList = ativos.filter((r) => !r.paid);
+                const pagoList = ativos.filter((r) => r.paid);
+                const canceladoList = romaneios.filter((r) => r.cancelled);
                 // Pedidos em aberto = os que ainda estão "Pendente" (mesma lista que aparece logo abaixo); o valor é o total de itens de cada pedido
                 const abertoTotal = abertoList.reduce((s, r) => s + romaneioVenda(r), 0);
                 const kpiCard = "rounded-2xl p-4 border";
@@ -11002,7 +11036,7 @@ function App() {
                       {romaneios.length === 0 ? (
                         <div className="p-10 text-center"><div className="text-3xl mb-2">📦</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum romaneio gerado ainda.</div></div>
                       ) : abertoList.length === 0 ? (
-                        <div className="p-10 text-center"><div className="text-3xl mb-2">🎉</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pedido em aberto — tudo pago.</div></div>
+                        <div className="p-10 text-center"><div className="text-3xl mb-2">{pagoList.length > 0 ? "🎉" : "📦"}</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>{pagoList.length > 0 ? "Nenhum pedido em aberto — tudo pago." : "Nenhum pedido em aberto."}</div></div>
                       ) : abertoList.map((r, i) => renderRomaneioRow(r, i))}
                     </div>
                     {pagoList.length > 0 && (
@@ -11012,6 +11046,15 @@ function App() {
                           <span style={{ display: "inline-block", transition: "transform 0.15s", transform: showPaidRomaneios ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
                         </button>
                         {showPaidRomaneios && pagoList.map((r, i) => renderRomaneioRow(r, i))}
+                      </div>
+                    )}
+                    {canceladoList.length > 0 && (
+                      <div className="rounded-2xl border overflow-hidden mt-3" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        <button onClick={() => setShowCancelledRomaneios((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.06)" }}>
+                          <span>🚫 Cancelados ({canceladoList.length})</span>
+                          <span style={{ display: "inline-block", transition: "transform 0.15s", transform: showCancelledRomaneios ? "rotate(0deg)" : "rotate(-90deg)" }}>▾</span>
+                        </button>
+                        {showCancelledRomaneios && canceladoList.map((r, i) => renderRomaneioRow(r, i))}
                       </div>
                     )}
                   </>
@@ -12990,7 +13033,7 @@ function App() {
                 // assim que o mês vira, a comissão do mês anterior some da tela (igual já pedido
                 // pro usuário antes), e volta a aparecer só se ele navegar de volta pro mês dela.
                 const romaneiosDoMes = romaneios.filter((r) => {
-                  if (!r.order_date) return false;
+                  if (!r.order_date || r.cancelled) return false;   // pedido cancelado não gera comissão
                   const d = new Date(r.order_date + "T00:00:00");
                   return d.getFullYear() === monthDate.getFullYear() && d.getMonth() === monthDate.getMonth();
                 });
@@ -13408,8 +13451,8 @@ function App() {
                 </div>
                 <div className="rounded-xl p-3 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
                   <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Romaneios gerados</div>
-                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{romaneios.length}</div>
-                  <div className="text-xs" style={{ color: COLORS.inkMuted }}>etiqueta de composição</div>
+                  <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{romaneios.filter((r) => !r.cancelled).length}</div>
+                  <div className="text-xs" style={{ color: COLORS.inkMuted }}>etiqueta de composição{romaneios.some((r) => r.cancelled) ? ` · ${romaneios.filter((r) => r.cancelled).length} cancelado(s)` : ""}</div>
                 </div>
               </div>
 
@@ -13523,6 +13566,7 @@ function App() {
                   )}
                   {(() => {
                     const filtered = romaneios.filter((r) => {
+                      if (r.cancelled) return false;
                       const rc = romaneioClients.find((p) => p.id === r.romaneio_client_id);
                       if (romaneioReportClient && !(rc?.name || "").toLowerCase().includes(romaneioReportClient.toLowerCase())) return false;
                       if (romaneioReportFrom && (!r.order_date || r.order_date < romaneioReportFrom)) return false;
@@ -13539,6 +13583,7 @@ function App() {
                 </div>
                 {(() => {
                   const filtered = romaneios.filter((r) => {
+                    if (r.cancelled) return false;
                     const rc = romaneioClients.find((p) => p.id === r.romaneio_client_id);
                     if (romaneioReportClient && !(rc?.name || "").toLowerCase().includes(romaneioReportClient.toLowerCase())) return false;
                     if (romaneioReportFrom && (!r.order_date || r.order_date < romaneioReportFrom)) return false;

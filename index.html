@@ -563,6 +563,142 @@ function generatePixQRDataURL(payload, size) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// PDFs com PIX (Treinamentos, Folha de Pagamento, VT/VR e Migração de Banco): um quadro para CADA pessoa que tem a receber.
+// Cada um recebe na PRÓPRIA chave: o quadro traz o QR Code dele já com o valor que ele tem a receber (a soma do que está em aberto),
+// o nome, a quantidade e a chave escrita para copiar. A soma dos quadros bate com o que está em aberto na tabela. Nada é gravado: o QR só é montado na hora de gerar o PDF.
+// ---------------------------------------------------------------------------
+function nomeNormalizado(x) { return String(x || "").trim().toLowerCase(); }
+
+// Junta os itens em aberto por pessoa e já monta o QR Code do PIX de cada uma.
+// cfg: nome(item), chave(item), valor(item); id(item)? (junta pelo id; sem id junta pelo nome; sem nome só separa pela chave); recente(a, b)? (o mais recente primeiro: a chave dele é a que vale);
+//      cidade (das Configurações), nomeQR (nome no QR quando a pessoa não tem nome), txid (começo do código da cobrança)
+function agruparPagamentosPorPessoa(itens, cfg) {
+  const grupos = new Map();
+  itens.forEach((it) => {
+    const nome = String(cfg.nome(it) || "").trim();
+    const id = cfg.id ? cfg.id(it) : "";
+    const gid = id ? "i:" + id : (nome ? "n:" + nomeNormalizado(nome) : "k:" + sanitizePixKey(cfg.chave(it)));
+    if (!grupos.has(gid)) grupos.set(gid, []);
+    grupos.get(gid).push(it);
+  });
+  const blocos = [...grupos.values()].map((lista) => {
+    const recentes = cfg.recente ? [...lista].sort(cfg.recente) : lista;
+    const comChave = recentes.filter((it) => String(cfg.chave(it) || "").trim());
+    return {
+      nome: String(cfg.nome(recentes[0]) || "").trim(),
+      chave: comChave.length ? String(cfg.chave(comChave[0])).trim() : "", // a chave mais recente dele
+      varias: new Set(comChave.map((it) => sanitizePixKey(cfg.chave(it)))).size > 1,
+      qtd: lista.length,
+      total: round2(lista.reduce((s, it) => s + (Number(cfg.valor(it)) || 0), 0)),
+      itens: lista,
+    };
+  }).sort((a, b) => (a.nome ? 0 : 1) - (b.nome ? 0 : 1) || (a.chave ? 0 : 1) - (b.chave ? 0 : 1) || a.nome.localeCompare(b.nome, "pt-BR"));
+  const hoje = todayStr().replace(/-/g, "");
+  blocos.forEach((b, i) => {
+    b.qr = null;
+    if (b.chave && b.total > 0) {
+      const payload = generatePixPayload({ key: b.chave, name: b.nome || cfg.nomeQR, city: cfg.cidade || "SAO PAULO", value: b.total, txid: cfg.txid + hoje + (i + 1) });
+      b.qr = generatePixQRDataURL(payload, 240);
+    }
+  });
+  return blocos;
+}
+
+// Desenha os quadros a partir de cfg.y (logo abaixo da tabela); quando não cabe, continua na folha seguinte.
+// cfg: y, titulo, subtitulo (até 2 linhas), vazio (nome quando a pessoa não tem), qtdTxt(b), detalhe(b)? (linha cinza embaixo da quantidade), semChave(b), zerado(b)?, variasChaves, semQuadros? (frase quando não há ninguém a pagar)
+function desenharQuadrosPix(doc, blocos, cfg) {
+  const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight();
+  const gap = 5, bw = (pw - 28 - 2 * gap) / 3, QR = 32, pad = 4, fundo = ph - 14; // 3 quadros por linha; QR de 32 mm
+  const fonte = (tam, neg) => { doc.setFont("helvetica", neg ? "bold" : "normal"); doc.setFontSize(tam); };
+  let yy = cfg.y;
+  if (blocos.length === 0) {
+    if (cfg.semQuadros) {
+      if (yy + 8 > fundo) { doc.addPage(); yy = 18; }
+      fonte(9, false); doc.setTextColor(100); doc.text(cfg.semQuadros, 14, yy + 4);
+    }
+    return yy;
+  }
+  // quebra um texto sem espaços (chave PIX) ou com espaços (nome) na largura que cabe, preferindo cortar depois de @ - . _ ou no espaço
+  const quebraLarg = (txt, largura) => {
+    let x = String(txt || "").trim(); const linhas = [];
+    while (x && doc.getTextWidth(x) > largura) {
+      let n = x.length - 1;
+      while (n > 1 && doc.getTextWidth(x.slice(0, n)) > largura) n--;
+      n = Math.max(n, 1);
+      const melhor = Math.max(x.lastIndexOf(" ", n), ...["@", "-", ".", "_"].map((c) => x.lastIndexOf(c, n - 1) + 1));
+      const corte = Math.max(1, melhor >= Math.ceil(n / 2) ? melhor : n);
+      linhas.push(x.slice(0, corte).trim()); x = x.slice(corte).trim();
+    }
+    if (x) linhas.push(x);
+    return linhas;
+  };
+  const CINZA = [100, 100, 100], PRETO = [30, 30, 30], LARANJA = [200, 90, 0];
+  // monta as linhas de texto do quadro (e a altura dele)
+  const montar = (b) => {
+    const x0 = b.qr ? pad + QR + pad : pad;
+    const larg = bw - x0 - pad;
+    const it = [];
+    const quebrado = (txt, tam, neg) => { fonte(tam, neg); return quebraLarg(txt, larg); };
+    let nomeL = quebrado(b.nome || cfg.vazio, 10, true);
+    if (nomeL.length > 2) {
+      nomeL = nomeL.slice(0, 2);
+      let l2 = nomeL[1]; while (l2.length > 1 && doc.getTextWidth(l2 + "...") > larg) l2 = l2.slice(0, -1);
+      nomeL[1] = l2 + "...";
+    }
+    nomeL.forEach((l, i) => it.push({ txt: l, tam: 10, neg: true, cor: PRETO, adv: i ? 4.6 : 3.4 }));
+    it.push({ txt: "A receber", tam: 8, neg: false, cor: CINZA, adv: 5.4 });
+    fonte(13, true);
+    it.push({ txt: fmtMoney(b.total), tam: doc.getTextWidth(fmtMoney(b.total)) > larg ? 11 : 13, neg: true, cor: PRETO, adv: 5.8 });
+    it.push({ txt: cfg.qtdTxt(b), tam: 8, neg: false, cor: CINZA, adv: 5 });
+    const aviso = (txt, cor, adv0) => quebrado(txt, 7.5, false).forEach((l, i) => it.push({ txt: l, tam: 7.5, neg: false, cor, adv: i ? 3.4 : adv0 }));
+    const det = cfg.detalhe ? cfg.detalhe(b) : "";
+    if (det) aviso(det, CINZA, 3.6);
+    if (b.chave) {
+      it.push({ txt: "Chave PIX:", tam: 8, neg: true, cor: [60, 60, 60], adv: 6 });
+      quebrado(b.chave, 8, false).forEach((l) => it.push({ txt: l, tam: 8, neg: false, cor: PRETO, adv: 3.7 }));
+    }
+    if (!b.chave) aviso(cfg.semChave(b), LARANJA, 6);
+    else if (!(b.total > 0)) aviso(cfg.zerado ? cfg.zerado(b) : "Valor zerado: não há o que pagar, por isso não sai QR Code.", CINZA, 6);
+    else if (!b.qr) aviso("Não foi possível gerar o QR Code agora — use a chave acima.", LARANJA, 6);
+    if (b.varias) aviso(cfg.variasChaves, LARANJA, b.chave && b.qr ? 5 : 3.6);
+    const altTexto = pad + it.reduce((t, i) => t + i.adv, 0) + 1.5 + pad;
+    return { it, tx: x0, alt: Math.max(altTexto, b.qr ? pad + QR + pad : 28) };
+  };
+  const desenhar = (b, m, x, y, h) => {
+    doc.setDrawColor(205, 205, 220); doc.setLineWidth(0.3);
+    doc.roundedRect(x, y, bw, h, 2, 2, "S");
+    if (b.qr) { try { doc.addImage(b.qr, "PNG", x + pad, y + pad, QR, QR); } catch (e) {} }
+    let cy = y + pad;
+    m.it.forEach((i) => { cy += i.adv; fonte(i.tam, i.neg); doc.setTextColor(i.cor[0], i.cor[1], i.cor[2]); doc.text(i.txt, x + m.tx, cy); });
+  };
+  const cabecalho = (y, continuacao) => {
+    fonte(11, true); doc.setTextColor(30);
+    doc.text(continuacao ? cfg.titulo + " — continuação" : cfg.titulo, 14, y);
+    if (continuacao) return y + 6;
+    fonte(8.5, false); doc.setTextColor(100);
+    const sub = doc.splitTextToSize(cfg.subtitulo, pw - 28);
+    doc.text(sub, 14, y + 5);
+    return y + 5 + sub.length * 4 + 2;
+  };
+  const ALT_CAB = 15; // espaço reservado para o título + a frase de explicação (até 2 linhas)
+  const linhasDeBlocos = [];
+  for (let i = 0; i < blocos.length; i += 3) linhasDeBlocos.push(blocos.slice(i, i + 3).map((b) => ({ b, m: montar(b) })));
+  linhasDeBlocos.forEach((linha, r) => {
+    const h = Math.max(...linha.map((c) => c.m.alt));
+    if (r === 0) {
+      if (yy + ALT_CAB + h > fundo) { doc.addPage(); yy = 18; }
+      yy = cabecalho(yy, false);
+    } else if (yy + h > fundo) {
+      doc.addPage(); yy = 18;
+      yy = cabecalho(yy, true);
+    }
+    linha.forEach((c, k) => desenhar(c.b, c.m, 14 + k * (bw + gap), yy, h));
+    yy += h + gap;
+  });
+  return yy;
+}
+
 function PixQRModal({ pixKey, favorecido, city, value, label, onClose }) {
   const qrContainerRef = useRef(null);
   const qrInstanceRef = useRef(null);
@@ -8048,41 +8184,38 @@ function App() {
 
     const body = list.map((r) => [
       r.employee_name || "-", r.is_advance ? "Vale" : "Folha", r.reference_month || "-", fmtDate(r.payment_date),
-      fmtMoney(r.total_earnings), fmtMoney(r.total_discounts), fmtMoney(r.net_total), r.paid ? "Pago" : "Pendente", "",
+      fmtMoney(r.total_earnings), fmtMoney(r.total_discounts), fmtMoney(r.net_total), r.paid ? "Pago" : "Pendente",
     ]);
     const totalLiquido = list.reduce((s, r) => s + (Number(r.net_total) || 0), 0);
-    const qrColIndex = 8;
 
     doc.autoTable({
       startY: 44,
-      head: [["Funcionário", "Tipo", "Referência", "Pagamento", "Proventos", "Descontos", "Líquido", "Situação", "PIX"]],
+      head: [["Funcionário", "Tipo", "Referência", "Pagamento", "Proventos", "Descontos", "Líquido", "Situação"]],
       body,
-      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalLiquido), "", ""]],
+      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalLiquido), ""]],
       styles: { fontSize: 9, valign: "middle", cellPadding: { top: 4, right: 3, bottom: 4, left: 3 } },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold" },
       showFoot: "lastPage",
+      rowPageBreak: "avoid", // uma linha nunca é cortada no meio entre duas folhas
       margin: { left: 14, right: 14 },
-      columnStyles: { [qrColIndex]: { minCellHeight: 34, cellWidth: 32 } },
-      didDrawCell: (data) => {
-        try {
-          if (data.section !== "body" || data.column.index !== qrColIndex) return;
-          const r = list[data.row.index];
-          if (!r) return;
-          const emp = employees.find((e) => e.id === r.employee_id);
-          if (!emp?.pix_key) {
-            doc.setFontSize(7);
-            doc.setTextColor(150);
-            doc.text("sem PIX", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: "center" });
-            return;
-          }
-          const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: r.net_total, txid: String(r.id || "folha").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
-          const qrData = generatePixQRDataURL(qrPayload, 150);
-          if (qrData) {
-            try { doc.addImage(qrData, "PNG", data.cell.x + (data.cell.width - 26) / 2, data.cell.y + (data.cell.height - 26) / 2, 26, 26); } catch (e) {}
-          }
-        } catch (e) { console.error("Erro ao desenhar QR PIX na folha:", e); }
-      },
+    });
+
+    // ---- Pagamento por funcionário (PIX) ----
+    // Cada funcionário recebe na PRÓPRIA chave (a do cadastro de funcionários): um quadro com o QR Code dele, já com o valor que ele tem a receber
+    // (a soma dos pagamentos em aberto dele: folha + vale), o nome, a quantidade e a chave escrita. A soma dos quadros é o TOTAL da tabela.
+    const empDe = (r) => employees.find((e) => e.id === r.employee_id);
+    const blocos = agruparPagamentosPorPessoa(list, {
+      id: (r) => r.employee_id, nome: (r) => empDe(r)?.name || r.employee_name, chave: (r) => empDe(r)?.pix_key, valor: (r) => r.net_total,
+      cidade: settings.company_pix_city, nomeQR: "FUNCIONARIO", txid: "FOLHA",
+    });
+    desenharQuadrosPix(doc, blocos, {
+      y: doc.lastAutoTable.finalY + 10,
+      titulo: "Pagamento por funcionário (PIX)",
+      subtitulo: "Cada funcionário recebe na própria chave PIX (a do cadastro de funcionários). Aponte a câmera do aplicativo do banco para o QR Code: o valor já vai preenchido (soma dos pagamentos em aberto dele).",
+      vazio: "Funcionário não informado",
+      qtdTxt: (b) => `${b.qtd} pagamento${b.qtd === 1 ? "" : "s"} em aberto`,
+      semChave: () => "Sem chave PIX: cadastre a chave do funcionário (Folha de Pagamento > Funcionários) para gerar o QR Code.",
     });
     doc.save(`folha-pagamento-${todayStr()}.pdf`);
     } catch (e) {
@@ -8130,43 +8263,44 @@ function App() {
       return [
         r.employee_name || "-", r.payment_date ? new Date(r.payment_date + "T00:00:00").toLocaleDateString("pt-BR") : "-",
         r.days_worked || "-", fmtMoney(r.vr_value), fmtMoney(r.vt_value), (String(r.transport_desc || "").match(/^0?(1|2)/)?.[1]) || r.transport_desc || "-", fmtMoney(r.total_value), r.paid ? "Pago" : "Pendente",
-        obs, "",
+        obs,
       ];
     });
     const totalGeral = visibleVtVrRecords.reduce((s, r) => s + (Number(r.total_value) || 0), 0);
-    const qrColIndex = 9;
 
     doc.autoTable({
       startY: 44,
-      head: [["Funcionário", "Data", "Dias", "VR", "VT", "Transporte", "Total", "Situação", "Obs", "PIX"]],
+      head: [["Funcionário", "Data", "Dias", "VR", "VT", "Transporte", "Total", "Situação", "Obs"]],
       body: rows,
-      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalGeral), "", "", ""]],
+      foot: [["TOTAL", "", "", "", "", "", fmtMoney(totalGeral), "", ""]],
       styles: { fontSize: 8.5, valign: "middle", halign: "center", cellPadding: { top: 4, right: 3, bottom: 4, left: 3 } },
       headStyles: { fillColor: [124, 92, 255], halign: "center" },
       footStyles: { fillColor: [230, 230, 240], textColor: 20, fontStyle: "bold", halign: "center" },
       columnStyles: {
         0: { halign: "left", cellWidth: 40 },
         8: { cellWidth: 40 },
-        [qrColIndex]: { minCellHeight: 34, cellWidth: 32 },
       },
       showFoot: "lastPage",
+      rowPageBreak: "avoid", // uma linha nunca é cortada no meio entre duas folhas
       margin: { left: 14, right: 14 },
-      didDrawCell: (data) => {
-        if (data.section !== "body" || data.column.index !== qrColIndex) return;
-        const r = visibleVtVrRecords[data.row.index];
-        const emp = employees.find((e) => e.id === r.employee_id);
-        if (!emp?.pix_key) {
-          doc.setFontSize(7);
-          doc.setTextColor(150);
-          doc.text("sem PIX", data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2, { align: "center" });
-          return;
-        }
-        const qrPayload = generatePixPayload({ key: emp.pix_key, name: emp.name, city: settings.company_pix_city || "SAO PAULO", value: r.total_value, txid: String(r.id || "vtvr").replace(/[^a-zA-Z0-9]/g, "").slice(0, 25) });
-        const qrData = generatePixQRDataURL(qrPayload, 150);
-        if (qrData) {
-          try { doc.addImage(qrData, "PNG", data.cell.x + (data.cell.width - 26) / 2, data.cell.y + (data.cell.height - 26) / 2, 26, 26); } catch (e) {}
-        }
-      },
+    });
+
+    // ---- Pagamento por funcionário (PIX) ----
+    // Cada funcionário recebe na PRÓPRIA chave (a do cadastro de funcionários): um quadro com o QR Code dele, já com o valor que ele tem a receber
+    // (a soma dos lançamentos de VR/VT EM ABERTO dele; os já pagos não entram, mesmo quando aparecem na tabela).
+    const empDe = (r) => employees.find((e) => e.id === r.employee_id);
+    const blocos = agruparPagamentosPorPessoa(visibleVtVrRecords.filter((r) => !r.paid), {
+      id: (r) => r.employee_id, nome: (r) => empDe(r)?.name || r.employee_name, chave: (r) => empDe(r)?.pix_key, valor: (r) => r.total_value,
+      cidade: settings.company_pix_city, nomeQR: "FUNCIONARIO", txid: "VTVR",
+    });
+    desenharQuadrosPix(doc, blocos, {
+      y: doc.lastAutoTable.finalY + 10,
+      titulo: "Pagamento por funcionário (PIX)",
+      subtitulo: "Cada funcionário recebe na própria chave PIX (a do cadastro de funcionários). Aponte a câmera do aplicativo do banco para o QR Code: o valor já vai preenchido (soma do VR/VT em aberto dele).",
+      vazio: "Funcionário não informado",
+      qtdTxt: (b) => `${b.qtd} lançamento${b.qtd === 1 ? "" : "s"} em aberto`,
+      semChave: () => "Sem chave PIX: cadastre a chave do funcionário (Folha de Pagamento > Funcionários) para gerar o QR Code.",
+      semQuadros: "Todos os lançamentos listados já estão pagos: não há QR Code a gerar.",
     });
     doc.save(`vt-vr-${todayStr()}.pdf`);
   }
@@ -8186,31 +8320,6 @@ function App() {
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
-    // Só existe um técnico responsável por essa migração, então mostra um
-    // único QR Code (PIX dele) com o valor total pendente de pagamento,
-    // em vez de repetir a chave em cada linha.
-    const pixKey = settings.migracao_pix_key || "";
-    const pixFav = settings.migracao_pix_favorecido || "";
-    const pendenteTecnico = lista.filter((m) => m.status === "concluida").reduce((s, m) => s + (Number(m.value) || 0), 0);
-
-    let startY = 44;
-    if (pixKey && pendenteTecnico > 0) {
-      const qrPayload = generatePixPayload({ key: pixKey, name: pixFav || "TECNICO", city: settings.company_pix_city || "SAO PAULO", value: pendenteTecnico, txid: "MIGRACOES" });
-      const qrData = generatePixQRDataURL(qrPayload, 150);
-      doc.setFontSize(11);
-      doc.setTextColor(30);
-      doc.text("PIX do técnico — valor pendente de pagamento", 14, startY + 2);
-      if (qrData) {
-        try { doc.addImage(qrData, "PNG", 14, startY + 6, 28, 28); } catch (e) {}
-      }
-      doc.setFontSize(9);
-      doc.setTextColor(60);
-      doc.text(`Técnico: ${pixFav || "-"}`, 48, startY + 14);
-      doc.text(`Chave PIX: ${pixKey}`, 48, startY + 20);
-      doc.text(`Valor pendente: ${fmtMoney(pendenteTecnico)}`, 48, startY + 26);
-      startY += 38;
-    }
-
     const rows = lista.map((m) => {
       const itens = [
         m.migrated_clients && "Clientes", m.migrated_products && "Produtos", m.migrated_stock && "Estoque",
@@ -8228,7 +8337,7 @@ function App() {
     const totalValor = lista.reduce((s, m) => s + (Number(m.value) || 0), 0);
 
     doc.autoTable({
-      startY,
+      startY: 44,
       head: [["Cliente", "Solicitado por", "Migrado por", { content: "Data", styles: { halign: "center" } }, "Banco migrado", "O que foi migrado", { content: "Valor", styles: { halign: "center" } }, "Status", { content: "Conclusão", styles: { halign: "center" } }, "O que foi feito (justificativa do valor)"]],
       body: rows,
       foot: [[{ content: "TOTAL EM ABERTO", colSpan: 6, styles: { halign: "left" } }, { content: fmtMoney(totalValor), styles: { halign: "center", overflow: "visible" } }, { content: "", colSpan: 3 }]],
@@ -8249,6 +8358,36 @@ function App() {
         9: { cellWidth: "auto" }, // O que foi feito (justificativa) — ocupa todo o espaço que sobra
       },
       margin: { left: 14, right: 14 },
+    });
+
+    // ---- Pagamento por técnico (PIX) ----
+    // Cada técnico recebe na PRÓPRIA chave: um quadro com o QR Code dele, já com o valor que ele tem a receber (a soma das migrações CONCLUÍDAS dele que ainda não foram pagas),
+    // o nome, a quantidade e a chave escrita. Quem tem migração ainda não concluída vê um aviso (essa parte não entra no valor a receber, mas está no total da tabela).
+    // A chave e o favorecido vêm de cada migração; as migrações antigas, sem PIX próprio, seguem usando o técnico das Configurações (como era antes).
+    const cfgChave = String(settings.migracao_pix_key || "").trim(), cfgNome = String(settings.migracao_pix_favorecido || "").trim();
+    const chaveProp = (m) => String(m.pix_key || "").trim();
+    const antiga = (m) => !chaveProp(m) && !String(m.pix_favorecido || "").trim(); // sem PIX próprio
+    const nomeMig = (m) => String(m.pix_favorecido || "").trim() || (antiga(m) ? cfgNome : "") || String(m.migrated_by || "").trim();
+    const chaveMig = (m) => chaveProp(m) || ((antiga(m) || (cfgNome && nomeNormalizado(nomeMig(m)) === nomeNormalizado(cfgNome))) ? cfgChave : "");
+    const concluida = (m) => m.status === "concluida";
+    const blocos = agruparPagamentosPorPessoa(lista, {
+      nome: nomeMig, chave: chaveMig, valor: (m) => (concluida(m) ? m.value : 0),
+      recente: (a, b) => String(b.completion_date || b.request_date || "").localeCompare(String(a.completion_date || a.request_date || "")),
+      cidade: settings.company_pix_city, nomeQR: "TECNICO", txid: "MIGR",
+    });
+    desenharQuadrosPix(doc, blocos, {
+      y: doc.lastAutoTable.finalY + 10,
+      titulo: "Pagamento por técnico (PIX)",
+      subtitulo: "Cada técnico recebe na própria chave PIX. Aponte a câmera do aplicativo do banco para o QR Code: o valor já vai preenchido (soma das migrações concluídas dele que ainda não foram pagas).",
+      vazio: "Técnico não informado",
+      qtdTxt: (b) => { const n = b.itens.filter(concluida).length; return n === 1 ? "1 migração concluída" : `${n} migrações concluídas`; },
+      detalhe: (b) => {
+        const f = b.itens.filter((m) => !concluida(m));
+        return f.length ? `+ ${f.length} ainda não concluída${f.length === 1 ? "" : "s"} (${fmtMoney(f.reduce((s, m) => s + (Number(m.value) || 0), 0))}): fora do valor a receber.` : "";
+      },
+      semChave: (b) => b.nome ? "Sem chave PIX: edite a migração e informe a chave do técnico para gerar o QR Code." : "Sem técnico e sem chave PIX: edite a migração e informe o técnico e a chave para gerar o QR Code.",
+      zerado: () => "Nenhuma migração concluída ainda: o QR Code sai quando ela for concluída.",
+      variasChaves: "Este técnico tem mais de uma chave nas migrações: o QR usa a mais recente.",
     });
     doc.save(`migracoes-banco-em-aberto-${todayStr()}.pdf`);
   }
@@ -8314,112 +8453,19 @@ function App() {
     // ---- Pagamento por técnico (PIX) ----
     // Cada técnico recebe na PRÓPRIA chave (não existe um PIX único): sai um quadro com o QR Code de cada técnico, já com o valor que ele tem a receber
     // (a soma dos treinamentos em aberto dele), o nome, a quantidade e a chave escrita para copiar. A soma dos quadros é o TOTAL EM ABERTO da tabela.
-    const nomeN = (x) => String(x || "").trim().toLowerCase();
-    const grupos = new Map();
-    lista.forEach((t) => {
-      const nome = String(t.trainer_name || "").trim();
-      const id = nome ? "n:" + nomeN(nome) : "k:" + sanitizePixKey(t.trainer_pix_key); // sem nome: só separa pela chave
-      if (!grupos.has(id)) grupos.set(id, []);
-      grupos.get(id).push(t);
+    const blocos = agruparPagamentosPorPessoa(lista, {
+      nome: (t) => t.trainer_name, chave: (t) => t.trainer_pix_key, valor: trainingTotal,
+      recente: (a, b) => String(b.training_date || "").localeCompare(String(a.training_date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")),
+      cidade: settings.company_pix_city, nomeQR: "TECNICO", txid: "TREIN",
     });
-    const hoje = todayStr().replace(/-/g, "");
-    const blocos = [...grupos.values()].map((itens) => {
-      const recentes = [...itens].sort((a, b) => String(b.training_date || "").localeCompare(String(a.training_date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")));
-      const comChave = recentes.filter((t) => String(t.trainer_pix_key || "").trim());
-      return {
-        nome: String(recentes[0].trainer_name || "").trim(),
-        chave: comChave.length ? String(comChave[0].trainer_pix_key).trim() : "", // a chave mais recente dele
-        varias: new Set(comChave.map((t) => sanitizePixKey(t.trainer_pix_key))).size > 1,
-        qtd: itens.length,
-        total: round2(itens.reduce((s, t) => s + trainingTotal(t), 0)),
-      };
-    }).sort((a, b) => (a.nome ? 0 : 1) - (b.nome ? 0 : 1) || (a.chave ? 0 : 1) - (b.chave ? 0 : 1) || a.nome.localeCompare(b.nome, "pt-BR"));
-    blocos.forEach((b, i) => {
-      b.qr = null;
-      if (b.chave && b.total > 0) {
-        const payload = generatePixPayload({ key: b.chave, name: b.nome || "TECNICO", city: settings.company_pix_city || "SAO PAULO", value: b.total, txid: "TREIN" + hoje + (i + 1) });
-        b.qr = generatePixQRDataURL(payload, 240);
-      }
-    });
-
-    const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight();
-    const gap = 5, bw = (pw - 28 - 2 * gap) / 3, QR = 32, pad = 4, fundo = ph - 14; // 3 quadros por linha; QR de 32 mm
-    // quebra um texto sem espaços (chave PIX) ou com espaços (nome) na largura que cabe, preferindo cortar depois de @ - . _ ou no espaço
-    const quebraLarg = (txt, largura) => {
-      let x = String(txt || "").trim(); const linhas = [];
-      while (x && doc.getTextWidth(x) > largura) {
-        let n = x.length - 1;
-        while (n > 1 && doc.getTextWidth(x.slice(0, n)) > largura) n--;
-        n = Math.max(n, 1);
-        const melhor = Math.max(x.lastIndexOf(" ", n), ...["@", "-", ".", "_"].map((c) => x.lastIndexOf(c, n - 1) + 1));
-        const corte = Math.max(1, melhor >= Math.ceil(n / 2) ? melhor : n);
-        linhas.push(x.slice(0, corte).trim()); x = x.slice(corte).trim();
-      }
-      if (x) linhas.push(x);
-      return linhas;
-    };
-    const fonte = (tam, neg) => { doc.setFont("helvetica", neg ? "bold" : "normal"); doc.setFontSize(tam); };
-    const CINZA = [100, 100, 100], PRETO = [30, 30, 30], LARANJA = [200, 90, 0];
-    // monta as linhas de texto do quadro (e a altura dele)
-    const montar = (b) => {
-      const x0 = b.qr ? pad + QR + pad : pad;
-      const larg = bw - x0 - pad;
-      const it = [];
-      const quebrado = (txt, tam, neg) => { fonte(tam, neg); return quebraLarg(txt, larg); };
-      let nomeL = quebrado(b.nome || "Técnico não informado", 10, true);
-      if (nomeL.length > 2) {
-        nomeL = nomeL.slice(0, 2);
-        let l2 = nomeL[1]; while (l2.length > 1 && doc.getTextWidth(l2 + "...") > larg) l2 = l2.slice(0, -1);
-        nomeL[1] = l2 + "...";
-      }
-      nomeL.forEach((l, i) => it.push({ txt: l, tam: 10, neg: true, cor: PRETO, adv: i ? 4.6 : 3.4 }));
-      it.push({ txt: "A receber", tam: 8, neg: false, cor: CINZA, adv: 5.4 });
-      fonte(13, true);
-      it.push({ txt: fmtMoney(b.total), tam: doc.getTextWidth(fmtMoney(b.total)) > larg ? 11 : 13, neg: true, cor: PRETO, adv: 5.8 });
-      it.push({ txt: `${b.qtd} treinamento${b.qtd === 1 ? "" : "s"} em aberto`, tam: 8, neg: false, cor: CINZA, adv: 5 });
-      if (b.chave) {
-        it.push({ txt: "Chave PIX:", tam: 8, neg: true, cor: [60, 60, 60], adv: 6 });
-        quebrado(b.chave, 8, false).forEach((l) => it.push({ txt: l, tam: 8, neg: false, cor: PRETO, adv: 3.7 }));
-      }
-      const aviso = (txt, cor, adv0) => quebrado(txt, 7.5, false).forEach((l, i) => it.push({ txt: l, tam: 7.5, neg: false, cor, adv: i ? 3.4 : adv0 }));
-      if (!b.chave) aviso(b.nome ? "Sem chave PIX: edite o treinamento e informe a chave para gerar o QR Code." : "Sem técnico e sem chave PIX: edite o treinamento e informe o técnico e a chave para gerar o QR Code.", LARANJA, 6);
-      else if (!(b.total > 0)) aviso("Valor zerado: não há o que pagar, por isso não sai QR Code.", CINZA, 6);
-      else if (!b.qr) aviso("Não foi possível gerar o QR Code agora — use a chave acima.", LARANJA, 6);
-      if (b.varias) aviso("Este técnico tem mais de uma chave nos treinamentos: o QR usa a mais recente.", LARANJA, b.chave && b.qr ? 5 : 3.6);
-      const altTexto = pad + it.reduce((t, i) => t + i.adv, 0) + 1.5 + pad;
-      return { it, tx: x0, alt: Math.max(altTexto, b.qr ? pad + QR + pad : 28) };
-    };
-    const desenhar = (b, m, x, y, h) => {
-      doc.setDrawColor(205, 205, 220); doc.setLineWidth(0.3);
-      doc.roundedRect(x, y, bw, h, 2, 2, "S");
-      if (b.qr) { try { doc.addImage(b.qr, "PNG", x + pad, y + pad, QR, QR); } catch (e) {} }
-      let cy = y + pad;
-      m.it.forEach((i) => { cy += i.adv; fonte(i.tam, i.neg); doc.setTextColor(i.cor[0], i.cor[1], i.cor[2]); doc.text(i.txt, x + m.tx, cy); });
-    };
-    const cabecalho = (y, continuacao) => {
-      fonte(11, true); doc.setTextColor(30);
-      doc.text(continuacao ? "Pagamento por técnico (PIX) — continuação" : "Pagamento por técnico (PIX)", 14, y);
-      if (continuacao) return y + 6;
-      fonte(8.5, false); doc.setTextColor(100);
-      const sub = doc.splitTextToSize("Cada técnico recebe na própria chave PIX. Aponte a câmera do aplicativo do banco para o QR Code: o valor já vai preenchido (soma dos treinamentos em aberto dele).", pw - 28);
-      doc.text(sub, 14, y + 5);
-      return y + 5 + sub.length * 4 + 2;
-    };
-    const ALT_CAB = 15; // espaço reservado para o título + a frase de explicação
-    let yy = doc.lastAutoTable.finalY + 10;
-    const linhasDeBlocos = [];
-    for (let i = 0; i < blocos.length; i += 3) linhasDeBlocos.push(blocos.slice(i, i + 3).map((b) => ({ b, m: montar(b) })));
-    linhasDeBlocos.forEach((linha, r) => {
-      const h = Math.max(...linha.map((c) => c.m.alt));
-      if (r === 0) {
-        if (yy + ALT_CAB + h > fundo) { doc.addPage(); yy = 18; }
-        yy = cabecalho(yy, false);
-      } else if (yy + h > fundo) {
-        doc.addPage(); yy = 18;
-        yy = cabecalho(yy, true);
-      }
-      linha.forEach((c, k) => desenhar(c.b, c.m, 14 + k * (bw + gap), yy, h));
-      yy += h + gap;
+    desenharQuadrosPix(doc, blocos, {
+      y: doc.lastAutoTable.finalY + 10,
+      titulo: "Pagamento por técnico (PIX)",
+      subtitulo: "Cada técnico recebe na própria chave PIX. Aponte a câmera do aplicativo do banco para o QR Code: o valor já vai preenchido (soma dos treinamentos em aberto dele).",
+      vazio: "Técnico não informado",
+      qtdTxt: (b) => `${b.qtd} treinamento${b.qtd === 1 ? "" : "s"} em aberto`,
+      semChave: (b) => b.nome ? "Sem chave PIX: edite o treinamento e informe a chave para gerar o QR Code." : "Sem técnico e sem chave PIX: edite o treinamento e informe o técnico e a chave para gerar o QR Code.",
+      variasChaves: "Este técnico tem mais de uma chave nos treinamentos: o QR usa a mais recente.",
     });
     doc.save(`treinamentos-em-aberto-${todayStr()}.pdf`);
   }

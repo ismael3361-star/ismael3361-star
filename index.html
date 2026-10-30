@@ -3338,6 +3338,97 @@ function DbMigrationForm({ initial, settings, onSave, onCancel }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Treinamentos: o funcionário que passa o treinamento recebe condução + almoço + valor do treinamento ("Total Mire" na planilha).
+// O total NÃO é guardado no banco: é sempre a soma dos três valores (assim nunca fica diferente).
+// ---------------------------------------------------------------------------
+function round2(v) { return Math.round((Number(v) || 0) * 100) / 100; }
+function trainingTotal(t) { return round2((Number(t?.transport) || 0) + (Number(t?.lunch) || 0) + (Number(t?.training_value) || 0)); }
+// mensagem do Supabase quando a tabela "trainings" ainda não foi criada (arquivo criar-tabela-treinamentos.sql não rodado)
+const TRAINING_MISSING_RE = /PGRST205|42P01|could not find the table|relation ["']?(public\.)?trainings["']? does not exist/i;
+
+function TrainingForm({ initial, previous, stores, trainers, onSave, onCancel }) {
+  const copied = !initial && !!previous; // novo treinamento começa com o funcionário e os valores do último lançado
+  const [newId] = useState(() => initial?.id || uid());
+  const [storeName, setStoreName] = useState(initial?.store_name || "");
+  const [trainingDate, setTrainingDate] = useState(initial?.training_date || todayStr());
+  const [trainerName, setTrainerName] = useState(initial ? (initial.trainer_name || "") : (copied ? (previous.trainer_name || "") : ""));
+  const [transport, setTransport] = useState(initial ? (initial.transport ?? "") : (copied ? (previous.transport ?? "") : ""));
+  const [lunch, setLunch] = useState(initial ? (initial.lunch ?? "") : (copied ? (previous.lunch ?? "") : ""));
+  const [trainingValue, setTrainingValue] = useState(initial ? (initial.training_value ?? "") : (copied ? (previous.training_value ?? "") : ""));
+  const [notes, setNotes] = useState(initial?.notes || "");
+  const [saving, setSaving] = useState(false);
+
+  const total = round2((Number(transport) || 0) + (Number(lunch) || 0) + (Number(trainingValue) || 0));
+  const canSave = !!storeName.trim() && !!trainingDate && !saving;
+  const inputCls = "w-full rounded-lg border px-3 py-2 text-sm outline-none";
+  const inputSt = { borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink };
+  const moneyField = (label, value, setValue) => (
+    <label className="block">
+      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>{label}</span>
+      <input type="number" inputMode="decimal" step="0.01" min="0" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0,00" className={inputCls} style={inputSt} />
+    </label>
+  );
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar treinamento" : "Novo treinamento"}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Loja *</span>
+          <input list="treinamento-lojas" value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="Nome da loja" className={inputCls} style={inputSt} />
+          <datalist id="treinamento-lojas">{(stores || []).map((n) => <option key={n} value={n} />)}</datalist>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do treinamento *</span>
+          <input type="date" value={trainingDate} onChange={(e) => setTrainingDate(e.target.value)} className={inputCls} style={inputSt} />
+        </label>
+        <label className="block sm:col-span-2">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Funcionário que passou o treinamento (quem vai receber)</span>
+          <input list="treinamento-funcionarios" value={trainerName} onChange={(e) => setTrainerName(e.target.value)} placeholder="Escolha da lista ou digite o nome (opcional)" className={inputCls} style={inputSt} />
+          <datalist id="treinamento-funcionarios">{(trainers || []).map((n) => <option key={n} value={n} />)}</datalist>
+        </label>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {moneyField("Condução (R$)", transport, setTransport)}
+        {moneyField("Almoço (R$)", lunch, setLunch)}
+        {moneyField("Valor do treinamento (R$)", trainingValue, setTrainingValue)}
+      </div>
+      {copied && (
+        <div className="text-xs" style={{ color: COLORS.inkFaint }}>
+          O funcionário e os valores vieram do último treinamento lançado ({previous.store_name}) — altere se for diferente.
+        </div>
+      )}
+      <div className="flex items-center justify-between flex-wrap gap-2 rounded-lg px-4 py-3 border" style={{ borderColor: rgba(COLORS.brand, 0.35), background: rgba(COLORS.brand, 0.08) }}>
+        <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Total Mire <span className="font-semibold normal-case">(condução + almoço + treinamento)</span></span>
+        <span className="text-xl font-extrabold tnum whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtMoney(total)}</span>
+      </div>
+      <label className="block">
+        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Obs.</span>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Anotações sobre este treinamento (opcional)" className={inputCls + " resize-y"} style={{ ...inputSt, minHeight: 72 }} />
+      </label>
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await onSave({
+                id: newId, store_name: storeName.trim(), training_date: trainingDate, trainer_name: trainerName.trim() || null,
+                transport: Number(transport) || 0, lunch: Number(lunch) || 0, training_value: Number(trainingValue) || 0,
+                notes: notes.trim() || null,
+              });
+            } finally { setSaving(false); }
+          }}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          Salvar treinamento
+        </button>
+        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 function ItagEntryForm({ initial, onSave, onCancel }) {
   const [purchaseDate, setPurchaseDate] = useState(initial?.purchase_date || todayStr());
   const [invoiceNumber, setInvoiceNumber] = useState(initial?.invoice_number || "");
@@ -6266,6 +6357,12 @@ function App() {
   const [editingDbMigration, setEditingDbMigration] = useState(null);
   const [selectedMigrations, setSelectedMigrations] = useState(new Set());
   const [showPaidMigrations, setShowPaidMigrations] = useState(false);
+  const [trainings, setTrainings] = useState([]);
+  const [trainingsMissing, setTrainingsMissing] = useState(false);
+  const [showTrainingForm, setShowTrainingForm] = useState(false);
+  const [editingTraining, setEditingTraining] = useState(null);
+  const [selectedTrainings, setSelectedTrainings] = useState(new Set());
+  const [showPaidTrainings, setShowPaidTrainings] = useState(false);
   const [clientCommissions, setClientCommissions] = useState([]);
   const [showClientCommissionForm, setShowClientCommissionForm] = useState(false);
   const [editingClientCommission, setEditingClientCommission] = useState(null);
@@ -6643,6 +6740,67 @@ function App() {
     await loadDbMigrations();
     showToast(`${ids.length} migração(ões) marcada(s) como paga(s).`);
     logActivity(`${ids.length} migração(ões) marcada(s) como paga(s) ao técnico`);
+  }
+  // ---- Treinamentos: controle do que se paga ao funcionário que passa o treinamento ----
+  const loadTrainings = useCallback(async () => {
+    const { data, error } = await supa.from("trainings").select("*").order("training_date", { ascending: true });
+    if (error) {
+      // tabela ainda não criada (arquivo SQL não rodado): a aba mostra um aviso em vez de quebrar
+      const falta = TRAINING_MISSING_RE.test(`${error.code || ""} ${error.message || ""}`);
+      setTrainingsMissing(falta);
+      if (falta) setTrainings([]); else showToast(`Erro ao carregar os treinamentos: ${error.message}`);
+      return;
+    }
+    setTrainingsMissing(false);
+    setTrainings(data || []);
+  }, []);
+  async function handleSaveTraining(t) {
+    const editing = trainings.some((x) => x.id === t.id);
+    const payload = { ...t, updated_by: session?.user?.email || "desconhecido" };
+    const { error } = await supa.from("trainings").upsert(payload);
+    if (error) {
+      if (TRAINING_MISSING_RE.test(`${error.code || ""} ${error.message || ""}`)) {
+        setTrainingsMissing(true);
+        alert("A tabela de treinamentos ainda não existe no Supabase.\n\nRode UMA vez o arquivo criar-tabela-treinamentos.sql no SQL Editor do Supabase e salve de novo.\n\nNada foi salvo e nada do que já existe foi alterado.");
+        return;
+      }
+      showToast(`Erro: ${error.message}`);
+      return;
+    }
+    await loadTrainings();
+    setShowTrainingForm(false); setEditingTraining(null);
+    showToast("Treinamento salvo.");
+    logActivity(`Treinamento ${editing ? "atualizado" : "lançado"}: ${t.store_name} — ${fmtMoney(trainingTotal(t))}`);
+  }
+  async function handleDeleteTraining(t) {
+    if (!confirm(`Excluir o treinamento de ${t.store_name} (${fmtDate(t.training_date)})?`)) return;
+    const { error } = await supa.from("trainings").delete().eq("id", t.id);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    setSelectedTrainings((prev) => { const next = new Set(prev); next.delete(t.id); return next; });
+    await loadTrainings();
+    showToast("Treinamento excluído.");
+    logActivity(`Treinamento excluído: ${t.store_name} (${fmtDate(t.training_date)})`);
+  }
+  async function handleToggleTrainingPaid(t) {
+    const willPay = !t.paid;
+    const { error } = await supa.from("trainings").update({ paid: willPay, paid_date: willPay ? todayStr() : null }).eq("id", t.id);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    setSelectedTrainings((prev) => { const next = new Set(prev); next.delete(t.id); return next; });
+    await loadTrainings();
+    showToast(willPay ? `Marcado como pago: ${t.store_name} — ${fmtMoney(trainingTotal(t))}` : `${t.store_name} voltou para "em aberto".`);
+    logActivity(willPay ? `Treinamento pago: ${t.store_name} — ${fmtMoney(trainingTotal(t))}` : `Treinamento reaberto (pagamento desfeito): ${t.store_name}`);
+  }
+  async function handleMarkSelectedTrainingsPaid(ids) {
+    const lista = trainings.filter((t) => !t.paid && ids.includes(t.id));
+    if (lista.length === 0) return;
+    const total = round2(lista.reduce((s, t) => s + trainingTotal(t), 0));
+    if (!confirm(`Marcar ${lista.length} treinamento(s) como pago(s)?\n\nTotal: ${fmtMoney(total)}`)) return;
+    const { error } = await supa.from("trainings").update({ paid: true, paid_date: todayStr() }).in("id", lista.map((t) => t.id));
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    setSelectedTrainings(new Set());
+    await loadTrainings();
+    showToast(`${lista.length} treinamento(s) marcado(s) como pago(s) — ${fmtMoney(total)}.`);
+    logActivity(`${lista.length} treinamento(s) pago(s): ${fmtMoney(total)}`);
   }
   const loadClientCommissions = useCallback(async () => {
     const { data } = await supa.from("client_commissions").select("*");
@@ -8040,6 +8198,82 @@ function App() {
     doc.save(`migracoes-banco-em-aberto-${todayStr()}.pdf`);
   }
 
+  function exportTrainingsPDF() {
+    // Só os treinamentos em aberto (os pagos não entram no PDF)
+    const lista = trainings.filter((t) => !t.paid).sort((a, b) => String(a.training_date || "").localeCompare(String(b.training_date || "")) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    if (lista.length === 0) { showToast("Não há treinamentos em aberto para gerar o PDF."); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "landscape", compress: true });
+    try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
+    doc.setFontSize(13);
+    doc.setTextColor(30);
+    doc.text("Controle de Treinamentos — em aberto", 14, 32);
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
+    const soma = (campo) => round2(lista.reduce((s, t) => s + (Number(t[campo]) || 0), 0));
+    const rows = lista.map((t) => [
+      t.store_name || "-", fmtDate(t.training_date), t.trainer_name || "-",
+      fmtMoney(t.transport), fmtMoney(t.lunch), fmtMoney(t.training_value), fmtMoney(trainingTotal(t)), t.notes || "",
+    ]);
+    const dinheiro = { halign: "right", overflow: "visible" };
+    doc.autoTable({
+      startY: 44,
+      head: [["Loja", { content: "Data", styles: { halign: "center" } }, "Funcionário", { content: "Condução", styles: { halign: "right" } }, { content: "Almoço", styles: { halign: "right" } }, { content: "Valor treinamento", styles: { halign: "right" } }, { content: "Total Mire", styles: { halign: "right" } }, "Obs."]],
+      body: rows,
+      foot: [[
+        { content: "TOTAL EM ABERTO", colSpan: 3, styles: { halign: "left" } },
+        { content: fmtMoney(soma("transport")), styles: dinheiro }, { content: fmtMoney(soma("lunch")), styles: dinheiro }, { content: fmtMoney(soma("training_value")), styles: dinheiro },
+        { content: fmtMoney(round2(lista.reduce((s, t) => s + trainingTotal(t), 0))), styles: dinheiro }, "",
+      ]],
+      showFoot: "lastPage", // o total geral sai só no fim da última folha (por padrão a tabela repete o rodapé em todas)
+      rowPageBreak: "avoid", // uma linha nunca é cortada no meio entre duas folhas
+      styles: { fontSize: 9, cellPadding: 2.5, valign: "middle", overflow: "linebreak" },
+      headStyles: { fillColor: [124, 92, 255] },
+      footStyles: { fillColor: [230, 230, 245], textColor: [30, 30, 30], fontStyle: "bold" },
+      columnStyles: {
+        0: { cellWidth: 48 }, // Loja
+        1: { cellWidth: 24, halign: "center" }, // Data
+        2: { cellWidth: 36 }, // Funcionário
+        3: { cellWidth: 26, halign: "right", overflow: "visible" }, // Condução
+        4: { cellWidth: 26, halign: "right", overflow: "visible" }, // Almoço
+        5: { cellWidth: 36, halign: "right", overflow: "visible" }, // Valor treinamento
+        6: { cellWidth: 28, halign: "right", overflow: "visible", fontStyle: "bold" }, // Total Mire
+        7: { cellWidth: "auto" }, // Obs.
+      },
+      margin: { left: 14, right: 14 },
+    });
+    doc.save(`treinamentos-em-aberto-${todayStr()}.pdf`);
+  }
+
+  function exportTrainingsExcel() {
+    if (trainings.length === 0) { showToast("Ainda não há treinamentos para exportar."); return; }
+    const porData = (a, b) => String(a.training_date || "").localeCompare(String(b.training_date || "")) || String(a.created_at || "").localeCompare(String(b.created_at || ""));
+    const abertos = trainings.filter((t) => !t.paid).sort(porData);
+    const pagos = trainings.filter((t) => t.paid).sort(porData);
+    // mesmas colunas da planilha antiga + linha TOTAL no fim
+    const montar = (lista, comPago) => {
+      const soma = (campo) => round2(lista.reduce((s, t) => s + (Number(t[campo]) || 0), 0));
+      const data = lista.map((t) => ({
+        "LOJA": t.store_name || "", "DATA": t.training_date ? fmtDate(t.training_date) : "", "FUNCIONÁRIO": t.trainer_name || "",
+        "CONDUÇÃO": Number(t.transport) || 0, "ALMOÇO": Number(t.lunch) || 0, "VALOR TREINAMENTO": Number(t.training_value) || 0,
+        "TOTAL MIRE": trainingTotal(t), "OBS.": t.notes || "",
+        ...(comPago ? { "PAGO EM": t.paid_date ? fmtDate(t.paid_date) : "" } : {}),
+      }));
+      data.push({
+        "LOJA": "TOTAL", "DATA": "", "FUNCIONÁRIO": "",
+        "CONDUÇÃO": soma("transport"), "ALMOÇO": soma("lunch"), "VALOR TREINAMENTO": soma("training_value"),
+        "TOTAL MIRE": round2(lista.reduce((s, t) => s + trainingTotal(t), 0)), "OBS.": "",
+        ...(comPago ? { "PAGO EM": "" } : {}),
+      });
+      return XLSX.utils.json_to_sheet(data);
+    };
+    const wb = XLSX.utils.book_new();
+    if (abertos.length > 0) XLSX.utils.book_append_sheet(wb, montar(abertos, false), "Em aberto");
+    if (pagos.length > 0) XLSX.utils.book_append_sheet(wb, montar(pagos, true), "Pagos");
+    XLSX.writeFile(wb, `treinamentos-${todayStr()}.xlsx`);
+  }
+
   function exportClientCommissionsExcel(rows, filenamePrefix = "comissao-representantes") {
     const wb = XLSX.utils.book_new();
     const byRep = {};
@@ -8361,7 +8595,7 @@ function App() {
     doc.save(`almoco-quinta-${monthLabelStr.replace("/", "-")}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadCloudContratos(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); loadConsultations(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadTrainings(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadCloudContratos(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); loadConsultations(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
   // Preenche automaticamente o valor de "Consultas" de cada boleto do mês com a soma das
   // consultas já associadas àquele cliente (respeitando a defasagem de 2 meses), mas só
@@ -9886,6 +10120,7 @@ function App() {
                 { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
                 { id: "escala", label: "Escala de Sábado", icon: "🗓️" },
                 { id: "migracoes", label: "Migração de Banco", icon: "🗄️" },
+                { id: "treinamentos", label: "Treinamentos", icon: "🎓" },
               ]},
               { group: "Sistema", items: [
                 { id: "config", label: "Configurações", icon: "⚙️" },
@@ -10049,6 +10284,7 @@ function App() {
                 {effectiveTab === "pedidos_etiquetas" && "Compra de Etiqueta"}
                 {effectiveTab === "cloud_contratos" && "Contratos Cloud"}
                 {effectiveTab === "migracoes" && "Migração de Banco de Dados"}
+                {effectiveTab === "treinamentos" && "Controle de Treinamentos"}
                 {effectiveTab === "comissao_representantes" && "Comissão de Representantes"}
                 {effectiveTab === "caixa" && "Caixa"}
                 {effectiveTab === "agenda" && "Agenda de Apresentações"}
@@ -11502,6 +11738,159 @@ function App() {
                                 </tr>
                               </thead>
                               <tbody>{pagoList.map((m, i) => renderRow(m, i, false))}</tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
+          {effectiveTab === "treinamentos" && (
+            <div>
+              {(() => {
+                const porData = (a, b) => String(a.training_date || "").localeCompare(String(b.training_date || "")) || String(a.created_at || "").localeCompare(String(b.created_at || ""));
+                const abertoList = trainings.filter((t) => !t.paid).sort(porData);
+                const pagoList = trainings.filter((t) => t.paid).sort((a, b) => String(b.paid_date || "").localeCompare(String(a.paid_date || "")) || porData(b, a));
+                const soma = (lista, campo) => round2(lista.reduce((s, t) => s + (Number(t[campo]) || 0), 0));
+                const somaTotal = (lista) => round2(lista.reduce((s, t) => s + trainingTotal(t), 0));
+                const totalAberto = somaTotal(abertoList);
+                const selAbertos = abertoList.filter((t) => selectedTrainings.has(t.id));
+                const allSelected = abertoList.length > 0 && selAbertos.length === abertoList.length;
+                const toggleAll = () => setSelectedTrainings(allSelected ? new Set() : new Set(abertoList.map((t) => t.id)));
+                const toggleOne = (id) => setSelectedTrainings((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+                // o último lançado serve de modelo para o próximo (funcionário e valores já vêm preenchidos)
+                const previous = [...trainings].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")) || String(b.training_date || "").localeCompare(String(a.training_date || "")))[0] || null;
+                const stores = [...new Set(clients.map((c) => (c.name || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+                const trainers = [...new Set([...employees.filter((e) => e.active !== false).map((e) => (e.name || "").trim()), ...trainings.map((t) => (t.trainer_name || "").trim())].filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+                const kpiCard = "rounded-2xl p-4 border";
+                const kpiBg = { background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder };
+
+                const renderRow = (t, i, aberto) => (
+                  <tr key={t.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                    {aberto && (
+                      <td className="p-3"><input type="checkbox" checked={selectedTrainings.has(t.id)} onChange={() => toggleOne(t.id)} className="w-4 h-4" title="Selecionar para marcar como pago" /></td>
+                    )}
+                    <td className="p-3 font-semibold">{t.store_name}</td>
+                    <td className="p-3 whitespace-nowrap">{fmtDate(t.training_date)}</td>
+                    <td className="p-3">{t.trainer_name || "-"}</td>
+                    <td className="p-3 text-right tnum whitespace-nowrap">{fmtMoney(t.transport)}</td>
+                    <td className="p-3 text-right tnum whitespace-nowrap">{fmtMoney(t.lunch)}</td>
+                    <td className="p-3 text-right tnum whitespace-nowrap">{fmtMoney(t.training_value)}</td>
+                    <td className="p-3 text-right tnum whitespace-nowrap font-bold">{fmtMoney(trainingTotal(t))}</td>
+                    <td className="p-3" style={{ maxWidth: 260, minWidth: 90 }}>{t.notes ? <span className="whitespace-pre-wrap">{t.notes}</span> : "-"}</td>
+                    <td className="p-3 whitespace-nowrap">
+                      {aberto ? (
+                        <button type="button" onClick={() => handleToggleTrainingPaid(t)} title="Marcar este treinamento como pago" className="px-2.5 py-1 rounded-full text-xs font-bold border whitespace-nowrap" style={{ borderColor: rgba(COLORS.success, 0.5), color: COLORS.success }}>✓ Marcar pago</button>
+                      ) : (
+                        <PaidChip paid onClick={() => handleToggleTrainingPaid(t)} title="Clique para voltar para 'em aberto' (se foi marcado como pago por engano)" labelPaid={`✓ Pago${t.paid_date ? " " + fmtDate(t.paid_date) : ""}`} />
+                      )}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      <button onClick={() => { setEditingTraining(t); setShowTrainingForm(true); }} className="mr-2" title="Editar">✏️</button>
+                      <button onClick={() => handleDeleteTraining(t)} style={{ color: COLORS.danger }} title="Excluir">🗑️</button>
+                    </td>
+                  </tr>
+                );
+
+                return (
+                  <>
+                    {trainingsMissing && (
+                      <div className="rounded-xl border p-4 mb-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: COLORS.warn, background: rgba(COLORS.warn, 0.1) }}>
+                        <div className="text-sm" style={{ color: COLORS.ink }}>
+                          <div className="font-bold mb-1">⚠️ Falta criar a tabela de treinamentos no Supabase</div>
+                          <div style={{ color: COLORS.inkMuted }}>Rode <b>uma única vez</b> o arquivo <b>criar-tabela-treinamentos.sql</b> no SQL Editor do Supabase e depois toque em "Verificar de novo". Enquanto isso, nada é salvo e nada do que já existe no sistema é alterado.</div>
+                        </div>
+                        <button onClick={loadTrainings} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.warn, color: COLORS.warn }}>Verificar de novo</button>
+                      </div>
+                    )}
+                    <p className="text-xs mb-3" style={{ color: COLORS.inkMuted }}>Lance cada treinamento com condução, almoço e valor — o Total Mire é a soma dos três. Quando pagar o funcionário, marque como pago: o treinamento sai desta lista e o total em aberto desce.</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div className={kpiCard} style={kpiBg}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Em aberto</div>
+                        <div className="text-2xl font-extrabold tnum" style={{ color: COLORS.ink }}>{abertoList.length}</div>
+                      </div>
+                      <div className={kpiCard} style={kpiBg}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.inkMuted }}>Condução + almoço</div>
+                        <div className="text-xl sm:text-2xl font-extrabold tnum whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtMoney(round2(soma(abertoList, "transport") + soma(abertoList, "lunch")))}</div>
+                      </div>
+                      <div className={kpiCard + " col-span-2 sm:col-span-1"} style={kpiBg}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.inkMuted }}>Valor dos treinamentos</div>
+                        <div className="text-xl sm:text-2xl font-extrabold tnum whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtMoney(soma(abertoList, "training_value"))}</div>
+                      </div>
+                      <div className={kpiCard + " col-span-2 sm:col-span-1 order-first sm:order-last"} style={kpiBg}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Total Mire em aberto</div>
+                        <div className="text-2xl font-extrabold tnum whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtMoney(totalAberto)}</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2 mb-3">
+                      <button onClick={exportTrainingsExcel} disabled={trainings.length === 0} title="Baixa a planilha (Excel) com os treinamentos em aberto e os pagos" className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
+                      <button onClick={exportTrainingsPDF} disabled={abertoList.length === 0} title="Gera o PDF só com os treinamentos em aberto (os pagos não entram)" className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF (em aberto)</button>
+                      <button onClick={() => { setEditingTraining(null); setShowTrainingForm(true); }} disabled={trainingsMissing} title={trainingsMissing ? "Primeiro rode o arquivo criar-tabela-treinamentos.sql no Supabase" : undefined} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo treinamento</button>
+                    </div>
+                    {showTrainingForm && <FormHost item={editingTraining}><TrainingForm initial={editingTraining} previous={previous} stores={stores} trainers={trainers} onSave={handleSaveTraining} onCancel={() => { setShowTrainingForm(false); setEditingTraining(null); }} /></FormHost>}
+                    {selAbertos.length > 0 && (
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-3 px-4 py-2.5 rounded-xl border" style={{ borderColor: COLORS.success, background: "rgba(34,197,94,0.08)" }}>
+                        <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>{selAbertos.length} treinamento(s) selecionado(s) — {fmtMoney(somaTotal(selAbertos))}</span>
+                        <button onClick={() => handleMarkSelectedTrainingsPaid(selAbertos.map((t) => t.id))} className="px-3 py-1.5 rounded-lg text-xs font-bold text-white" style={{ background: COLORS.success }}>✓ Marcar selecionados como pago</button>
+                      </div>
+                    )}
+                    <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                      {abertoList.length === 0 ? (
+                        <div className="p-8 text-center text-sm" style={{ color: COLORS.inkMuted }}>{trainingsMissing ? "A lista aparece aqui assim que a tabela for criada." : "Nenhum treinamento em aberto."}</div>
+                      ) : (
+                        <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                          <thead>
+                            <tr style={{ color: COLORS.inkMuted }}>
+                              <th className="text-left p-3"><input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4" title="Selecionar todos" /></th>
+                              <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Funcionário</th>
+                              <th className="text-right p-3">Condução</th><th className="text-right p-3">Almoço</th><th className="text-right p-3">Valor treinamento</th><th className="text-right p-3">Total Mire</th>
+                              <th className="text-left p-3">Obs.</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
+                            </tr>
+                          </thead>
+                          <tbody>{abertoList.map((t, i) => renderRow(t, i, true))}</tbody>
+                          <tfoot>
+                            <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                              <td className="p-3 font-bold" colSpan={4} style={{ color: COLORS.ink }}>TOTAL EM ABERTO</td>
+                              <td className="p-3 text-right font-bold tnum whitespace-nowrap">{fmtMoney(soma(abertoList, "transport"))}</td>
+                              <td className="p-3 text-right font-bold tnum whitespace-nowrap">{fmtMoney(soma(abertoList, "lunch"))}</td>
+                              <td className="p-3 text-right font-bold tnum whitespace-nowrap">{fmtMoney(soma(abertoList, "training_value"))}</td>
+                              <td className="p-3 text-right font-bold tnum whitespace-nowrap" style={{ color: COLORS.brandLight }}>{fmtMoney(totalAberto)}</td>
+                              <td colSpan={3}></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      )}
+                    </div>
+                    {pagoList.length > 0 && (
+                      <div className="mt-3">
+                        <button onClick={() => setShowPaidTrainings((v) => !v)} className="text-xs flex items-center gap-1.5 underline-offset-2 hover:underline" style={{ color: COLORS.inkFaint }} title="Os treinamentos pagos ficam guardados aqui. Use para consultar o que já foi pago ou para reabrir um que foi marcado como pago por engano.">
+                          {showPaidTrainings ? "Ocultar treinamentos pagos" : `Ver treinamentos já pagos (${pagoList.length})`}
+                        </button>
+                        {showPaidTrainings && (
+                          <div className="rounded-2xl border overflow-x-auto mt-2" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                            <table className="w-full text-xs" style={{ color: COLORS.ink }}>
+                              <thead>
+                                <tr style={{ color: COLORS.inkMuted }}>
+                                  <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Funcionário</th>
+                                  <th className="text-right p-3">Condução</th><th className="text-right p-3">Almoço</th><th className="text-right p-3">Valor treinamento</th><th className="text-right p-3">Total Mire</th>
+                                  <th className="text-left p-3">Obs.</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
+                                </tr>
+                              </thead>
+                              <tbody>{pagoList.map((t, i) => renderRow(t, i, false))}</tbody>
+                              <tfoot>
+                                <tr style={{ borderTop: `2px solid ${COLORS.cardBorder}` }}>
+                                  <td className="p-3 font-bold" colSpan={3} style={{ color: COLORS.ink }}>TOTAL PAGO</td>
+                                  <td className="p-3 text-right font-bold tnum whitespace-nowrap">{fmtMoney(soma(pagoList, "transport"))}</td>
+                                  <td className="p-3 text-right font-bold tnum whitespace-nowrap">{fmtMoney(soma(pagoList, "lunch"))}</td>
+                                  <td className="p-3 text-right font-bold tnum whitespace-nowrap">{fmtMoney(soma(pagoList, "training_value"))}</td>
+                                  <td className="p-3 text-right font-bold tnum whitespace-nowrap" style={{ color: COLORS.success }}>{fmtMoney(somaTotal(pagoList))}</td>
+                                  <td colSpan={3}></td>
+                                </tr>
+                              </tfoot>
                             </table>
                           </div>
                         )}

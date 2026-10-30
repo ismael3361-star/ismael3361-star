@@ -3347,7 +3347,7 @@ function trainingTotal(t) { return round2((Number(t?.transport) || 0) + (Number(
 // mensagem do Supabase quando a tabela "trainings" ainda não foi criada (arquivo criar-tabela-treinamentos.sql não rodado)
 const TRAINING_MISSING_RE = /PGRST205|42P01|could not find the table|relation ["']?(public\.)?trainings["']? does not exist/i;
 
-function TrainingForm({ initial, previous, stores, trainers, onSave, onCancel }) {
+function TrainingForm({ initial, previous, stores, trainers, pixFor, pixColumnMissing, onSave, onCancel }) {
   const copied = !initial && !!previous; // novo treinamento começa com o funcionário e os valores do último lançado
   const [newId] = useState(() => initial?.id || uid());
   const [storeName, setStoreName] = useState(initial?.store_name || "");
@@ -3358,6 +3358,22 @@ function TrainingForm({ initial, previous, stores, trainers, onSave, onCancel })
   const [trainingValue, setTrainingValue] = useState(initial ? (initial.training_value ?? "") : (copied ? (previous.training_value ?? "") : ""));
   const [notes, setNotes] = useState(initial?.notes || "");
   const [saving, setSaving] = useState(false);
+  // Chave PIX do funcionário (sai no PDF). Vem sozinha do último treinamento dele ou do cadastro de funcionários; o que a pessoa digita sempre vale mais.
+  const noPix = { key: "", from: "" };
+  // enquanto a coluna da chave PIX não existe no banco (arquivo SQL não rodado) o sistema não sugere chave: ela não seria gravada
+  const sugere = (nome) => (pixFor && !pixColumnMissing) ? pixFor(nome) : noPix;
+  const startPix = initial ? { key: initial.trainer_pix_key || "", from: "" }
+    : (copied ? ((previous.trainer_pix_key || "").trim() ? { key: previous.trainer_pix_key.trim(), from: "último treinamento lançado" } : sugere(previous.trainer_name)) : noPix);
+  const [pixKey, setPixKey] = useState(startPix.key);
+  const [autoPix, setAutoPix] = useState(startPix.key); // a chave que veio pronta (do sistema ou já gravada): se a pessoa não mexer nela, ela acompanha a troca do funcionário
+  const [pixFrom, setPixFrom] = useState(startPix.from);
+  function changeTrainer(v) {
+    setTrainerName(v);
+    if (pixKey.trim() === "" || pixKey === autoPix) {
+      const f = sugere(v);
+      setPixKey(f.key); setAutoPix(f.key); setPixFrom(f.from);
+    }
+  }
 
   const total = round2((Number(transport) || 0) + (Number(lunch) || 0) + (Number(trainingValue) || 0));
   const canSave = !!storeName.trim() && !!trainingDate && !saving;
@@ -3383,10 +3399,17 @@ function TrainingForm({ initial, previous, stores, trainers, onSave, onCancel })
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do treinamento *</span>
           <input type="date" value={trainingDate} onChange={(e) => setTrainingDate(e.target.value)} className={inputCls} style={inputSt} />
         </label>
-        <label className="block sm:col-span-2">
+        <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Funcionário que passou o treinamento (quem vai receber)</span>
-          <input list="treinamento-funcionarios" value={trainerName} onChange={(e) => setTrainerName(e.target.value)} placeholder="Escolha da lista ou digite o nome (opcional)" className={inputCls} style={inputSt} />
+          <input list="treinamento-funcionarios" value={trainerName} onChange={(e) => changeTrainer(e.target.value)} placeholder="Escolha da lista ou digite o nome (opcional)" className={inputCls} style={inputSt} />
           <datalist id="treinamento-funcionarios">{(trainers || []).map((n) => <option key={n} value={n} />)}</datalist>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX do funcionário (sai no PDF)</span>
+          <input value={pixKey} onChange={(e) => { setPixKey(e.target.value); setPixFrom(""); }} placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória" autoComplete="off" className={inputCls} style={inputSt} />
+          {pixFrom && <span className="block text-xs mt-1" style={{ color: COLORS.inkFaint }}>Preenchida sozinha ({pixFrom}) — altere se for outra.</span>}
+          {!pixFrom && !pixKey.trim() && trainerName.trim() && !pixColumnMissing && <span className="block text-xs mt-1" style={{ color: COLORS.inkFaint }}>Sem chave PIX guardada para este funcionário — digite aqui e ela fica guardada para os próximos treinamentos dele.</span>}
+          {pixColumnMissing && <span className="block text-xs mt-1" style={{ color: COLORS.warn }}>⚠️ Para guardar a chave PIX, rode antes (uma vez) o arquivo adicionar-pix-treinamentos.sql no Supabase. Se já rodou, atualize a página.</span>}
         </label>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -3414,7 +3437,7 @@ function TrainingForm({ initial, previous, stores, trainers, onSave, onCancel })
             setSaving(true);
             try {
               await onSave({
-                id: newId, store_name: storeName.trim(), training_date: trainingDate, trainer_name: trainerName.trim() || null,
+                id: newId, store_name: storeName.trim(), training_date: trainingDate, trainer_name: trainerName.trim() || null, trainer_pix_key: pixKey.trim() || null,
                 transport: Number(transport) || 0, lunch: Number(lunch) || 0, training_value: Number(trainingValue) || 0,
                 notes: notes.trim() || null,
               });
@@ -6359,6 +6382,7 @@ function App() {
   const [showPaidMigrations, setShowPaidMigrations] = useState(false);
   const [trainings, setTrainings] = useState([]);
   const [trainingsMissing, setTrainingsMissing] = useState(false);
+  const [trainingsPixMissing, setTrainingsPixMissing] = useState(false); // true = a coluna da chave PIX ainda não foi criada no Supabase (arquivo adicionar-pix-treinamentos.sql)
   const [showTrainingForm, setShowTrainingForm] = useState(false);
   const [editingTraining, setEditingTraining] = useState(null);
   const [selectedTrainings, setSelectedTrainings] = useState(new Set());
@@ -6753,11 +6777,26 @@ function App() {
     }
     setTrainingsMissing(false);
     setTrainings(data || []);
+    // a coluna da chave PIX já existe? Com treinamentos na lista basta ver se eles trazem o campo; com a lista vazia, pergunta ao banco.
+    if ((data || []).length > 0) setTrainingsPixMissing(!("trainer_pix_key" in data[0]));
+    else {
+      const sonda = await supa.from("trainings").select("trainer_pix_key").limit(1);
+      setTrainingsPixMissing(!!(sonda.error && /trainer_pix_key/i.test(sonda.error.message || "")));
+    }
   }, []);
   async function handleSaveTraining(t) {
     const editing = trainings.some((x) => x.id === t.id);
     const payload = { ...t, updated_by: session?.user?.email || "desconhecido" };
-    const { error } = await supa.from("trainings").upsert(payload);
+    let { error } = await supa.from("trainings").upsert(payload);
+    // ainda falta a coluna da chave PIX (arquivo adicionar-pix-treinamentos.sql não rodado): sem chave digitada salva normalmente; com chave, avisa e não grava nada
+    if (error && /trainer_pix_key/i.test(error.message || "")) {
+      if (t.trainer_pix_key) {
+        alert("Para guardar a chave PIX do funcionário falta rodar, UMA vez, o arquivo adicionar-pix-treinamentos.sql no SQL Editor do Supabase.\n\nNada foi salvo e nada do que já existe foi alterado. Depois de rodar, é só salvar de novo.");
+        return;
+      }
+      const { trainer_pix_key, ...payloadSemPix } = payload;
+      ({ error } = await supa.from("trainings").upsert(payloadSemPix));
+    }
     if (error) {
       if (TRAINING_MISSING_RE.test(`${error.code || ""} ${error.message || ""}`)) {
         setTrainingsMissing(true);
@@ -6801,6 +6840,22 @@ function App() {
     await loadTrainings();
     showToast(`${lista.length} treinamento(s) marcado(s) como pago(s) — ${fmtMoney(total)}.`);
     logActivity(`${lista.length} treinamento(s) pago(s): ${fmtMoney(total)}`);
+  }
+  // copia a chave PIX do funcionário (para colar no aplicativo do banco na hora de pagar)
+  async function copyTrainingPix(key) {
+    const texto = String(key || "").trim();
+    if (!texto) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(texto);
+      else {
+        const ta = document.createElement("textarea");
+        ta.value = texto; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+      }
+      showToast("Chave PIX copiada.");
+    } catch (e) {
+      showToast("Não consegui copiar sozinho — segure o dedo sobre a chave para copiar.");
+    }
   }
   const loadClientCommissions = useCallback(async () => {
     const { data } = await supa.from("client_commissions").select("*");
@@ -8212,34 +8267,46 @@ function App() {
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
     const soma = (campo) => round2(lista.reduce((s, t) => s + (Number(t[campo]) || 0), 0));
+    // chave comprida (e-mail, chave aleatória) quebra em 2 linhas em vez de invadir a coluna do lado; quebra logo depois de um @ - . _ quando dá, para ficar fácil de ler e digitar
+    const quebra = (k) => {
+      let x = String(k || "").trim(); const linhas = [];
+      while (x.length > 26) {
+        const sep = Math.max(x.lastIndexOf("@", 25), x.lastIndexOf("-", 25), x.lastIndexOf(".", 25), x.lastIndexOf("_", 25));
+        const corte = sep >= 14 ? sep + 1 : 26;
+        linhas.push(x.slice(0, corte)); x = x.slice(corte);
+      }
+      linhas.push(x);
+      return linhas.join("\n");
+    };
     const rows = lista.map((t) => [
-      t.store_name || "-", fmtDate(t.training_date), t.trainer_name || "-",
+      t.store_name || "-", fmtDate(t.training_date), t.trainer_name || "-", quebra(t.trainer_pix_key) || "-",
       fmtMoney(t.transport), fmtMoney(t.lunch), fmtMoney(t.training_value), fmtMoney(trainingTotal(t)), t.notes || "",
     ]);
     const dinheiro = { halign: "right", overflow: "visible" };
     doc.autoTable({
       startY: 44,
-      head: [["Loja", { content: "Data", styles: { halign: "center" } }, "Funcionário", { content: "Condução", styles: { halign: "right" } }, { content: "Almoço", styles: { halign: "right" } }, { content: "Valor treinamento", styles: { halign: "right" } }, { content: "Total Mire", styles: { halign: "right" } }, "Obs."]],
+      head: [["Loja", { content: "Data", styles: { halign: "center" } }, "Funcionário", "Chave PIX", { content: "Condução", styles: { halign: "right" } }, { content: "Almoço", styles: { halign: "right" } }, { content: "Valor treinamento", styles: { halign: "right" } }, { content: "Total Mire", styles: { halign: "right" } }, "Obs."]],
       body: rows,
       foot: [[
-        { content: "TOTAL EM ABERTO", colSpan: 3, styles: { halign: "left" } },
+        { content: "TOTAL EM ABERTO", colSpan: 4, styles: { halign: "left" } },
         { content: fmtMoney(soma("transport")), styles: dinheiro }, { content: fmtMoney(soma("lunch")), styles: dinheiro }, { content: fmtMoney(soma("training_value")), styles: dinheiro },
         { content: fmtMoney(round2(lista.reduce((s, t) => s + trainingTotal(t), 0))), styles: dinheiro }, "",
       ]],
       showFoot: "lastPage", // o total geral sai só no fim da última folha (por padrão a tabela repete o rodapé em todas)
       rowPageBreak: "avoid", // uma linha nunca é cortada no meio entre duas folhas
-      styles: { fontSize: 9, cellPadding: 2.5, valign: "middle", overflow: "linebreak" },
+      styles: { fontSize: 8.5, cellPadding: 2.5, valign: "middle", overflow: "linebreak" },
       headStyles: { fillColor: [124, 92, 255] },
       footStyles: { fillColor: [230, 230, 245], textColor: [30, 30, 30], fontStyle: "bold" },
       columnStyles: {
-        0: { cellWidth: 48 }, // Loja
-        1: { cellWidth: 24, halign: "center" }, // Data
-        2: { cellWidth: 36 }, // Funcionário
-        3: { cellWidth: 26, halign: "right", overflow: "visible" }, // Condução
-        4: { cellWidth: 26, halign: "right", overflow: "visible" }, // Almoço
-        5: { cellWidth: 36, halign: "right", overflow: "visible" }, // Valor treinamento
-        6: { cellWidth: 28, halign: "right", overflow: "visible", fontStyle: "bold" }, // Total Mire
-        7: { cellWidth: "auto" }, // Obs.
+        0: { cellWidth: 37 }, // Loja
+        1: { cellWidth: 22, halign: "center" }, // Data
+        2: { cellWidth: 28 }, // Funcionário
+        3: { cellWidth: 48 }, // Chave PIX
+        4: { cellWidth: 23, halign: "right", overflow: "visible" }, // Condução
+        5: { cellWidth: 21, halign: "right", overflow: "visible" }, // Almoço
+        6: { cellWidth: 27, halign: "right", overflow: "visible" }, // Valor treinamento
+        7: { cellWidth: 25, halign: "right", overflow: "visible", fontStyle: "bold" }, // Total Mire
+        8: { cellWidth: "auto" }, // Obs.
       },
       margin: { left: 14, right: 14 },
     });
@@ -8255,13 +8322,13 @@ function App() {
     const montar = (lista, comPago) => {
       const soma = (campo) => round2(lista.reduce((s, t) => s + (Number(t[campo]) || 0), 0));
       const data = lista.map((t) => ({
-        "LOJA": t.store_name || "", "DATA": t.training_date ? fmtDate(t.training_date) : "", "FUNCIONÁRIO": t.trainer_name || "",
+        "LOJA": t.store_name || "", "DATA": t.training_date ? fmtDate(t.training_date) : "", "FUNCIONÁRIO": t.trainer_name || "", "CHAVE PIX": t.trainer_pix_key || "",
         "CONDUÇÃO": Number(t.transport) || 0, "ALMOÇO": Number(t.lunch) || 0, "VALOR TREINAMENTO": Number(t.training_value) || 0,
         "TOTAL MIRE": trainingTotal(t), "OBS.": t.notes || "",
         ...(comPago ? { "PAGO EM": t.paid_date ? fmtDate(t.paid_date) : "" } : {}),
       }));
       data.push({
-        "LOJA": "TOTAL", "DATA": "", "FUNCIONÁRIO": "",
+        "LOJA": "TOTAL", "DATA": "", "FUNCIONÁRIO": "", "CHAVE PIX": "",
         "CONDUÇÃO": soma("transport"), "ALMOÇO": soma("lunch"), "VALOR TREINAMENTO": soma("training_value"),
         "TOTAL MIRE": round2(lista.reduce((s, t) => s + trainingTotal(t), 0)), "OBS.": "",
         ...(comPago ? { "PAGO EM": "" } : {}),
@@ -11766,6 +11833,18 @@ function App() {
                 const previous = [...trainings].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")) || String(b.training_date || "").localeCompare(String(a.training_date || "")))[0] || null;
                 const stores = [...new Set(clients.map((c) => (c.name || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
                 const trainers = [...new Set([...employees.filter((e) => e.active !== false).map((e) => (e.name || "").trim()), ...trainings.map((t) => (t.trainer_name || "").trim())].filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+                // chave PIX que o sistema sugere para um funcionário: a do último treinamento dele; se não tiver, a do cadastro de funcionários (só leitura: o cadastro não é alterado)
+                const normNome = (x) => String(x || "").trim().toLowerCase();
+                const pixFor = (nome) => {
+                  const n = normNome(nome);
+                  if (!n) return { key: "", from: "" };
+                  const ultimo = trainings.filter((x) => normNome(x.trainer_name) === n && String(x.trainer_pix_key || "").trim())
+                    .sort((a, b) => String(b.training_date || "").localeCompare(String(a.training_date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+                  if (ultimo) return { key: String(ultimo.trainer_pix_key).trim(), from: "último treinamento dele" };
+                  const emp = employees.find((e) => normNome(e.name) === n && String(e.pix_key || "").trim());
+                  if (emp) return { key: String(emp.pix_key).trim(), from: "cadastro do funcionário" };
+                  return { key: "", from: "" };
+                };
                 const kpiCard = "rounded-2xl p-4 border";
                 const kpiBg = { background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder };
 
@@ -11776,7 +11855,16 @@ function App() {
                     )}
                     <td className="p-3 font-semibold">{t.store_name}</td>
                     <td className="p-3 whitespace-nowrap">{fmtDate(t.training_date)}</td>
-                    <td className="p-3">{t.trainer_name || "-"}</td>
+                    <td className="p-3" style={{ minWidth: 214 }}>
+                      {t.trainer_name ? <div className="font-semibold">{t.trainer_name}</div> : (!t.trainer_pix_key && "-")}
+                      {t.trainer_pix_key && (
+                        <div className="flex items-start gap-1.5 mt-0.5 text-[11px]" style={{ color: COLORS.inkMuted }}>
+                          <span className="shrink-0">PIX:</span>
+                          <span className="select-all" style={{ overflowWrap: "anywhere" }} title="Chave PIX do funcionário">{t.trainer_pix_key}</span>
+                          <button type="button" onClick={() => copyTrainingPix(t.trainer_pix_key)} title="Copiar a chave PIX" className="shrink-0">📋</button>
+                        </div>
+                      )}
+                    </td>
                     <td className="p-3 text-right tnum whitespace-nowrap">{fmtMoney(t.transport)}</td>
                     <td className="p-3 text-right tnum whitespace-nowrap">{fmtMoney(t.lunch)}</td>
                     <td className="p-3 text-right tnum whitespace-nowrap">{fmtMoney(t.training_value)}</td>
@@ -11807,7 +11895,7 @@ function App() {
                         <button onClick={loadTrainings} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.warn, color: COLORS.warn }}>Verificar de novo</button>
                       </div>
                     )}
-                    <p className="text-xs mb-3" style={{ color: COLORS.inkMuted }}>Lance cada treinamento com condução, almoço e valor — o Total Mire é a soma dos três. Quando pagar o funcionário, marque como pago: o treinamento sai desta lista e o total em aberto desce.</p>
+                    <p className="text-xs mb-3" style={{ color: COLORS.inkMuted }}>Lance cada treinamento com condução, almoço e valor — o Total Mire é a soma dos três. Quando pagar o funcionário, marque como pago: o treinamento sai desta lista e o total em aberto desce. A chave PIX do funcionário também sai no PDF.</p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                       <div className={kpiCard} style={kpiBg}>
                         <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Em aberto</div>
@@ -11831,7 +11919,7 @@ function App() {
                       <button onClick={exportTrainingsPDF} disabled={abertoList.length === 0} title="Gera o PDF só com os treinamentos em aberto (os pagos não entram)" className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF (em aberto)</button>
                       <button onClick={() => { setEditingTraining(null); setShowTrainingForm(true); }} disabled={trainingsMissing} title={trainingsMissing ? "Primeiro rode o arquivo criar-tabela-treinamentos.sql no Supabase" : undefined} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo treinamento</button>
                     </div>
-                    {showTrainingForm && <FormHost item={editingTraining}><TrainingForm initial={editingTraining} previous={previous} stores={stores} trainers={trainers} onSave={handleSaveTraining} onCancel={() => { setShowTrainingForm(false); setEditingTraining(null); }} /></FormHost>}
+                    {showTrainingForm && <FormHost item={editingTraining}><TrainingForm initial={editingTraining} previous={previous} stores={stores} trainers={trainers} pixFor={pixFor} pixColumnMissing={trainingsPixMissing} onSave={handleSaveTraining} onCancel={() => { setShowTrainingForm(false); setEditingTraining(null); }} /></FormHost>}
                     {selAbertos.length > 0 && (
                       <div className="flex items-center justify-between flex-wrap gap-2 mb-3 px-4 py-2.5 rounded-xl border" style={{ borderColor: COLORS.success, background: "rgba(34,197,94,0.08)" }}>
                         <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>{selAbertos.length} treinamento(s) selecionado(s) — {fmtMoney(somaTotal(selAbertos))}</span>
@@ -11846,7 +11934,7 @@ function App() {
                           <thead>
                             <tr style={{ color: COLORS.inkMuted }}>
                               <th className="text-left p-3"><input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4" title="Selecionar todos" /></th>
-                              <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Funcionário</th>
+                              <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Funcionário / PIX</th>
                               <th className="text-right p-3">Condução</th><th className="text-right p-3">Almoço</th><th className="text-right p-3">Valor treinamento</th><th className="text-right p-3">Total Mire</th>
                               <th className="text-left p-3">Obs.</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
                             </tr>
@@ -11875,7 +11963,7 @@ function App() {
                             <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                               <thead>
                                 <tr style={{ color: COLORS.inkMuted }}>
-                                  <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Funcionário</th>
+                                  <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Funcionário / PIX</th>
                                   <th className="text-right p-3">Condução</th><th className="text-right p-3">Almoço</th><th className="text-right p-3">Valor treinamento</th><th className="text-right p-3">Total Mire</th>
                                   <th className="text-left p-3">Obs.</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
                                 </tr>

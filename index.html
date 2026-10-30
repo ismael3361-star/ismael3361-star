@@ -3339,7 +3339,7 @@ function DbMigrationForm({ initial, settings, onSave, onCancel }) {
 }
 
 // ---------------------------------------------------------------------------
-// Treinamentos: o funcionário que passa o treinamento recebe condução + almoço + valor do treinamento ("Total Mire" na planilha).
+// Treinamentos: o técnico que passa o treinamento recebe condução + almoço + valor do treinamento ("Total Mire" na planilha).
 // O total NÃO é guardado no banco: é sempre a soma dos três valores (assim nunca fica diferente).
 // ---------------------------------------------------------------------------
 function round2(v) { return Math.round((Number(v) || 0) * 100) / 100; }
@@ -3348,7 +3348,7 @@ function trainingTotal(t) { return round2((Number(t?.transport) || 0) + (Number(
 const TRAINING_MISSING_RE = /PGRST205|42P01|could not find the table|relation ["']?(public\.)?trainings["']? does not exist/i;
 
 function TrainingForm({ initial, previous, stores, trainers, pixFor, pixColumnMissing, onSave, onCancel }) {
-  const copied = !initial && !!previous; // novo treinamento começa com o funcionário e os valores do último lançado
+  const copied = !initial && !!previous; // novo treinamento começa com o técnico e os valores do último lançado
   const [newId] = useState(() => initial?.id || uid());
   const [storeName, setStoreName] = useState(initial?.store_name || "");
   const [trainingDate, setTrainingDate] = useState(initial?.training_date || todayStr());
@@ -3358,14 +3358,14 @@ function TrainingForm({ initial, previous, stores, trainers, pixFor, pixColumnMi
   const [trainingValue, setTrainingValue] = useState(initial ? (initial.training_value ?? "") : (copied ? (previous.training_value ?? "") : ""));
   const [notes, setNotes] = useState(initial?.notes || "");
   const [saving, setSaving] = useState(false);
-  // Chave PIX do funcionário (sai no PDF). Vem sozinha do último treinamento dele ou do cadastro de funcionários; o que a pessoa digita sempre vale mais.
+  // Chave PIX do técnico (gera o QR Code dele no PDF). Vem sozinha do último treinamento dele, do cadastro de funcionários ou das Configurações (técnico de migração); o que a pessoa digita sempre vale mais.
   const noPix = { key: "", from: "" };
   // enquanto a coluna da chave PIX não existe no banco (arquivo SQL não rodado) o sistema não sugere chave: ela não seria gravada
   const sugere = (nome) => (pixFor && !pixColumnMissing) ? pixFor(nome) : noPix;
   const startPix = initial ? { key: initial.trainer_pix_key || "", from: "" }
     : (copied ? ((previous.trainer_pix_key || "").trim() ? { key: previous.trainer_pix_key.trim(), from: "último treinamento lançado" } : sugere(previous.trainer_name)) : noPix);
   const [pixKey, setPixKey] = useState(startPix.key);
-  const [autoPix, setAutoPix] = useState(startPix.key); // a chave que veio pronta (do sistema ou já gravada): se a pessoa não mexer nela, ela acompanha a troca do funcionário
+  const [autoPix, setAutoPix] = useState(startPix.key); // a chave que veio pronta (do sistema ou já gravada): se a pessoa não mexer nela, ela acompanha a troca do técnico
   const [pixFrom, setPixFrom] = useState(startPix.from);
   function changeTrainer(v) {
     setTrainerName(v);
@@ -3400,15 +3400,15 @@ function TrainingForm({ initial, previous, stores, trainers, pixFor, pixColumnMi
           <input type="date" value={trainingDate} onChange={(e) => setTrainingDate(e.target.value)} className={inputCls} style={inputSt} />
         </label>
         <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Funcionário que passou o treinamento (quem vai receber)</span>
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Técnico que passou o treinamento (quem vai receber)</span>
           <input list="treinamento-funcionarios" value={trainerName} onChange={(e) => changeTrainer(e.target.value)} placeholder="Escolha da lista ou digite o nome (opcional)" className={inputCls} style={inputSt} />
           <datalist id="treinamento-funcionarios">{(trainers || []).map((n) => <option key={n} value={n} />)}</datalist>
         </label>
         <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX do funcionário (sai no PDF)</span>
-          <input value={pixKey} onChange={(e) => { setPixKey(e.target.value); setPixFrom(""); }} placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória" autoComplete="off" className={inputCls} style={inputSt} />
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Chave PIX do técnico (gera o QR Code no PDF)</span>
+          <input value={pixKey} onChange={(e) => { setPixKey(e.target.value); setPixFrom(""); }} placeholder="CPF, CNPJ, e-mail, telefone (+55…) ou chave aleatória" autoComplete="off" className={inputCls} style={inputSt} />
           {pixFrom && <span className="block text-xs mt-1" style={{ color: COLORS.inkFaint }}>Preenchida sozinha ({pixFrom}) — altere se for outra.</span>}
-          {!pixFrom && !pixKey.trim() && trainerName.trim() && !pixColumnMissing && <span className="block text-xs mt-1" style={{ color: COLORS.inkFaint }}>Sem chave PIX guardada para este funcionário — digite aqui e ela fica guardada para os próximos treinamentos dele.</span>}
+          {!pixFrom && !pixKey.trim() && trainerName.trim() && !pixColumnMissing && <span className="block text-xs mt-1" style={{ color: COLORS.inkFaint }}>Sem chave PIX guardada para este técnico — digite aqui e ela fica guardada para os próximos treinamentos dele.</span>}
           {pixColumnMissing && <span className="block text-xs mt-1" style={{ color: COLORS.warn }}>⚠️ Para guardar a chave PIX, rode antes (uma vez) o arquivo adicionar-pix-treinamentos.sql no Supabase. Se já rodou, atualize a página.</span>}
         </label>
       </div>
@@ -3419,7 +3419,7 @@ function TrainingForm({ initial, previous, stores, trainers, pixFor, pixColumnMi
       </div>
       {copied && (
         <div className="text-xs" style={{ color: COLORS.inkFaint }}>
-          O funcionário e os valores vieram do último treinamento lançado ({previous.store_name}) — altere se for diferente.
+          O técnico e os valores vieram do último treinamento lançado ({previous.store_name}) — altere se for diferente.
         </div>
       )}
       <div className="flex items-center justify-between flex-wrap gap-2 rounded-lg px-4 py-3 border" style={{ borderColor: rgba(COLORS.brand, 0.35), background: rgba(COLORS.brand, 0.08) }}>
@@ -6765,7 +6765,7 @@ function App() {
     showToast(`${ids.length} migração(ões) marcada(s) como paga(s).`);
     logActivity(`${ids.length} migração(ões) marcada(s) como paga(s) ao técnico`);
   }
-  // ---- Treinamentos: controle do que se paga ao funcionário que passa o treinamento ----
+  // ---- Treinamentos: controle do que se paga ao técnico que passa o treinamento ----
   const loadTrainings = useCallback(async () => {
     const { data, error } = await supa.from("trainings").select("*").order("training_date", { ascending: true });
     if (error) {
@@ -6791,7 +6791,7 @@ function App() {
     // ainda falta a coluna da chave PIX (arquivo adicionar-pix-treinamentos.sql não rodado): sem chave digitada salva normalmente; com chave, avisa e não grava nada
     if (error && /trainer_pix_key/i.test(error.message || "")) {
       if (t.trainer_pix_key) {
-        alert("Para guardar a chave PIX do funcionário falta rodar, UMA vez, o arquivo adicionar-pix-treinamentos.sql no SQL Editor do Supabase.\n\nNada foi salvo e nada do que já existe foi alterado. Depois de rodar, é só salvar de novo.");
+        alert("Para guardar a chave PIX do técnico falta rodar, UMA vez, o arquivo adicionar-pix-treinamentos.sql no SQL Editor do Supabase.\n\nNada foi salvo e nada do que já existe foi alterado. Depois de rodar, é só salvar de novo.");
         return;
       }
       const { trainer_pix_key, ...payloadSemPix } = payload;
@@ -6841,7 +6841,7 @@ function App() {
     showToast(`${lista.length} treinamento(s) marcado(s) como pago(s) — ${fmtMoney(total)}.`);
     logActivity(`${lista.length} treinamento(s) pago(s): ${fmtMoney(total)}`);
   }
-  // copia a chave PIX do funcionário (para colar no aplicativo do banco na hora de pagar)
+  // copia a chave PIX do técnico (para colar no aplicativo do banco na hora de pagar)
   async function copyTrainingPix(key) {
     const texto = String(key || "").trim();
     if (!texto) return;
@@ -8285,7 +8285,7 @@ function App() {
     const dinheiro = { halign: "right", overflow: "visible" };
     doc.autoTable({
       startY: 44,
-      head: [["Loja", { content: "Data", styles: { halign: "center" } }, "Funcionário", "Chave PIX", { content: "Condução", styles: { halign: "right" } }, { content: "Almoço", styles: { halign: "right" } }, { content: "Valor treinamento", styles: { halign: "right" } }, { content: "Total Mire", styles: { halign: "right" } }, "Obs."]],
+      head: [["Loja", { content: "Data", styles: { halign: "center" } }, "Técnico", "Chave PIX", { content: "Condução", styles: { halign: "right" } }, { content: "Almoço", styles: { halign: "right" } }, { content: "Valor treinamento", styles: { halign: "right" } }, { content: "Total Mire", styles: { halign: "right" } }, "Obs."]],
       body: rows,
       foot: [[
         { content: "TOTAL EM ABERTO", colSpan: 4, styles: { halign: "left" } },
@@ -8300,7 +8300,7 @@ function App() {
       columnStyles: {
         0: { cellWidth: 37 }, // Loja
         1: { cellWidth: 22, halign: "center" }, // Data
-        2: { cellWidth: 28 }, // Funcionário
+        2: { cellWidth: 28 }, // Técnico
         3: { cellWidth: 48 }, // Chave PIX
         4: { cellWidth: 23, halign: "right", overflow: "visible" }, // Condução
         5: { cellWidth: 21, halign: "right", overflow: "visible" }, // Almoço
@@ -8309,6 +8309,117 @@ function App() {
         8: { cellWidth: "auto" }, // Obs.
       },
       margin: { left: 14, right: 14 },
+    });
+
+    // ---- Pagamento por técnico (PIX) ----
+    // Cada técnico recebe na PRÓPRIA chave (não existe um PIX único): sai um quadro com o QR Code de cada técnico, já com o valor que ele tem a receber
+    // (a soma dos treinamentos em aberto dele), o nome, a quantidade e a chave escrita para copiar. A soma dos quadros é o TOTAL EM ABERTO da tabela.
+    const nomeN = (x) => String(x || "").trim().toLowerCase();
+    const grupos = new Map();
+    lista.forEach((t) => {
+      const nome = String(t.trainer_name || "").trim();
+      const id = nome ? "n:" + nomeN(nome) : "k:" + sanitizePixKey(t.trainer_pix_key); // sem nome: só separa pela chave
+      if (!grupos.has(id)) grupos.set(id, []);
+      grupos.get(id).push(t);
+    });
+    const hoje = todayStr().replace(/-/g, "");
+    const blocos = [...grupos.values()].map((itens) => {
+      const recentes = [...itens].sort((a, b) => String(b.training_date || "").localeCompare(String(a.training_date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")));
+      const comChave = recentes.filter((t) => String(t.trainer_pix_key || "").trim());
+      return {
+        nome: String(recentes[0].trainer_name || "").trim(),
+        chave: comChave.length ? String(comChave[0].trainer_pix_key).trim() : "", // a chave mais recente dele
+        varias: new Set(comChave.map((t) => sanitizePixKey(t.trainer_pix_key))).size > 1,
+        qtd: itens.length,
+        total: round2(itens.reduce((s, t) => s + trainingTotal(t), 0)),
+      };
+    }).sort((a, b) => (a.nome ? 0 : 1) - (b.nome ? 0 : 1) || (a.chave ? 0 : 1) - (b.chave ? 0 : 1) || a.nome.localeCompare(b.nome, "pt-BR"));
+    blocos.forEach((b, i) => {
+      b.qr = null;
+      if (b.chave && b.total > 0) {
+        const payload = generatePixPayload({ key: b.chave, name: b.nome || "TECNICO", city: settings.company_pix_city || "SAO PAULO", value: b.total, txid: "TREIN" + hoje + (i + 1) });
+        b.qr = generatePixQRDataURL(payload, 240);
+      }
+    });
+
+    const pw = doc.internal.pageSize.getWidth(), ph = doc.internal.pageSize.getHeight();
+    const gap = 5, bw = (pw - 28 - 2 * gap) / 3, QR = 32, pad = 4, fundo = ph - 14; // 3 quadros por linha; QR de 32 mm
+    // quebra um texto sem espaços (chave PIX) ou com espaços (nome) na largura que cabe, preferindo cortar depois de @ - . _ ou no espaço
+    const quebraLarg = (txt, largura) => {
+      let x = String(txt || "").trim(); const linhas = [];
+      while (x && doc.getTextWidth(x) > largura) {
+        let n = x.length - 1;
+        while (n > 1 && doc.getTextWidth(x.slice(0, n)) > largura) n--;
+        n = Math.max(n, 1);
+        const melhor = Math.max(x.lastIndexOf(" ", n), ...["@", "-", ".", "_"].map((c) => x.lastIndexOf(c, n - 1) + 1));
+        const corte = Math.max(1, melhor >= Math.ceil(n / 2) ? melhor : n);
+        linhas.push(x.slice(0, corte).trim()); x = x.slice(corte).trim();
+      }
+      if (x) linhas.push(x);
+      return linhas;
+    };
+    const fonte = (tam, neg) => { doc.setFont("helvetica", neg ? "bold" : "normal"); doc.setFontSize(tam); };
+    const CINZA = [100, 100, 100], PRETO = [30, 30, 30], LARANJA = [200, 90, 0];
+    // monta as linhas de texto do quadro (e a altura dele)
+    const montar = (b) => {
+      const x0 = b.qr ? pad + QR + pad : pad;
+      const larg = bw - x0 - pad;
+      const it = [];
+      const quebrado = (txt, tam, neg) => { fonte(tam, neg); return quebraLarg(txt, larg); };
+      let nomeL = quebrado(b.nome || "Técnico não informado", 10, true);
+      if (nomeL.length > 2) {
+        nomeL = nomeL.slice(0, 2);
+        let l2 = nomeL[1]; while (l2.length > 1 && doc.getTextWidth(l2 + "...") > larg) l2 = l2.slice(0, -1);
+        nomeL[1] = l2 + "...";
+      }
+      nomeL.forEach((l, i) => it.push({ txt: l, tam: 10, neg: true, cor: PRETO, adv: i ? 4.6 : 3.4 }));
+      it.push({ txt: "A receber", tam: 8, neg: false, cor: CINZA, adv: 5.4 });
+      fonte(13, true);
+      it.push({ txt: fmtMoney(b.total), tam: doc.getTextWidth(fmtMoney(b.total)) > larg ? 11 : 13, neg: true, cor: PRETO, adv: 5.8 });
+      it.push({ txt: `${b.qtd} treinamento${b.qtd === 1 ? "" : "s"} em aberto`, tam: 8, neg: false, cor: CINZA, adv: 5 });
+      if (b.chave) {
+        it.push({ txt: "Chave PIX:", tam: 8, neg: true, cor: [60, 60, 60], adv: 6 });
+        quebrado(b.chave, 8, false).forEach((l) => it.push({ txt: l, tam: 8, neg: false, cor: PRETO, adv: 3.7 }));
+      }
+      const aviso = (txt, cor, adv0) => quebrado(txt, 7.5, false).forEach((l, i) => it.push({ txt: l, tam: 7.5, neg: false, cor, adv: i ? 3.4 : adv0 }));
+      if (!b.chave) aviso(b.nome ? "Sem chave PIX: edite o treinamento e informe a chave para gerar o QR Code." : "Sem técnico e sem chave PIX: edite o treinamento e informe o técnico e a chave para gerar o QR Code.", LARANJA, 6);
+      else if (!(b.total > 0)) aviso("Valor zerado: não há o que pagar, por isso não sai QR Code.", CINZA, 6);
+      else if (!b.qr) aviso("Não foi possível gerar o QR Code agora — use a chave acima.", LARANJA, 6);
+      if (b.varias) aviso("Este técnico tem mais de uma chave nos treinamentos: o QR usa a mais recente.", LARANJA, b.chave && b.qr ? 5 : 3.6);
+      const altTexto = pad + it.reduce((t, i) => t + i.adv, 0) + 1.5 + pad;
+      return { it, tx: x0, alt: Math.max(altTexto, b.qr ? pad + QR + pad : 28) };
+    };
+    const desenhar = (b, m, x, y, h) => {
+      doc.setDrawColor(205, 205, 220); doc.setLineWidth(0.3);
+      doc.roundedRect(x, y, bw, h, 2, 2, "S");
+      if (b.qr) { try { doc.addImage(b.qr, "PNG", x + pad, y + pad, QR, QR); } catch (e) {} }
+      let cy = y + pad;
+      m.it.forEach((i) => { cy += i.adv; fonte(i.tam, i.neg); doc.setTextColor(i.cor[0], i.cor[1], i.cor[2]); doc.text(i.txt, x + m.tx, cy); });
+    };
+    const cabecalho = (y, continuacao) => {
+      fonte(11, true); doc.setTextColor(30);
+      doc.text(continuacao ? "Pagamento por técnico (PIX) — continuação" : "Pagamento por técnico (PIX)", 14, y);
+      if (continuacao) return y + 6;
+      fonte(8.5, false); doc.setTextColor(100);
+      const sub = doc.splitTextToSize("Cada técnico recebe na própria chave PIX. Aponte a câmera do aplicativo do banco para o QR Code: o valor já vai preenchido (soma dos treinamentos em aberto dele).", pw - 28);
+      doc.text(sub, 14, y + 5);
+      return y + 5 + sub.length * 4 + 2;
+    };
+    const ALT_CAB = 15; // espaço reservado para o título + a frase de explicação
+    let yy = doc.lastAutoTable.finalY + 10;
+    const linhasDeBlocos = [];
+    for (let i = 0; i < blocos.length; i += 3) linhasDeBlocos.push(blocos.slice(i, i + 3).map((b) => ({ b, m: montar(b) })));
+    linhasDeBlocos.forEach((linha, r) => {
+      const h = Math.max(...linha.map((c) => c.m.alt));
+      if (r === 0) {
+        if (yy + ALT_CAB + h > fundo) { doc.addPage(); yy = 18; }
+        yy = cabecalho(yy, false);
+      } else if (yy + h > fundo) {
+        doc.addPage(); yy = 18;
+        yy = cabecalho(yy, true);
+      }
+      linha.forEach((c, k) => desenhar(c.b, c.m, 14 + k * (bw + gap), yy, h));
+      yy += h + gap;
     });
     doc.save(`treinamentos-em-aberto-${todayStr()}.pdf`);
   }
@@ -8322,13 +8433,13 @@ function App() {
     const montar = (lista, comPago) => {
       const soma = (campo) => round2(lista.reduce((s, t) => s + (Number(t[campo]) || 0), 0));
       const data = lista.map((t) => ({
-        "LOJA": t.store_name || "", "DATA": t.training_date ? fmtDate(t.training_date) : "", "FUNCIONÁRIO": t.trainer_name || "", "CHAVE PIX": t.trainer_pix_key || "",
+        "LOJA": t.store_name || "", "DATA": t.training_date ? fmtDate(t.training_date) : "", "TÉCNICO": t.trainer_name || "", "CHAVE PIX": t.trainer_pix_key || "",
         "CONDUÇÃO": Number(t.transport) || 0, "ALMOÇO": Number(t.lunch) || 0, "VALOR TREINAMENTO": Number(t.training_value) || 0,
         "TOTAL MIRE": trainingTotal(t), "OBS.": t.notes || "",
         ...(comPago ? { "PAGO EM": t.paid_date ? fmtDate(t.paid_date) : "" } : {}),
       }));
       data.push({
-        "LOJA": "TOTAL", "DATA": "", "FUNCIONÁRIO": "", "CHAVE PIX": "",
+        "LOJA": "TOTAL", "DATA": "", "TÉCNICO": "", "CHAVE PIX": "",
         "CONDUÇÃO": soma("transport"), "ALMOÇO": soma("lunch"), "VALOR TREINAMENTO": soma("training_value"),
         "TOTAL MIRE": round2(lista.reduce((s, t) => s + trainingTotal(t), 0)), "OBS.": "",
         ...(comPago ? { "PAGO EM": "" } : {}),
@@ -11829,11 +11940,11 @@ function App() {
                 const allSelected = abertoList.length > 0 && selAbertos.length === abertoList.length;
                 const toggleAll = () => setSelectedTrainings(allSelected ? new Set() : new Set(abertoList.map((t) => t.id)));
                 const toggleOne = (id) => setSelectedTrainings((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
-                // o último lançado serve de modelo para o próximo (funcionário e valores já vêm preenchidos)
+                // o último lançado serve de modelo para o próximo (técnico e valores já vêm preenchidos)
                 const previous = [...trainings].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")) || String(b.training_date || "").localeCompare(String(a.training_date || "")))[0] || null;
                 const stores = [...new Set(clients.map((c) => (c.name || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
-                const trainers = [...new Set([...employees.filter((e) => e.active !== false).map((e) => (e.name || "").trim()), ...trainings.map((t) => (t.trainer_name || "").trim())].filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
-                // chave PIX que o sistema sugere para um funcionário: a do último treinamento dele; se não tiver, a do cadastro de funcionários (só leitura: o cadastro não é alterado)
+                const trainers = [...new Set([...employees.filter((e) => e.active !== false).map((e) => (e.name || "").trim()), String(settings.migracao_pix_favorecido || "").trim(), ...trainings.map((t) => (t.trainer_name || "").trim())].filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+                // chave PIX que o sistema sugere para um técnico: a do último treinamento dele; se não tiver, a do cadastro de funcionários; por fim, a do técnico de migração (Configurações) se o nome for o dele (só leitura: nada disso é alterado)
                 const normNome = (x) => String(x || "").trim().toLowerCase();
                 const pixFor = (nome) => {
                   const n = normNome(nome);
@@ -11843,6 +11954,7 @@ function App() {
                   if (ultimo) return { key: String(ultimo.trainer_pix_key).trim(), from: "último treinamento dele" };
                   const emp = employees.find((e) => normNome(e.name) === n && String(e.pix_key || "").trim());
                   if (emp) return { key: String(emp.pix_key).trim(), from: "cadastro do funcionário" };
+                  if (normNome(settings.migracao_pix_favorecido) === n && String(settings.migracao_pix_key || "").trim()) return { key: String(settings.migracao_pix_key).trim(), from: "PIX do técnico nas Configurações" };
                   return { key: "", from: "" };
                 };
                 const kpiCard = "rounded-2xl p-4 border";
@@ -11860,7 +11972,7 @@ function App() {
                       {t.trainer_pix_key && (
                         <div className="flex items-start gap-1.5 mt-0.5 text-[11px]" style={{ color: COLORS.inkMuted }}>
                           <span className="shrink-0">PIX:</span>
-                          <span className="select-all" style={{ overflowWrap: "anywhere" }} title="Chave PIX do funcionário">{t.trainer_pix_key}</span>
+                          <span className="select-all" style={{ overflowWrap: "anywhere" }} title="Chave PIX do técnico">{t.trainer_pix_key}</span>
                           <button type="button" onClick={() => copyTrainingPix(t.trainer_pix_key)} title="Copiar a chave PIX" className="shrink-0">📋</button>
                         </div>
                       )}
@@ -11895,7 +12007,7 @@ function App() {
                         <button onClick={loadTrainings} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.warn, color: COLORS.warn }}>Verificar de novo</button>
                       </div>
                     )}
-                    <p className="text-xs mb-3" style={{ color: COLORS.inkMuted }}>Lance cada treinamento com condução, almoço e valor — o Total Mire é a soma dos três. Quando pagar o funcionário, marque como pago: o treinamento sai desta lista e o total em aberto desce. A chave PIX do funcionário também sai no PDF.</p>
+                    <p className="text-xs mb-3" style={{ color: COLORS.inkMuted }}>Lance cada treinamento com condução, almoço e valor — o Total Mire é a soma dos três. Quando pagar o técnico, marque como pago: o treinamento sai desta lista e o total em aberto desce. No PDF, cada técnico sai com o seu QR Code do PIX (na chave dele), já com o valor que ele tem a receber.</p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                       <div className={kpiCard} style={kpiBg}>
                         <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>Em aberto</div>
@@ -11934,7 +12046,7 @@ function App() {
                           <thead>
                             <tr style={{ color: COLORS.inkMuted }}>
                               <th className="text-left p-3"><input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4" title="Selecionar todos" /></th>
-                              <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Funcionário / PIX</th>
+                              <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Técnico / PIX</th>
                               <th className="text-right p-3">Condução</th><th className="text-right p-3">Almoço</th><th className="text-right p-3">Valor treinamento</th><th className="text-right p-3">Total Mire</th>
                               <th className="text-left p-3">Obs.</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
                             </tr>
@@ -11963,7 +12075,7 @@ function App() {
                             <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                               <thead>
                                 <tr style={{ color: COLORS.inkMuted }}>
-                                  <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Funcionário / PIX</th>
+                                  <th className="text-left p-3">Loja</th><th className="text-left p-3">Data</th><th className="text-left p-3">Técnico / PIX</th>
                                   <th className="text-right p-3">Condução</th><th className="text-right p-3">Almoço</th><th className="text-right p-3">Valor treinamento</th><th className="text-right p-3">Total Mire</th>
                                   <th className="text-left p-3">Obs.</th><th className="text-left p-3">Pago</th><th className="text-left p-3"></th>
                                 </tr>

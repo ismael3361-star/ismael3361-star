@@ -3483,23 +3483,69 @@ function trainingTotal(t) { return round2((Number(t?.transport) || 0) + (Number(
 // mensagem do Supabase quando a tabela "trainings" ainda não foi criada (arquivo criar-tabela-treinamentos.sql não rodado)
 const TRAINING_MISSING_RE = /PGRST205|42P01|could not find the table|relation ["']?(public\.)?trainings["']? does not exist/i;
 
-function TrainingForm({ initial, previous, stores, trainers, pixFor, pixColumnMissing, onSave, onCancel }) {
-  const copied = !initial && !!previous; // novo treinamento começa com o técnico e os valores do último lançado
-  const [newId] = useState(() => initial?.id || uid());
-  const [storeName, setStoreName] = useState(initial?.store_name || "");
-  const [trainingDate, setTrainingDate] = useState(initial?.training_date || todayStr());
-  const [trainerName, setTrainerName] = useState(initial ? (initial.trainer_name || "") : (copied ? (previous.trainer_name || "") : ""));
-  const [transport, setTransport] = useState(initial ? (initial.transport ?? "") : (copied ? (previous.transport ?? "") : ""));
-  const [lunch, setLunch] = useState(initial ? (initial.lunch ?? "") : (copied ? (previous.lunch ?? "") : ""));
-  const [trainingValue, setTrainingValue] = useState(initial ? (initial.training_value ?? "") : (copied ? (previous.training_value ?? "") : ""));
-  const [notes, setNotes] = useState(initial?.notes || "");
+// ---------------------------------------------------------------------------
+// Agenda de Treinamentos: agendar → realizar → pagar num fluxo só.
+// O que está marcado fica na tabela "training_agenda". Ao marcar "Realizado" o treinamento vai para a aba Treinamentos (tabela "trainings"),
+// já preenchido, e entra no PDF de pagamento por técnico. O que está só agendado NÃO conta como "a pagar": entra na previsão de gastos do mês.
+// As datas são sempre do fuso local (nunca toISOString, que pula para o dia seguinte à noite).
+// ---------------------------------------------------------------------------
+// mensagem do Supabase quando a tabela "training_agenda" ainda não foi criada (arquivo criar-tabela-agenda-treinamentos.sql não rodado)
+const TRAINING_AGENDA_MISSING_RE = /PGRST205|42P01|could not find the table|relation ["']?(public\.)?training_agenda["']? does not exist/i;
+const WEEKDAYS_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const AGENDA_TRAINER_COLORS = ["#38BDF8", "#F472B6", "#FBBF24", "#34D399", "#A78BFA", "#FB923C", "#2DD4BF", "#F87171", "#818CF8", "#A3E635"];
+const AGENDA_NO_TRAINER_COLOR = "#8A97AC";
+function dateFromStr(s) { const [y, m, d] = String(s || "").split("-").map(Number); return new Date(y || 1970, (m || 1) - 1, d || 1); }
+function strFromDate(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function addDaysStr(s, n) { const d = dateFromStr(s); d.setDate(d.getDate() + n); return strFromDate(d); }
+function weekStartStr(s) { const d = dateFromStr(s); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return strFromDate(d); } // segunda-feira da semana
+function dayLabel(s) { const d = dateFromStr(s); return `${WEEKDAYS_SHORT[d.getDay()]} ${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function shortDM(s) { const d = dateFromStr(s); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function timeValue(t) { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "")); return m ? `${m[1].padStart(2, "0")}:${m[2]}` : ""; }
+function hourLabel(t) { const v = timeValue(t); if (!v) return ""; return v.slice(3) === "00" ? `${Number(v.slice(0, 2))}h` : `${Number(v.slice(0, 2))}h${v.slice(3)}`; }
+// ordem dentro do dia: por horário (sem horário vai para o fim) e depois pelo nome da loja
+function byAgendaTime(a, b) { return (timeValue(a.start_time) || "99:99").localeCompare(timeValue(b.start_time) || "99:99") || String(a.store_name || "").localeCompare(String(b.store_name || ""), "pt-BR"); }
+function byAgendaDate(a, b) { return String(a.schedule_date || "").localeCompare(String(b.schedule_date || "")) || byAgendaTime(a, b); }
+function agendaTrainerKey(n) { return String(n || "").trim().toLowerCase(); }
+// cor de cada técnico: segue a ordem em que o nome apareceu na agenda (quem entra depois ganha a próxima cor), então a cor de quem já está lá não muda
+// quando entra um técnico novo. É a mesma na lista, na semana e no mês.
+function agendaColorMap(items) {
+  const ordem = (items || []).filter((a) => String(a.trainer_name || "").trim())
+    .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")) || String(a.schedule_date || "").localeCompare(String(b.schedule_date || "")) || String(a.id || "").localeCompare(String(b.id || "")));
+  const map = {};
+  ordem.forEach((a) => { const k = agendaTrainerKey(a.trainer_name); if (!(k in map)) map[k] = AGENDA_TRAINER_COLORS[Object.keys(map).length % AGENDA_TRAINER_COLORS.length]; });
+  return map;
+}
+function agendaColorOf(map, name) { return map[agendaTrainerKey(name)] || AGENDA_NO_TRAINER_COLOR; }
+// as semanas (segunda a domingo) que cobrem o mês "AAAA-MM"; os dias de fora do mês só completam as linhas
+function monthGridWeeks(key) {
+  const [y, m] = String(key).split("-").map(Number);
+  const last = strFromDate(new Date(y, m, 0));
+  const weeks = [];
+  let cur = weekStartStr(`${key}-01`);
+  while (cur <= last) { weeks.push(Array.from({ length: 7 }, (_, i) => addDaysStr(cur, i))); cur = addDaysStr(cur, 7); }
+  return weeks;
+}
+
+// "prefill" = o treinamento veio da Agenda de Treinamentos ("Realizado"): loja, data, técnico, valores e obs. já preenchidos (title/saveLabel trocam os textos)
+function TrainingForm({ initial, previous, prefill, title, saveLabel, stores, trainers, pixFor, pixColumnMissing, onSave, onCancel }) {
+  const fromPrefill = !initial && !!prefill;
+  const copied = !initial && !fromPrefill && !!previous; // novo treinamento começa com o técnico e os valores do último lançado
+  const [newId] = useState(() => initial?.id || prefill?.id || uid());
+  const [storeName, setStoreName] = useState(initial?.store_name || prefill?.store_name || "");
+  const [trainingDate, setTrainingDate] = useState(initial?.training_date || prefill?.training_date || todayStr());
+  const [trainerName, setTrainerName] = useState(initial ? (initial.trainer_name || "") : (fromPrefill ? (prefill.trainer_name || "") : (copied ? (previous.trainer_name || "") : "")));
+  const [transport, setTransport] = useState(initial ? (initial.transport ?? "") : (fromPrefill ? (prefill.transport ?? "") : (copied ? (previous.transport ?? "") : "")));
+  const [lunch, setLunch] = useState(initial ? (initial.lunch ?? "") : (fromPrefill ? (prefill.lunch ?? "") : (copied ? (previous.lunch ?? "") : "")));
+  const [trainingValue, setTrainingValue] = useState(initial ? (initial.training_value ?? "") : (fromPrefill ? (prefill.training_value ?? "") : (copied ? (previous.training_value ?? "") : "")));
+  const [notes, setNotes] = useState(initial?.notes || prefill?.notes || "");
   const [saving, setSaving] = useState(false);
   // Chave PIX do técnico (gera o QR Code dele no PDF). Vem sozinha do último treinamento dele, do cadastro de funcionários ou das Configurações (técnico de migração); o que a pessoa digita sempre vale mais.
   const noPix = { key: "", from: "" };
   // enquanto a coluna da chave PIX não existe no banco (arquivo SQL não rodado) o sistema não sugere chave: ela não seria gravada
   const sugere = (nome) => (pixFor && !pixColumnMissing) ? pixFor(nome) : noPix;
   const startPix = initial ? { key: initial.trainer_pix_key || "", from: "" }
-    : (copied ? ((previous.trainer_pix_key || "").trim() ? { key: previous.trainer_pix_key.trim(), from: "último treinamento lançado" } : sugere(previous.trainer_name)) : noPix);
+    : (fromPrefill ? sugere(prefill.trainer_name)
+    : (copied ? ((previous.trainer_pix_key || "").trim() ? { key: previous.trainer_pix_key.trim(), from: "último treinamento lançado" } : sugere(previous.trainer_name)) : noPix));
   const [pixKey, setPixKey] = useState(startPix.key);
   const [autoPix, setAutoPix] = useState(startPix.key); // a chave que veio pronta (do sistema ou já gravada): se a pessoa não mexer nela, ela acompanha a troca do técnico
   const [pixFrom, setPixFrom] = useState(startPix.from);
@@ -3524,7 +3570,7 @@ function TrainingForm({ initial, previous, stores, trainers, pixFor, pixColumnMi
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
-      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar treinamento" : "Novo treinamento"}</div>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{title || (initial ? "Editar treinamento" : "Novo treinamento")}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Loja *</span>
@@ -3558,6 +3604,9 @@ function TrainingForm({ initial, previous, stores, trainers, pixFor, pixColumnMi
           O técnico e os valores vieram do último treinamento lançado ({previous.store_name}) — altere se for diferente.
         </div>
       )}
+      {fromPrefill && prefill.note && (
+        <div className="text-xs" style={{ color: COLORS.inkFaint }}>{prefill.note}</div>
+      )}
       <div className="flex items-center justify-between flex-wrap gap-2 rounded-lg px-4 py-3 border" style={{ borderColor: rgba(COLORS.brand, 0.35), background: rgba(COLORS.brand, 0.08) }}>
         <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Total Mire <span className="font-semibold normal-case">(condução + almoço + treinamento)</span></span>
         <span className="text-xl font-extrabold tnum whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtMoney(total)}</span>
@@ -3580,7 +3629,169 @@ function TrainingForm({ initial, previous, stores, trainers, pixFor, pixColumnMi
             } finally { setSaving(false); }
           }}
           className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
-          Salvar treinamento
+          {saveLabel || "Salvar treinamento"}
+        </button>
+        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
+// Formulário da Agenda de Treinamentos (aba Operacional > Agenda de Treinamentos).
+// Escolhendo a loja, o endereço, o WhatsApp e o contato vêm do cadastro de Clientes (pode alterar). Técnico e valores começam iguais aos do último treinamento.
+// mode: "novo" | "editar" | "reagendar" (reagendar = escolher nova data/hora; ao salvar volta para "Agendado")
+function TrainingAgendaForm({ initial, mode, presetDate, previous, previousKind, clients, stores, trainers, onSave, onCancel }) {
+  const reagendar = mode === "reagendar";
+  const copied = !initial && !!previous; // agendamento novo começa com o técnico e os valores do último treinamento
+  const [newId] = useState(() => initial?.id || uid());
+  const [storeName, setStoreName] = useState(initial?.store_name || "");
+  const [contactName, setContactName] = useState(initial?.contact_name || "");
+  const [phone, setPhone] = useState(initial?.phone || "");
+  const [modality, setModality] = useState(initial?.modality === "remoto" ? "remoto" : "presencial");
+  const [address, setAddress] = useState(initial?.address || "");
+  const [meetingLink, setMeetingLink] = useState(initial?.meeting_link || "");
+  const [date, setDate] = useState(initial?.schedule_date || presetDate || "");
+  const [time, setTime] = useState(timeValue(initial?.start_time));
+  const [trainerName, setTrainerName] = useState(initial ? (initial.trainer_name || "") : (copied ? (previous.trainer_name || "") : ""));
+  const startMoney = (k) => initial ? (Number(initial[k]) || "") : (copied ? (Number(previous[k]) || "") : "");
+  const [transport, setTransport] = useState(startMoney("transport"));
+  const [lunch, setLunch] = useState(startMoney("lunch"));
+  const [trainingValue, setTrainingValue] = useState(startMoney("training_value"));
+  const [notes, setNotes] = useState(initial?.notes || "");
+  const [saving, setSaving] = useState(false);
+  // o que veio sozinho do cadastro do cliente (se a pessoa não mexeu, acompanha a troca de loja; o que ela digita sempre vale mais)
+  const [auto, setAuto] = useState({ phone: "", contact: "", address: "" });
+  // treinamento remoto não tem condução nem almoço: ao trocar, zera os dois (e devolve se voltar para presencial) — só enquanto a pessoa não mexeu nos valores
+  const [moneyTouched, setMoneyTouched] = useState(!!initial);
+  const presencialMoney = useRef(null);
+
+  const nm = (x) => String(x || "").trim().toLowerCase();
+  const findClient = (v) => (nm(v) ? (clients || []).find((c) => nm(c.name) === nm(v)) : null);
+  const matched = findClient(storeName);
+  function changeStore(v) {
+    setStoreName(v);
+    const c = findClient(v);
+    if (!c) {
+      // saiu do cliente: o que tinha vindo dele sai junto (nunca deixa o telefone/endereço de outra loja)
+      if (auto.phone || auto.contact || auto.address) {
+        if (phone === auto.phone) setPhone("");
+        if (contactName === auto.contact) setContactName("");
+        if (address === auto.address) setAddress("");
+        setAuto({ phone: "", contact: "", address: "" });
+      }
+      return;
+    }
+    const next = { phone: c.phone ? maskPhone(c.phone) : "", contact: c.contact_name || "", address: addressLine(c) };
+    if (!phone.trim() || phone === auto.phone) setPhone(next.phone);
+    if (!contactName.trim() || contactName === auto.contact) setContactName(next.contact);
+    if (!address.trim() || address === auto.address) setAddress(next.address);
+    setAuto(next);
+  }
+  function changeModality(m) {
+    if (m === modality) return;
+    setModality(m);
+    if (moneyTouched) return;
+    if (m === "remoto") { presencialMoney.current = { transport, lunch }; setTransport(""); setLunch(""); }
+    else if (presencialMoney.current) { setTransport(presencialMoney.current.transport); setLunch(presencialMoney.current.lunch); presencialMoney.current = null; }
+  }
+
+  const total = round2((Number(transport) || 0) + (Number(lunch) || 0) + (Number(trainingValue) || 0));
+  const canSave = !!storeName.trim() && !!date && !saving;
+  const inputCls = "w-full rounded-lg border px-3 py-2 text-sm outline-none";
+  const inputSt = { borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink };
+  const dateSt = reagendar ? { ...inputSt, borderColor: COLORS.brandLight } : inputSt;
+  const moneyField = (label, value, setValue) => (
+    <label className="block">
+      <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>{label}</span>
+      <input type="number" inputMode="decimal" step="0.01" min="0" value={value} onChange={(e) => { setMoneyTouched(true); setValue(e.target.value); }} placeholder="0,00" className={inputCls} style={inputSt} />
+    </label>
+  );
+  const fromRegister = matched && ((auto.phone && phone === auto.phone) || (auto.address && address === auto.address) || (auto.contact && contactName === auto.contact));
+
+  return (
+    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{reagendar ? "Reagendar treinamento" : initial ? "Editar agendamento" : "Agendar treinamento"}</div>
+      {reagendar && <div className="text-xs" style={{ color: COLORS.inkFaint }}>Escolha a nova data e o novo horário — ao salvar, o treinamento volta para "Agendado".</div>}
+
+      <div className="flex gap-2">
+        <button type="button" onClick={() => changeModality("presencial")} className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: modality === "presencial" ? COLORS.brandLight : COLORS.cardBorder, color: modality === "presencial" ? COLORS.brandLight : COLORS.inkMuted, background: modality === "presencial" ? "rgba(124,92,255,0.1)" : "transparent" }}>🏢 Presencial</button>
+        <button type="button" onClick={() => changeModality("remoto")} className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold border" style={{ borderColor: modality === "remoto" ? COLORS.brandLight : COLORS.cardBorder, color: modality === "remoto" ? COLORS.brandLight : COLORS.inkMuted, background: modality === "remoto" ? "rgba(124,92,255,0.1)" : "transparent" }}>💻 Remoto</button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Loja *</span>
+          <input list="agenda-treinamento-lojas" value={storeName} onChange={(e) => changeStore(e.target.value)} placeholder="Nome da loja" className={inputCls} style={inputSt} />
+          <datalist id="agenda-treinamento-lojas">{(stores || []).map((n) => <option key={n} value={n} />)}</datalist>
+          {fromRegister && <span className="block text-xs mt-1" style={{ color: COLORS.inkFaint }}>Endereço e WhatsApp trazidos do cadastro do cliente — altere se for outro.</span>}
+          {!matched && storeName.trim() && <span className="block text-xs mt-1" style={{ color: COLORS.inkFaint }}>Esta loja não está no cadastro de clientes — preencha o contato, o WhatsApp e o endereço.</span>}
+        </label>
+        <TextField label="Contato" value={contactName} onChange={setContactName} placeholder="Nome de quem vai receber" />
+        <TextField label="WhatsApp" value={phone} onChange={(v) => setPhone(maskPhone(v))} placeholder="(11) 99999-9999" />
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Técnico que vai passar o treinamento</span>
+          <input list="agenda-treinamento-tecnicos" value={trainerName} onChange={(e) => setTrainerName(e.target.value)} placeholder="Escolha da lista ou digite o nome (opcional)" className={inputCls} style={inputSt} />
+          <datalist id="agenda-treinamento-tecnicos">{(trainers || []).map((n) => <option key={n} value={n} />)}</datalist>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data *</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} style={dateSt} />
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Horário</span>
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className={inputCls} style={dateSt} />
+        </label>
+        <div className="sm:col-span-2">
+          {modality === "presencial" ? (
+            <TextField label="Endereço" value={address} onChange={setAddress} placeholder="Rua, número, bairro, cidade" />
+          ) : (
+            <TextField label="Link da reunião" value={meetingLink} onChange={setMeetingLink} placeholder="Ex: link do Google Meet / Zoom" />
+          )}
+        </div>
+      </div>
+
+      <div className="pt-2 border-t" style={{ borderColor: COLORS.cardBorder }}>
+        <span className="block text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Custo previsto (vai preenchido para Treinamentos quando marcar "Realizado")</span>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {moneyField("Condução (R$)", transport, setTransport)}
+          {moneyField("Almoço (R$)", lunch, setLunch)}
+          {moneyField("Valor do treinamento (R$)", trainingValue, setTrainingValue)}
+        </div>
+        {copied && (
+          <div className="text-xs mt-2" style={{ color: COLORS.inkFaint }}>
+            O técnico e os valores vieram do último treinamento {previousKind} ({previous.store_name}) — altere se for diferente.
+          </div>
+        )}
+        {modality === "remoto" && !moneyTouched && <div className="text-xs mt-2" style={{ color: COLORS.inkFaint }}>Treinamento remoto: condução e almoço ficam zerados (digite se houver).</div>}
+        <div className="flex items-center justify-between flex-wrap gap-2 rounded-lg px-4 py-3 border mt-3" style={{ borderColor: rgba(COLORS.brand, 0.35), background: rgba(COLORS.brand, 0.08) }}>
+          <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Previsão <span className="font-semibold normal-case">(condução + almoço + treinamento)</span></span>
+          <span className="text-xl font-extrabold tnum whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtMoney(total)}</span>
+        </div>
+      </div>
+
+      <label className="block">
+        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Obs.</span>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Anotações sobre este treinamento (opcional)" className={inputCls + " resize-y"} style={{ ...inputSt, minHeight: 72 }} />
+      </label>
+
+      <div className="flex gap-2">
+        <button
+          disabled={!canSave}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              await onSave({
+                id: newId, store_name: storeName.trim(), contact_name: contactName.trim() || null, phone: phone.trim() || null, modality,
+                address: modality === "presencial" ? (address.trim() || null) : null, meeting_link: modality === "remoto" ? (meetingLink.trim() || null) : null,
+                schedule_date: date, start_time: time || null, trainer_name: trainerName.trim() || null,
+                transport: Number(transport) || 0, lunch: Number(lunch) || 0, training_value: Number(trainingValue) || 0,
+                notes: notes.trim() || null,
+                status: reagendar ? "agendado" : (initial?.status || "agendado"), training_id: initial?.training_id || null,
+              });
+            } finally { setSaving(false); }
+          }}
+          className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
+          {reagendar ? "Salvar nova data" : "Salvar agendamento"}
         </button>
         <button type="button" onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Cancelar</button>
       </div>
@@ -6523,6 +6734,16 @@ function App() {
   const [editingTraining, setEditingTraining] = useState(null);
   const [selectedTrainings, setSelectedTrainings] = useState(new Set());
   const [showPaidTrainings, setShowPaidTrainings] = useState(false);
+  const [trainingAgenda, setTrainingAgenda] = useState([]);
+  const [trainingAgendaMissing, setTrainingAgendaMissing] = useState(false); // true = a tabela da agenda ainda não foi criada no Supabase (arquivo criar-tabela-agenda-treinamentos.sql)
+  const [agendaForm, setAgendaForm] = useState(null); // null = fechado; { item, mode: "novo" | "editar" | "reagendar", date } = formulário aberto
+  const [agendaDone, setAgendaDone] = useState(null); // agendamento que está sendo confirmado como "Realizado"
+  const [agendaView, setAgendaView] = useState("lista"); // lista | semana | mes
+  const [agendaFilter, setAgendaFilter] = useState("proximos");
+  const [agendaWeek, setAgendaWeek] = useState(() => weekStartStr(todayStr())); // segunda-feira da semana que está na tela
+  const [agendaMonth, setAgendaMonth] = useState(() => todayStr().slice(0, 7)); // mês que está na tela ("AAAA-MM")
+  const [agendaDay, setAgendaDay] = useState(""); // dia tocado no calendário do mês
+  const [agendaOpenId, setAgendaOpenId] = useState(null); // linha aberta (com os botões) nas telas de semana e mês
   const [clientCommissions, setClientCommissions] = useState([]);
   const [showClientCommissionForm, setShowClientCommissionForm] = useState(false);
   const [editingClientCommission, setEditingClientCommission] = useState(null);
@@ -6920,15 +7141,29 @@ function App() {
       setTrainingsPixMissing(!!(sonda.error && /trainer_pix_key/i.test(sonda.error.message || "")));
     }
   }, []);
-  async function handleSaveTraining(t) {
-    const editing = trainings.some((x) => x.id === t.id);
+  // chave PIX que o sistema sugere para um técnico: a do último treinamento dele; se não tiver, a do cadastro de funcionários; por fim, a do técnico de migração (Configurações) se o nome for o dele (só leitura: nada disso é alterado)
+  const trainingPixFor = (nome) => {
+    const normNome = (x) => String(x || "").trim().toLowerCase();
+    const n = normNome(nome);
+    if (!n) return { key: "", from: "" };
+    const ultimo = trainings.filter((x) => normNome(x.trainer_name) === n && String(x.trainer_pix_key || "").trim())
+      .sort((a, b) => String(b.training_date || "").localeCompare(String(a.training_date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
+    if (ultimo) return { key: String(ultimo.trainer_pix_key).trim(), from: "último treinamento dele" };
+    const emp = employees.find((e) => normNome(e.name) === n && String(e.pix_key || "").trim());
+    if (emp) return { key: String(emp.pix_key).trim(), from: "cadastro do funcionário" };
+    if (normNome(settings?.migracao_pix_favorecido) === n && String(settings?.migracao_pix_key || "").trim()) return { key: String(settings.migracao_pix_key).trim(), from: "PIX do técnico nas Configurações" };
+    return { key: "", from: "" };
+  };
+  // grava (insere ou atualiza) um treinamento na tabela e recarrega a lista; devolve true se gravou.
+  // É o mesmo caminho do formulário da aba Treinamentos e do "Realizado" da Agenda de Treinamentos.
+  async function persistTraining(t) {
     const payload = { ...t, updated_by: session?.user?.email || "desconhecido" };
     let { error } = await supa.from("trainings").upsert(payload);
     // ainda falta a coluna da chave PIX (arquivo adicionar-pix-treinamentos.sql não rodado): sem chave digitada salva normalmente; com chave, avisa e não grava nada
     if (error && /trainer_pix_key/i.test(error.message || "")) {
       if (t.trainer_pix_key) {
         alert("Para guardar a chave PIX do técnico falta rodar, UMA vez, o arquivo adicionar-pix-treinamentos.sql no SQL Editor do Supabase.\n\nNada foi salvo e nada do que já existe foi alterado. Depois de rodar, é só salvar de novo.");
-        return;
+        return false;
       }
       const { trainer_pix_key, ...payloadSemPix } = payload;
       ({ error } = await supa.from("trainings").upsert(payloadSemPix));
@@ -6937,12 +7172,17 @@ function App() {
       if (TRAINING_MISSING_RE.test(`${error.code || ""} ${error.message || ""}`)) {
         setTrainingsMissing(true);
         alert("A tabela de treinamentos ainda não existe no Supabase.\n\nRode UMA vez o arquivo criar-tabela-treinamentos.sql no SQL Editor do Supabase e salve de novo.\n\nNada foi salvo e nada do que já existe foi alterado.");
-        return;
+        return false;
       }
       showToast(`Erro: ${error.message}`);
-      return;
+      return false;
     }
     await loadTrainings();
+    return true;
+  }
+  async function handleSaveTraining(t) {
+    const editing = trainings.some((x) => x.id === t.id);
+    if (!(await persistTraining(t))) return;
     setShowTrainingForm(false); setEditingTraining(null);
     showToast("Treinamento salvo.");
     logActivity(`Treinamento ${editing ? "atualizado" : "lançado"}: ${t.store_name} — ${fmtMoney(trainingTotal(t))}`);
@@ -6992,6 +7232,100 @@ function App() {
     } catch (e) {
       showToast("Não consegui copiar sozinho — segure o dedo sobre a chave para copiar.");
     }
+  }
+  // ---- Agenda de Treinamentos: agendar → realizar → pagar ----
+  const loadTrainingAgenda = useCallback(async () => {
+    const { data, error } = await supa.from("training_agenda").select("*").order("schedule_date", { ascending: true });
+    if (error) {
+      // tabela ainda não criada (arquivo SQL não rodado): a aba mostra um aviso em vez de quebrar
+      const falta = TRAINING_AGENDA_MISSING_RE.test(`${error.code || ""} ${error.message || ""}`);
+      setTrainingAgendaMissing(falta);
+      if (falta) setTrainingAgenda([]); else showToast(`Erro ao carregar a agenda de treinamentos: ${error.message}`);
+      return;
+    }
+    setTrainingAgendaMissing(false);
+    setTrainingAgenda(data || []);
+  }, []);
+  // erro do banco ao gravar na agenda: tabela que falta vira aviso claro; devolve true quando havia erro
+  function agendaDbError(error) {
+    if (!error) return false;
+    if (TRAINING_AGENDA_MISSING_RE.test(`${error.code || ""} ${error.message || ""}`)) {
+      setTrainingAgendaMissing(true);
+      alert("A tabela da agenda de treinamentos ainda não existe no Supabase.\n\nRode UMA vez o arquivo criar-tabela-agenda-treinamentos.sql no SQL Editor do Supabase e tente de novo.\n\nNada foi salvo e nada do que já existe foi alterado.");
+    } else {
+      showToast(`Erro: ${error.message}`);
+    }
+    return true;
+  }
+  async function handleSaveTrainingAgenda(a) {
+    const editing = trainingAgenda.some((x) => x.id === a.id);
+    const { error } = await supa.from("training_agenda").upsert({ ...a, updated_by: session?.user?.email || "desconhecido" });
+    if (agendaDbError(error)) return;
+    await loadTrainingAgenda();
+    setAgendaForm(null);
+    // a semana e o mês da tela passam a mostrar o dia do treinamento que acabou de ser salvo
+    if (a.schedule_date) { setAgendaWeek(weekStartStr(a.schedule_date)); setAgendaMonth(a.schedule_date.slice(0, 7)); }
+    showToast(editing ? "Agendamento atualizado." : "Treinamento agendado.");
+    logActivity(`Agenda de treinamentos: ${editing ? "atualizado" : "agendado"} ${a.store_name} — ${fmtDate(a.schedule_date)}${a.start_time ? " " + hourLabel(a.start_time) : ""}`);
+  }
+  async function handleCancelAgenda(a) {
+    const { error } = await supa.from("training_agenda").update({ status: "cancelado", updated_by: session?.user?.email || "desconhecido" }).eq("id", a.id);
+    if (agendaDbError(error)) return;
+    await loadTrainingAgenda();
+    showToast("Treinamento cancelado.");
+    logActivity(`Agenda de treinamentos: cancelado ${a.store_name} (${fmtDate(a.schedule_date)})`);
+  }
+  // "Realizado": o treinamento vai para a aba Treinamentos (já preenchido, pronto para pagar) e o agendamento fica como realizado, ligado a ele.
+  // O treinamento leva um id derivado do agendamento: se algo falhar no meio e a pessoa confirmar de novo, ele é atualizado — nunca duplicado.
+  async function handleConfirmAgendaDone(a, t) {
+    if (!(await persistTraining(t))) return;
+    const { error } = await supa.from("training_agenda").update({
+      status: "realizado", training_id: t.id, schedule_date: t.training_date, trainer_name: t.trainer_name || null,
+      transport: t.transport, lunch: t.lunch, training_value: t.training_value, updated_by: session?.user?.email || "desconhecido",
+    }).eq("id", a.id);
+    await loadTrainingAgenda();
+    if (error) {
+      showToast(`O treinamento já foi para a aba Treinamentos, mas não consegui marcar a agenda como realizada (${error.message}). Confirme de novo.`, 6000);
+      return;
+    }
+    setAgendaDone(null);
+    showToast(`Realizado ✓ ${a.store_name} foi para Treinamentos — ${fmtMoney(trainingTotal(t))} a pagar.`, 4000);
+    logActivity(`Agenda de treinamentos: realizado ${a.store_name} (${fmtDate(t.training_date)}) — ${fmtMoney(trainingTotal(t))} enviado para Treinamentos`);
+  }
+  // desfazer o "Realizado": só se o treinamento ainda não foi pago; ele sai da aba Treinamentos e o agendamento volta para "Agendado"
+  async function handleUndoAgendaDone(a) {
+    const t = a.training_id ? trainings.find((x) => x.id === a.training_id) : null;
+    if (t && t.paid) {
+      alert(`O treinamento de ${a.store_name} já foi marcado como pago na aba Treinamentos.\n\nPara desfazer, primeiro volte o pagamento dele lá (botão "✓ Pago", em "Ver treinamentos já pagos") — assim nenhum pagamento se perde.`);
+      return;
+    }
+    const msg = t
+      ? `Voltar ${a.store_name} para "Agendado"?\n\nO treinamento que foi enviado para a aba Treinamentos (${fmtMoney(trainingTotal(t))}, ainda não pago) será removido de lá.`
+      : `Voltar ${a.store_name} para "Agendado"?`;
+    if (!confirm(msg)) return;
+    if (t) {
+      const { error: delError } = await supa.from("trainings").delete().eq("id", t.id);
+      if (delError) { showToast(`Erro: ${delError.message}`); return; }
+      setSelectedTrainings((prev) => { const next = new Set(prev); next.delete(t.id); return next; });
+      await loadTrainings();
+    }
+    const { error } = await supa.from("training_agenda").update({ status: "agendado", training_id: null, updated_by: session?.user?.email || "desconhecido" }).eq("id", a.id);
+    if (agendaDbError(error)) return;
+    await loadTrainingAgenda();
+    showToast(`${a.store_name} voltou para "Agendado".`);
+    logActivity(`Agenda de treinamentos: realizado desfeito — ${a.store_name} (${fmtDate(a.schedule_date)})`);
+  }
+  async function handleDeleteTrainingAgenda(a) {
+    const msg = a.status === "realizado"
+      ? `Remover ${a.store_name} (${fmtDate(a.schedule_date)}) da agenda?\n\nO treinamento que já foi enviado para a aba Treinamentos continua lá (não é apagado).`
+      : `Remover ${a.store_name} (${fmtDate(a.schedule_date)}) da agenda de treinamentos?`;
+    if (!confirm(msg)) return;
+    const { error } = await supa.from("training_agenda").delete().eq("id", a.id);
+    if (agendaDbError(error)) return;
+    await loadTrainingAgenda();
+    setAgendaOpenId(null);
+    showToast("Agendamento removido.");
+    logActivity(`Agenda de treinamentos: removido ${a.store_name} (${fmtDate(a.schedule_date)})`);
   }
   const loadClientCommissions = useCallback(async () => {
     const { data } = await supa.from("client_commissions").select("*");
@@ -8819,7 +9153,7 @@ function App() {
     doc.save(`almoco-quinta-${monthLabelStr.replace("/", "-")}.pdf`);
   }
 
-  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadTrainings(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadCloudContratos(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); loadConsultations(); } }, [session]);
+  useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadTrainings(); loadTrainingAgenda(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadCloudContratos(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); loadConsultations(); } }, [session]);
   useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
   // Preenche automaticamente o valor de "Consultas" de cada boleto do mês com a soma das
   // consultas já associadas àquele cliente (respeitando a defasagem de 2 meses), mas só
@@ -10344,6 +10678,7 @@ function App() {
                 { id: "implantacao_tecnica", label: "Implantação Técnica", icon: "🛠️" },
                 { id: "escala", label: "Escala de Sábado", icon: "🗓️" },
                 { id: "migracoes", label: "Migração de Banco", icon: "🗄️" },
+                { id: "agenda_treinamentos", label: "Agenda de Treinamentos", icon: "📆" },
                 { id: "treinamentos", label: "Treinamentos", icon: "🎓" },
               ]},
               { group: "Sistema", items: [
@@ -10509,6 +10844,7 @@ function App() {
                 {effectiveTab === "cloud_contratos" && "Contratos Cloud"}
                 {effectiveTab === "migracoes" && "Migração de Banco de Dados"}
                 {effectiveTab === "treinamentos" && "Controle de Treinamentos"}
+                {effectiveTab === "agenda_treinamentos" && "Agenda de Treinamentos"}
                 {effectiveTab === "comissao_representantes" && "Comissão de Representantes"}
                 {effectiveTab === "caixa" && "Caixa"}
                 {effectiveTab === "agenda" && "Agenda de Apresentações"}
@@ -11973,6 +12309,337 @@ function App() {
             </div>
           )}
 
+          {effectiveTab === "agenda_treinamentos" && (
+            <div>
+              {(() => {
+                const today = todayStr();
+                const in7 = addDaysStr(today, 7);
+                const monthNow = today.slice(0, 7);
+                const agendados = trainingAgenda.filter((a) => a.status === "agendado");
+                const hoje = agendados.filter((a) => a.schedule_date === today).sort(byAgendaTime);
+                const prox7 = agendados.filter((a) => a.schedule_date >= today && a.schedule_date <= in7);
+                const atrasados = agendados.filter((a) => a.schedule_date < today).sort(byAgendaDate);
+                const doMes = (key) => agendados.filter((a) => String(a.schedule_date || "").slice(0, 7) === key);
+                const previsto = (key) => round2(doMes(key).reduce((s, a) => s + trainingTotal(a), 0));
+                const cores = agendaColorMap(trainingAgenda);
+                const corDe = (a) => agendaColorOf(cores, a.trainer_name);
+                // o novo agendamento começa com o técnico e os valores do último treinamento lançado (se ainda não há nenhum, do último agendado)
+                const lastTraining = [...trainings].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")) || String(b.training_date || "").localeCompare(String(a.training_date || "")))[0] || null;
+                const lastAgenda = [...trainingAgenda].filter((a) => a.status !== "cancelado").sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")))[0] || null;
+                const previous = lastTraining || lastAgenda;
+                const previousKind = lastTraining ? "lançado" : "agendado";
+                const stores = [...new Set(clients.filter((c) => !c.cancelled).map((c) => (c.name || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+                const trainers = [...new Set([...employees.filter((e) => e.active !== false).map((e) => (e.name || "").trim()), String(settings?.migracao_pix_favorecido || "").trim(), ...trainings.map((t) => (t.trainer_name || "").trim()), ...trainingAgenda.map((a) => (a.trainer_name || "").trim())].filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+                const abrirForm = (item, mode, date) => { setAgendaDone(null); setAgendaOpenId(null); setAgendaForm({ item, mode, date: date || "" }); };
+                const abrirDone = (a) => { setAgendaForm(null); setAgendaOpenId(null); setAgendaDone(a); };
+                const formAberto = !!agendaForm || !!agendaDone;
+                const kpiCard = "rounded-2xl p-4 border";
+                const kpiBg = { background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder };
+                const chip = (txt, color) => <span className="text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ color, background: rgba(color, 0.14) }}>{txt}</span>;
+                const pill = (ativo) => ({ borderColor: ativo ? COLORS.brandLight : COLORS.cardBorder, color: ativo ? COLORS.brandLight : COLORS.inkMuted, background: ativo ? "rgba(124,92,255,0.1)" : "transparent" });
+                const navBox = "flex items-center gap-1 px-3 py-2 rounded-xl border text-sm font-semibold";
+                const navBoxSt = { borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.ink };
+
+                // ---- cartão completo de um agendamento (com todos os botões)
+                const renderCard = (a, opts = {}) => {
+                  const cor = corDe(a);
+                  const ehHoje = a.status === "agendado" && a.schedule_date === today;
+                  const atrasado = a.status === "agendado" && a.schedule_date < today;
+                  const stColor = a.status === "realizado" ? COLORS.success : a.status === "cancelado" ? COLORS.danger : COLORS.brandLight;
+                  const stLabel = a.status === "realizado" ? "Realizado" : a.status === "cancelado" ? "Cancelado" : "Agendado";
+                  const ligado = a.training_id ? trainings.find((t) => t.id === a.training_id) : null;
+                  const hora = hourLabel(a.start_time);
+                  const dataTxt = `${WEEKDAYS_SHORT[dateFromStr(a.schedule_date).getDay()]}, ${fmtDate(a.schedule_date)}`;
+                  const total = trainingTotal(ligado || a);
+                  const btn = "px-2.5 py-1.5 rounded-lg text-xs font-semibold border";
+                  return (
+                    <div key={a.id} data-agenda-card={a.id} className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, borderLeft: `4px solid ${cor}`, background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})` }}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-sm font-bold" style={{ color: COLORS.ink }}>{a.store_name}</span>
+                            {chip(stLabel, stColor)}
+                            {chip(a.modality === "remoto" ? "💻 Remoto" : "🏢 Presencial", COLORS.inkMuted)}
+                            {ehHoje && chip("Hoje", COLORS.danger)}
+                            {atrasado && chip("⏰ Atrasado", COLORS.warn)}
+                          </div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{opts.showDate ? `📅 ${dataTxt}${hora ? ` às ${hora}` : " · horário a definir"}` : `🕐 ${hora || "horário a definir"}`}</div>
+                          <div className="text-xs font-semibold" style={{ color: a.trainer_name ? cor : COLORS.inkFaint }}>🎓 {a.trainer_name || "técnico a definir"}</div>
+                          {(a.contact_name || a.phone) && <div className="text-xs" style={{ color: COLORS.inkMuted }}>👤 {[a.contact_name, a.phone].filter(Boolean).join(" · ")}</div>}
+                          {a.modality !== "remoto" && a.address && <div className="text-xs" style={{ color: COLORS.inkMuted }}>📍 {a.address}</div>}
+                          {a.modality === "remoto" && a.meeting_link && <div className="text-xs truncate" style={{ color: COLORS.inkMuted }}>🔗 {a.meeting_link}</div>}
+                          {a.status === "realizado" ? (
+                            <div className="text-xs" style={{ color: COLORS.inkMuted }}>💰 {fmtMoney(total)} — {ligado ? (ligado.paid ? "já pago em Treinamentos" : "a pagar em Treinamentos") : <span style={{ color: COLORS.warn }}>este treinamento não está mais na aba Treinamentos</span>}</div>
+                          ) : a.status === "agendado" ? (
+                            total > 0
+                              ? <div className="text-xs" style={{ color: COLORS.inkMuted }}>💰 Previsto: {fmtMoney(total)} <span style={{ color: COLORS.inkFaint }}>(condução {fmtMoney(a.transport)} + almoço {fmtMoney(a.lunch)} + treinamento {fmtMoney(a.training_value)})</span></div>
+                              : <div className="text-xs" style={{ color: COLORS.inkFaint }}>💰 Sem valores previstos</div>
+                          ) : null}
+                          {a.notes && <div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: COLORS.inkFaint }}>{a.notes}</div>}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:shrink-0">
+                          {a.status === "agendado" && <button onClick={() => abrirDone(a)} disabled={trainingsMissing} title={trainingsMissing ? "Primeiro rode o arquivo criar-tabela-treinamentos.sql no Supabase" : "O treinamento foi feito: confira os valores e envie para a aba Treinamentos"} className={btn + " disabled:opacity-40"} style={{ borderColor: COLORS.success, color: COLORS.success }}>✓ Realizado</button>}
+                          {a.status === "agendado" && <button onClick={() => abrirForm(a, "reagendar")} title="Escolher nova data e horário" className={btn} style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📅 Reagendar</button>}
+                          {a.status === "agendado" && <button onClick={() => handleCancelAgenda(a)} className={btn} style={{ borderColor: COLORS.danger, color: COLORS.danger }}>✕ Cancelar</button>}
+                          {a.status === "cancelado" && <button onClick={() => abrirForm(a, "reagendar")} title="Escolher nova data e horário" className={btn} style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>↺ Reagendar</button>}
+                          {a.status === "realizado" && <button onClick={() => setTab("treinamentos")} title="Abrir a aba Treinamentos" className={btn} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>🎓 Ver em Treinamentos</button>}
+                          {a.status === "realizado" && <button onClick={() => handleUndoAgendaDone(a)} title="Voltar para Agendado (só se ainda não foi pago)" className={btn} style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>↩ Desfazer</button>}
+                          {a.status !== "realizado" && <button onClick={() => abrirForm(a, "editar")} title="Editar" className={btn} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>}
+                          <button onClick={() => handleDeleteTrainingAgenda(a)} title="Excluir" className={btn} style={{ borderColor: COLORS.danger, color: COLORS.danger }}>🗑️</button>
+                          {opts.onClose && <button onClick={opts.onClose} title="Recolher" className={btn} style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>▴</button>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                };
+                // ---- linha curta (semana e mês): "14h · Loja X · Pedro"; tocando abre o cartão completo
+                const renderRow = (a) => {
+                  if (agendaOpenId === a.id) return renderCard(a, { showDate: false, onClose: () => setAgendaOpenId(null) });
+                  const cor = corDe(a);
+                  const atrasado = a.status === "agendado" && a.schedule_date < today;
+                  const tec = a.trainer_name || "sem técnico";
+                  const tecCor = a.trainer_name ? cor : COLORS.inkFaint;
+                  // no celular o técnico vai para a segunda linha (a loja não fica cortada); no computador tudo cabe numa linha só
+                  return (
+                    <button key={a.id} type="button" data-agenda-row={a.id} onClick={() => setAgendaOpenId(a.id)} title="Tocar para ver os detalhes e as ações" className="w-full text-left rounded-xl border px-3 py-2" style={{ borderColor: COLORS.cardBorder, borderLeft: `4px solid ${cor}`, background: COLORS.card }}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-extrabold tnum shrink-0" style={{ color: COLORS.ink, minWidth: 34 }}>{hourLabel(a.start_time) || "—"}</span>
+                        <span className="text-sm font-semibold truncate flex-1 min-w-0" style={{ color: COLORS.ink }}>{a.store_name}</span>
+                        <span className="hidden sm:inline text-xs font-semibold truncate shrink-0" style={{ color: tecCor, maxWidth: 150 }}>{tec}</span>
+                        <span className="shrink-0 text-sm" title={a.modality === "remoto" ? "Remoto" : "Presencial"}>{a.modality === "remoto" ? "💻" : "🏢"}</span>
+                        {a.status === "realizado" && <span className="hidden sm:inline">{chip("✓ Realizado", COLORS.success)}</span>}
+                        {a.status === "realizado" && <span className="sm:hidden shrink-0 text-sm font-bold" style={{ color: COLORS.success }} title="Realizado">✓</span>}
+                        {atrasado && <span className="shrink-0 text-sm" title="Data passada e ainda como Agendado">⏰</span>}
+                      </div>
+                      <div className="sm:hidden text-xs font-semibold truncate mt-0.5" style={{ color: tecCor, paddingLeft: 42 }}>{tec}</div>
+                    </button>
+                  );
+                };
+
+                // ---- vista: lista (filtros)
+                const FILTROS = [["proximos", "Próximos"], ["atrasados", `Atrasados${atrasados.length ? ` (${atrasados.length})` : ""}`], ["realizado", "Realizados"], ["cancelado", "Cancelados"], ["todos", "Todos"]];
+                const listaFiltrada = (() => {
+                  if (agendaFilter === "proximos") return agendados.filter((a) => a.schedule_date >= today).sort(byAgendaDate);
+                  if (agendaFilter === "atrasados") return atrasados;
+                  if (agendaFilter === "todos") return [...trainingAgenda].sort((a, b) => byAgendaDate(b, a));
+                  return trainingAgenda.filter((a) => a.status === agendaFilter).sort((a, b) => byAgendaDate(b, a));
+                })();
+                const vistaLista = (
+                  <>
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {FILTROS.map(([f, label]) => (
+                        <button key={f} onClick={() => setAgendaFilter(f)} className="text-xs font-semibold px-2.5 py-1.5 rounded-full border" style={pill(agendaFilter === f)}>{label}</button>
+                      ))}
+                    </div>
+                    {listaFiltrada.length === 0 ? (
+                      <div className="rounded-2xl border p-8 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card, color: COLORS.inkMuted }}>
+                        {trainingAgendaMissing ? "A agenda aparece aqui assim que a tabela for criada." : agendaFilter === "proximos" ? "Nenhum treinamento agendado pela frente." : agendaFilter === "atrasados" ? "Nenhum treinamento atrasado." : "Nenhum treinamento nesse filtro."}
+                      </div>
+                    ) : (
+                      <div className="space-y-3">{listaFiltrada.map((a) => renderCard(a, { showDate: true }))}</div>
+                    )}
+                  </>
+                );
+
+                // ---- vista: semana (lista por dia)
+                const diasSemana = Array.from({ length: 7 }, (_, i) => addDaysStr(agendaWeek, i));
+                const doDia = (d) => trainingAgenda.filter((a) => a.schedule_date === d && a.status !== "cancelado").sort(byAgendaTime);
+                const agendadosSemana = diasSemana.flatMap(doDia).filter((a) => a.status === "agendado");
+                const vistaSemana = (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                      <div className={navBox} style={navBoxSt}>
+                        <button onClick={() => { setAgendaWeek(addDaysStr(agendaWeek, -7)); setAgendaOpenId(null); }} title="Semana anterior" style={{ color: COLORS.inkMuted }}>‹</button>
+                        <span className="tnum whitespace-nowrap">{shortDM(diasSemana[0])} a {fmtDate(diasSemana[6])}</span>
+                        <button onClick={() => { setAgendaWeek(addDaysStr(agendaWeek, 7)); setAgendaOpenId(null); }} title="Próxima semana" style={{ color: COLORS.inkMuted }}>›</button>
+                      </div>
+                      <button onClick={() => { setAgendaWeek(weekStartStr(today)); setAgendaOpenId(null); }} className="text-xs font-semibold px-2.5 py-1.5 rounded-full border" style={pill(agendaWeek === weekStartStr(today))}>Esta semana</button>
+                      <span className="text-xs" style={{ color: COLORS.inkMuted }}>{agendadosSemana.length} agendado(s) · previsão {fmtMoney(round2(agendadosSemana.reduce((s, a) => s + trainingTotal(a), 0)))}</span>
+                    </div>
+                    <div className="space-y-3">
+                      {diasSemana.map((d) => {
+                        const itens = doDia(d);
+                        const ehHoje = d === today;
+                        return (
+                          <div key={d} data-dia-semana={d} className="rounded-2xl border p-3" style={{ borderColor: ehHoje ? COLORS.brandLight : COLORS.cardBorder, background: ehHoje ? rgba(COLORS.brand, 0.07) : "transparent" }}>
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2 text-sm font-bold" style={{ color: COLORS.ink }}>{dayLabel(d)}{ehHoje && chip("Hoje", COLORS.danger)}</div>
+                              <button onClick={() => abrirForm(null, "novo", d)} disabled={trainingAgendaMissing} title={`Agendar um treinamento em ${dayLabel(d)}`} className="text-xs font-semibold px-2 py-1 rounded-lg border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>＋ Agendar</button>
+                            </div>
+                            {itens.length === 0
+                              ? <div className="text-xs" style={{ color: COLORS.inkFaint }}>Sem treinamentos</div>
+                              : <div className="space-y-2">{itens.map(renderRow)}</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                );
+
+                // ---- vista: mês (grade)
+                const semanasMes = monthGridWeeks(agendaMonth);
+                const grade = semanasMes.flat();
+                const doGrade = trainingAgenda.filter((a) => a.status !== "cancelado" && a.schedule_date >= grade[0] && a.schedule_date <= grade[grade.length - 1]);
+                const porDia = {};
+                doGrade.sort(byAgendaTime).forEach((a) => { (porDia[a.schedule_date] = porDia[a.schedule_date] || []).push(a); });
+                const diaSel = agendaDay || (monthNow === agendaMonth ? today : "");
+                const doMesNaTela = trainingAgenda.filter((a) => a.status !== "cancelado" && String(a.schedule_date || "").slice(0, 7) === agendaMonth);
+                const legenda = [];
+                doMesNaTela.forEach((a) => {
+                  const k = agendaTrainerKey(a.trainer_name);
+                  let e = legenda.find((x) => x.k === k);
+                  if (!e) { e = { k, nome: String(a.trainer_name || "").trim() || "Sem técnico", cor: corDe(a), n: 0 }; legenda.push(e); }
+                  e.n += 1;
+                });
+                legenda.sort((x, y) => (x.k ? 0 : 1) - (y.k ? 0 : 1) || x.nome.localeCompare(y.nome, "pt-BR"));
+                const [anoMes, numMes] = agendaMonth.split("-").map(Number);
+                const celula = (d) => {
+                  const itens = porDia[d] || [];
+                  const dentro = d.slice(0, 7) === agendaMonth;
+                  const ehHoje = d === today;
+                  const sel = d === diaSel;
+                  return (
+                    <button key={d} type="button" data-dia={d} data-hoje={ehHoje ? "1" : undefined} data-sel={sel ? "1" : undefined} onClick={() => { setAgendaDay(d); setAgendaOpenId(null); }} title={`${dayLabel(d)}${itens.length ? ` — ${itens.length} treinamento(s)` : ""}`}
+                      className="rounded-lg border p-1 text-left flex flex-col items-stretch overflow-hidden min-h-[58px] sm:min-h-[92px]"
+                      style={{ borderColor: sel ? COLORS.brandLight : (ehHoje ? rgba(COLORS.brand, 0.6) : COLORS.cardBorder), background: sel ? rgba(COLORS.brand, 0.16) : (ehHoje ? rgba(COLORS.brand, 0.08) : (dentro ? COLORS.card : "transparent")), opacity: dentro ? 1 : 0.5 }}>
+                      <span className="text-[11px] font-bold leading-none" style={{ color: ehHoje ? COLORS.brandLight : COLORS.ink }}>{Number(d.slice(8, 10))}</span>
+                      <span className="hidden sm:flex flex-col gap-0.5 mt-1">
+                        {itens.slice(0, 2).map((a) => <span key={a.id} className="truncate rounded px-1 text-[10px] font-semibold leading-4" style={{ background: rgba(corDe(a), 0.22), color: corDe(a) }}>{hourLabel(a.start_time) ? hourLabel(a.start_time) + " " : ""}{a.store_name}</span>)}
+                        {itens.length > 2 && <span className="text-[10px] font-semibold" style={{ color: COLORS.inkMuted }}>+{itens.length - 2}</span>}
+                      </span>
+                      <span className="flex sm:hidden flex-wrap gap-0.5 mt-1">
+                        {itens.slice(0, 6).map((a) => <span key={a.id} className="rounded-full" style={{ width: 8, height: 8, background: corDe(a) }} />)}
+                      </span>
+                    </button>
+                  );
+                };
+                const itensDiaSel = diaSel ? (porDia[diaSel] || []) : [];
+                const vistaMes = (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <div className={navBox} style={navBoxSt}>
+                        <button onClick={() => { setAgendaMonth(addMonthsKey(agendaMonth, -1)); setAgendaDay(""); setAgendaOpenId(null); }} title="Mês anterior" style={{ color: COLORS.inkMuted }}>‹</button>
+                        <span className="whitespace-nowrap">{MONTHS_PT[numMes - 1]} de {anoMes}</span>
+                        <button onClick={() => { setAgendaMonth(addMonthsKey(agendaMonth, 1)); setAgendaDay(""); setAgendaOpenId(null); }} title="Próximo mês" style={{ color: COLORS.inkMuted }}>›</button>
+                      </div>
+                      <button onClick={() => { setAgendaMonth(monthNow); setAgendaDay(today); setAgendaOpenId(null); }} className="text-xs font-semibold px-2.5 py-1.5 rounded-full border" style={pill(agendaMonth === monthNow)}>Este mês</button>
+                    </div>
+                    <div className="text-xs mb-3" style={{ color: COLORS.inkMuted }}>Previsão de {monthLabelPT(agendaMonth)}: <b style={{ color: COLORS.ink }}>{fmtMoney(previsto(agendaMonth))}</b> · {doMes(agendaMonth).length} agendado(s)</div>
+                    <div className="grid grid-cols-7 gap-1">
+                      {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((n) => <div key={n} className="text-[11px] font-bold text-center py-1" style={{ color: COLORS.inkMuted }}>{n}</div>)}
+                      {grade.map(celula)}
+                    </div>
+                    {legenda.length > 0 && (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+                        {legenda.map((e) => (
+                          <span key={e.k || "sem"} className="inline-flex items-center gap-1.5 text-xs" style={{ color: COLORS.inkMuted }}>
+                            <span className="rounded-full" style={{ width: 10, height: 10, background: e.cor }} />{e.nome} <b style={{ color: COLORS.ink }}>{e.n}</b>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="mt-4">
+                      {diaSel ? (
+                        <>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="text-sm font-bold" style={{ color: COLORS.ink }}>{dayLabel(diaSel)}/{diaSel.slice(0, 4)}</div>
+                            <button onClick={() => abrirForm(null, "novo", diaSel)} disabled={trainingAgendaMissing} className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border disabled:opacity-40" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>＋ Agendar neste dia</button>
+                          </div>
+                          {itensDiaSel.length === 0
+                            ? <div className="text-xs" style={{ color: COLORS.inkFaint }}>Sem treinamentos neste dia.</div>
+                            : <div className="space-y-2">{itensDiaSel.map(renderRow)}</div>}
+                        </>
+                      ) : (
+                        <div className="text-xs" style={{ color: COLORS.inkFaint }}>Toque num dia para ver os treinamentos dele ou para agendar.</div>
+                      )}
+                    </div>
+                  </>
+                );
+
+                return (
+                  <>
+                    {trainingAgendaMissing && (
+                      <div className="rounded-xl border p-4 mb-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: COLORS.warn, background: rgba(COLORS.warn, 0.1) }}>
+                        <div className="text-sm" style={{ color: COLORS.ink }}>
+                          <div className="font-bold mb-1">⚠️ Falta criar a tabela da agenda de treinamentos no Supabase</div>
+                          <div style={{ color: COLORS.inkMuted }}>Rode <b>uma única vez</b> o arquivo <b>criar-tabela-agenda-treinamentos.sql</b> no SQL Editor do Supabase e depois toque em "Verificar de novo". Enquanto isso, nada é salvo e nada do que já existe no sistema é alterado.</div>
+                        </div>
+                        <button onClick={loadTrainingAgenda} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.warn, color: COLORS.warn }}>Verificar de novo</button>
+                      </div>
+                    )}
+                    <p className="text-xs mb-3" style={{ color: COLORS.inkMuted }}>Marque aqui os treinamentos que vão acontecer. Quando o técnico fizer, toque em "✓ Realizado": ele vai para a aba Treinamentos já preenchido (condução, almoço e valor) e entra no PDF de pagamento com o QR Code do PIX. O que está só agendado não conta como "a pagar" — aparece na previsão do mês.</p>
+
+                    {hoje.length > 0 && (
+                      <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.danger, background: "rgba(239,68,68,0.12)" }}>
+                        <span className="text-2xl">📆</span>
+                        <div className="flex-1">
+                          <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{hoje.length} treinamento(s) hoje</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{hoje.map((a) => `${a.store_name} às ${hourLabel(a.start_time) || "horário a definir"}${a.trainer_name ? ` (${a.trainer_name})` : ""}`).join(", ")}</div>
+                        </div>
+                      </div>
+                    )}
+                    {atrasados.length > 0 && (
+                      <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.warn, background: rgba(COLORS.warn, 0.1) }}>
+                        <span className="text-2xl">⏰</span>
+                        <div className="flex-1">
+                          <div className="text-sm font-bold" style={{ color: COLORS.warn }}>{atrasados.length} treinamento(s) com data passada ainda como "Agendado"</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>Marque como Realizado (para pagar o técnico), Reagendar ou Cancelar.</div>
+                        </div>
+                        <button onClick={() => { setAgendaView("lista"); setAgendaFilter("atrasados"); }} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.warn, color: COLORS.warn }}>Ver atrasados</button>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div className={kpiCard} style={kpiBg}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>Hoje</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{hoje.length}</div>
+                      </div>
+                      <div className={kpiCard} style={kpiBg}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Próximos 7 dias</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{prox7.length}</div>
+                      </div>
+                      <div className={kpiCard} style={kpiBg}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Agendados</div>
+                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{agendados.length}</div>
+                      </div>
+                      <div className={kpiCard} style={kpiBg}>
+                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Previsão do mês</div>
+                        <div className="text-lg font-extrabold tnum whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtMoney(previsto(monthNow))}</div>
+                        <div className="text-[11px] mt-0.5" style={{ color: COLORS.inkFaint }}>{doMes(monthNow).length} agendado(s) em {monthLabelPT(monthNow)}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {[["lista", "📋 Lista"], ["semana", "📆 Semana"], ["mes", "🗓️ Mês"]].map(([v, label]) => (
+                          <button key={v} onClick={() => { setAgendaView(v); setAgendaOpenId(null); }} className="text-xs font-semibold px-3 py-1.5 rounded-full border" style={pill(agendaView === v)}>{label}</button>
+                        ))}
+                      </div>
+                      <button onClick={() => abrirForm(null, "novo", "")} disabled={trainingAgendaMissing} title={trainingAgendaMissing ? "Primeiro rode o arquivo criar-tabela-agenda-treinamentos.sql no Supabase" : undefined} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Agendar treinamento</button>
+                    </div>
+
+                    {agendaForm && <FormHost item={agendaForm}><TrainingAgendaForm initial={agendaForm.item} mode={agendaForm.mode} presetDate={agendaForm.date} previous={previous} previousKind={previousKind} clients={clients} stores={stores} trainers={trainers} onSave={handleSaveTrainingAgenda} onCancel={() => setAgendaForm(null)} /></FormHost>}
+                    {agendaDone && (
+                      <FormHost item={agendaDone}>
+                        <TrainingForm
+                          prefill={{
+                            id: "ag-" + agendaDone.id, store_name: agendaDone.store_name, training_date: agendaDone.schedule_date, trainer_name: agendaDone.trainer_name || "",
+                            transport: Number(agendaDone.transport) || "", lunch: Number(agendaDone.lunch) || "", training_value: Number(agendaDone.training_value) || "", notes: agendaDone.notes || "",
+                            note: `Veio da Agenda de Treinamentos (${dayLabel(agendaDone.schedule_date)}${agendaDone.start_time ? " às " + hourLabel(agendaDone.start_time) : ""}). Confira o técnico, a chave PIX e os valores — ao salvar, o treinamento aparece em Treinamentos, pronto para pagar.`,
+                          }}
+                          title="Treinamento realizado — confirme para enviar a Treinamentos" saveLabel="Salvar e enviar para Treinamentos"
+                          stores={stores} trainers={trainers} pixFor={trainingPixFor} pixColumnMissing={trainingsPixMissing}
+                          onSave={(t) => handleConfirmAgendaDone(agendaDone, t)} onCancel={() => setAgendaDone(null)} />
+                      </FormHost>
+                    )}
+
+                    {!formAberto && (agendaView === "semana" ? vistaSemana : agendaView === "mes" ? vistaMes : vistaLista)}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
           {effectiveTab === "treinamentos" && (
             <div>
               {(() => {
@@ -11990,19 +12657,8 @@ function App() {
                 const previous = [...trainings].sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")) || String(b.training_date || "").localeCompare(String(a.training_date || "")))[0] || null;
                 const stores = [...new Set(clients.map((c) => (c.name || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
                 const trainers = [...new Set([...employees.filter((e) => e.active !== false).map((e) => (e.name || "").trim()), String(settings.migracao_pix_favorecido || "").trim(), ...trainings.map((t) => (t.trainer_name || "").trim())].filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
-                // chave PIX que o sistema sugere para um técnico: a do último treinamento dele; se não tiver, a do cadastro de funcionários; por fim, a do técnico de migração (Configurações) se o nome for o dele (só leitura: nada disso é alterado)
-                const normNome = (x) => String(x || "").trim().toLowerCase();
-                const pixFor = (nome) => {
-                  const n = normNome(nome);
-                  if (!n) return { key: "", from: "" };
-                  const ultimo = trainings.filter((x) => normNome(x.trainer_name) === n && String(x.trainer_pix_key || "").trim())
-                    .sort((a, b) => String(b.training_date || "").localeCompare(String(a.training_date || "")) || String(b.created_at || "").localeCompare(String(a.created_at || "")))[0];
-                  if (ultimo) return { key: String(ultimo.trainer_pix_key).trim(), from: "último treinamento dele" };
-                  const emp = employees.find((e) => normNome(e.name) === n && String(e.pix_key || "").trim());
-                  if (emp) return { key: String(emp.pix_key).trim(), from: "cadastro do funcionário" };
-                  if (normNome(settings.migracao_pix_favorecido) === n && String(settings.migracao_pix_key || "").trim()) return { key: String(settings.migracao_pix_key).trim(), from: "PIX do técnico nas Configurações" };
-                  return { key: "", from: "" };
-                };
+                // chave PIX que o sistema sugere para um técnico (a mesma função da Agenda de Treinamentos)
+                const pixFor = trainingPixFor;
                 const kpiCard = "rounded-2xl p-4 border";
                 const kpiBg = { background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder };
 

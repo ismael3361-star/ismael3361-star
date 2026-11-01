@@ -3526,6 +3526,48 @@ function monthGridWeeks(key) {
   return weeks;
 }
 
+// ---------------------------------------------------------------------------
+// Aviso do treinamento para o técnico (WhatsApp): o texto sai pronto com os dados do agendamento e abre no WhatsApp,
+// onde a pessoa revisa, ajusta se quiser e envia. Nada é gravado por causa do aviso.
+// ---------------------------------------------------------------------------
+const WEEKDAYS_LONG = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+// nome sem acento, sem diferença de maiúsculas e sem espaços sobrando: é assim que o técnico da agenda é achado no cadastro de Funcionários
+function agendaNameKey(n) { return String(n || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase(); }
+// primeiro nome para a saudação ("pedro silva" → "Pedro"; "José Carlos" → "José")
+function agendaFirstName(n) {
+  const w = String(n || "").trim().split(/\s+/)[0] || "";
+  return w && (w === w.toUpperCase() || w === w.toLowerCase()) ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w;
+}
+function agendaNoticeText(a) {
+  const hoje = todayStr();
+  const quando = a.schedule_date === hoje ? " (hoje)" : a.schedule_date === addDaysStr(hoje, 1) ? " (amanhã)" : "";
+  const hora = hourLabel(a.start_time);
+  const remoto = a.modality === "remoto";
+  const total = trainingTotal(a);
+  const partes = [["Condução", a.transport], ["Almoço", a.lunch], ["Treinamento", a.training_value]].filter(([, v]) => (Number(v) || 0) > 0);
+  const contato = [a.contact_name, a.phone].map((x) => String(x || "").trim()).filter(Boolean).join(" — ");
+  const endereco = String(a.address || "").trim();
+  const link = String(a.meeting_link || "").trim();
+  const obs = String(a.notes || "").trim();
+  const nome = agendaFirstName(a.trainer_name);
+  const blocos = [
+    ["🎓 *Treinamento agendado*"],
+    [`${nome ? `Olá, ${nome}!` : "Olá!"} Segue o treinamento que ficou marcado para você:`],
+    [
+      `🏪 Loja: *${String(a.store_name || "").trim()}*`,
+      `📅 ${WEEKDAYS_LONG[dateFromStr(a.schedule_date).getDay()]}, ${fmtDate(a.schedule_date)}${quando}${hora ? ` às ${hora}` : " — horário a combinar"}`,
+      remoto ? "💻 Treinamento remoto" : null,
+      remoto ? (link ? `🔗 Link da reunião: ${link}` : "🔗 O link da reunião será enviado depois") : null,
+      !remoto && endereco ? `📍 Endereço: ${endereco}` : null,
+      contato ? `👤 Contato na loja: ${contato}` : null,
+    ],
+    total > 0 ? [`💰 Você recebe: *${fmtMoney(total)}*`, ...(partes.length > 1 ? partes.map(([rotulo, v]) => `• ${rotulo}: ${fmtMoney(v)}`) : [])] : [],
+    obs ? [`📝 Obs.: ${obs}`] : [],
+    ["Qualquer imprevisto, me avise por aqui. Obrigado!"],
+  ];
+  return blocos.map((b) => b.filter(Boolean).join("\n")).filter(Boolean).join("\n\n");
+}
+
 // "prefill" = o treinamento veio da Agenda de Treinamentos ("Realizado"): loja, data, técnico, valores e obs. já preenchidos (title/saveLabel trocam os textos)
 function TrainingForm({ initial, previous, prefill, title, saveLabel, stores, trainers, pixFor, pixColumnMissing, onSave, onCancel }) {
   const fromPrefill = !initial && !!prefill;
@@ -7326,6 +7368,35 @@ function App() {
     setAgendaOpenId(null);
     showToast("Agendamento removido.");
     logActivity(`Agenda de treinamentos: removido ${a.store_name} (${fmtDate(a.schedule_date)})`);
+  }
+  // ---- Aviso do treinamento para o técnico (WhatsApp) ----
+  // WhatsApp do técnico: o do cadastro de Funcionários (mesmo nome, sem diferença de maiúsculas/acentos); se lá não tiver, o da ficha de Implantação Técnica mais recente dele.
+  // Só leitura: nada disso é alterado. Número sem DDD não serve para o WhatsApp — vira "incompleto" e o aviso abre sem número.
+  function agendaTrainerPhone(nome) {
+    const k = agendaNameKey(nome);
+    if (!k) return { phone: "", incompleto: "" };
+    const emps = employees.filter((e) => agendaNameKey(e.name) === k);
+    const fichas = techImplementations.filter((t) => agendaNameKey(t.technician_name) === k)
+      .sort((x, y) => String(y.updated_at || y.created_at || "").localeCompare(String(x.updated_at || x.created_at || "")));
+    const candidatos = [...emps.filter((e) => e.active !== false).map((e) => e.phone), ...emps.filter((e) => e.active === false).map((e) => e.phone), ...fichas.map((t) => t.technician_phone)]
+      .map((p) => String(p || "").trim()).filter((p) => onlyDigits(p));
+    return { phone: candidatos.find((p) => onlyDigits(p).length >= 10) || "", incompleto: candidatos[0] || "" };
+  }
+  // precisa abrir o WhatsApp direto no toque (sem esperar o banco), senão o celular bloqueia a janela
+  function handleNotifyAgendaTrainer(a) {
+    const nome = String(a.trainer_name || "").trim();
+    if (!nome) { showToast("Escolha o técnico deste treinamento (botão ✏️) antes de avisar."); return; }
+    const texto = agendaNoticeText(a);
+    const { phone, incompleto } = agendaTrainerPhone(nome);
+    if (phone) {
+      window.open(`https://web.whatsapp.com/send?phone=${waNumber(phone)}&text=${encodeURIComponent(texto)}`, "_blank");
+    } else {
+      window.open(`https://web.whatsapp.com/send?text=${encodeURIComponent(texto)}`, "_blank");
+      showToast(incompleto
+        ? `O WhatsApp de ${nome} (${incompleto}) está incompleto — corrija em Folha de Pagamento > Funcionários. Abrindo o WhatsApp sem número: escolha o contato lá.`
+        : `Não achei o WhatsApp de ${nome} em Folha de Pagamento > Funcionários (o nome precisa ser igual ao da agenda). Abrindo o WhatsApp sem número: escolha o contato lá.`, 6000);
+    }
+    logActivity(`Agenda de treinamentos: aviso para ${nome} aberto no WhatsApp — ${a.store_name} (${fmtDate(a.schedule_date)})`);
   }
   const loadClientCommissions = useCallback(async () => {
     const { data } = await supa.from("client_commissions").select("*");
@@ -12377,15 +12448,18 @@ function App() {
                           ) : null}
                           {a.notes && <div className="text-xs mt-1 whitespace-pre-wrap" style={{ color: COLORS.inkFaint }}>{a.notes}</div>}
                         </div>
-                        <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:shrink-0">
+                        <div className="flex flex-wrap gap-1.5 w-full sm:w-auto sm:shrink-0 max-w-full">
                           {a.status === "agendado" && <button onClick={() => abrirDone(a)} disabled={trainingsMissing} title={trainingsMissing ? "Primeiro rode o arquivo criar-tabela-treinamentos.sql no Supabase" : "O treinamento foi feito: confira os valores e envie para a aba Treinamentos"} className={btn + " disabled:opacity-40"} style={{ borderColor: COLORS.success, color: COLORS.success }}>✓ Realizado</button>}
+                          {a.status === "agendado" && !atrasado && <button onClick={() => handleNotifyAgendaTrainer(a)} title={a.trainer_name ? `Abrir o WhatsApp de ${a.trainer_name} com o aviso pronto para enviar` : "Escolha o técnico (botão ✏️) para poder avisar"} className={btn} style={{ borderColor: COLORS.wa, color: COLORS.wa }}>📲 Avisar técnico</button>}
                           {a.status === "agendado" && <button onClick={() => abrirForm(a, "reagendar")} title="Escolher nova data e horário" className={btn} style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📅 Reagendar</button>}
                           {a.status === "agendado" && <button onClick={() => handleCancelAgenda(a)} className={btn} style={{ borderColor: COLORS.danger, color: COLORS.danger }}>✕ Cancelar</button>}
                           {a.status === "cancelado" && <button onClick={() => abrirForm(a, "reagendar")} title="Escolher nova data e horário" className={btn} style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>↺ Reagendar</button>}
                           {a.status === "realizado" && <button onClick={() => setTab("treinamentos")} title="Abrir a aba Treinamentos" className={btn} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>🎓 Ver em Treinamentos</button>}
                           {a.status === "realizado" && <button onClick={() => handleUndoAgendaDone(a)} title="Voltar para Agendado (só se ainda não foi pago)" className={btn} style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>↩ Desfazer</button>}
-                          {a.status !== "realizado" && <button onClick={() => abrirForm(a, "editar")} title="Editar" className={btn} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>}
-                          <button onClick={() => handleDeleteTrainingAgenda(a)} title="Excluir" className={btn} style={{ borderColor: COLORS.danger, color: COLORS.danger }}>🗑️</button>
+                          <span className="inline-flex gap-1.5">
+                            {a.status !== "realizado" && <button onClick={() => abrirForm(a, "editar")} title="Editar" className={btn} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>}
+                            <button onClick={() => handleDeleteTrainingAgenda(a)} title="Excluir" className={btn} style={{ borderColor: COLORS.danger, color: COLORS.danger }}>🗑️</button>
+                          </span>
                           {opts.onClose && <button onClick={opts.onClose} title="Recolher" className={btn} style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>▴</button>}
                         </div>
                       </div>
@@ -12567,7 +12641,7 @@ function App() {
                         <button onClick={loadTrainingAgenda} className="px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.warn, color: COLORS.warn }}>Verificar de novo</button>
                       </div>
                     )}
-                    <p className="text-xs mb-3" style={{ color: COLORS.inkMuted }}>Marque aqui os treinamentos que vão acontecer. Quando o técnico fizer, toque em "✓ Realizado": ele vai para a aba Treinamentos já preenchido (condução, almoço e valor) e entra no PDF de pagamento com o QR Code do PIX. O que está só agendado não conta como "a pagar" — aparece na previsão do mês.</p>
+                    <p className="text-xs mb-3" style={{ color: COLORS.inkMuted }}>Marque aqui os treinamentos que vão acontecer. Para avisar o técnico, toque em "📲 Avisar técnico": o WhatsApp abre com a mensagem pronta para você revisar e enviar. Quando o técnico fizer, toque em "✓ Realizado": ele vai para a aba Treinamentos já preenchido (condução, almoço e valor) e entra no PDF de pagamento com o QR Code do PIX. O que está só agendado não conta como "a pagar" — aparece na previsão do mês.</p>
 
                     {hoje.length > 0 && (
                       <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.danger, background: "rgba(239,68,68,0.12)" }}>

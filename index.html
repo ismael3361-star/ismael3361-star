@@ -4162,84 +4162,497 @@ function EmployeeForm({ initial, onSave, onCancel }) {
   );
 }
 
-function PayrollForm({ initial, employees, onSave, onCancel }) {
+// ===== Folha de Pagamento: 13º salário (1ª e 2ª parcela) =====
+// Cada parcela do 13º é um lançamento da folha (tabela payroll_records) com kind "13_1" (1ª parcela) ou "13_2" (2ª parcela).
+// Colunas novas, criadas pelo arquivo adicionar-13o-folha.sql: kind, decimo_year e decimo_avos. Os lançamentos comuns (folha e vale) não usam essas colunas.
+const DECIMO_KINDS = ["13_1", "13_2"];
+// o Supabase reclama de coluna que não existe (SQL do 13º ainda não rodado) com estes códigos/mensagens
+function decimoColunasFaltando(error) {
+  return !!error && /kind|decimo_/i.test(String(error.message || "")) && /PGRST204|42703|does not exist|could not find/i.test(`${error.code || ""} ${error.message || ""}`);
+}
+function isDecimo(r) { return !!r && DECIMO_KINDS.includes(r.kind); }
+function payrollKind(r) { return isDecimo(r) ? r.kind : (r && r.is_advance ? "vale" : "folha"); }
+const PAYROLL_KIND_INFO = {
+  folha: { icon: "💼", label: "FOLHA", tipo: "Folha", color: COLORS.brandLight },
+  vale: { icon: "💵", label: "VALE", tipo: "Vale", color: COLORS.warn },
+  "13_1": { icon: "🎁", label: "13º · 1ª PARCELA", tipo: "13º - 1ª parcela", color: "#2DD4BF" },
+  "13_2": { icon: "🎁", label: "13º · 2ª PARCELA", tipo: "13º - 2ª parcela", color: "#38BDF8" },
+};
+function payrollTipoLabel(r) { return PAYROLL_KIND_INFO[payrollKind(r)].tipo; }
+function decimoRefLabel(kind, year) { return `13º salário ${year} - ${kind === "13_1" ? "1ª" : "2ª"} parcela`; }
+function isoDia(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+// prazo legal que cai no fim de semana é antecipado para a sexta-feira (assim nunca passa do prazo)
+function antesDoFimDeSemana(iso) {
+  const d = new Date(iso + "T00:00:00"); const w = d.getDay();
+  if (w === 6) d.setDate(d.getDate() - 1); else if (w === 0) d.setDate(d.getDate() - 2);
+  return isoDia(d);
+}
+// 1ª parcela: até 30/11; 2ª parcela: até 20/12 (Lei 4.749/65)
+function decimoPrazos(year) { return { "13_1": antesDoFimDeSemana(`${year}-11-30`), "13_2": antesDoFimDeSemana(`${year}-12-20`) }; }
+// meses trabalhados no ano (avos): o mês em que a pessoa trabalhou 15 dias ou mais conta inteiro
+function avosNoAno(admissao, year) {
+  if (!admissao) return 12;
+  const d = new Date(admissao + "T00:00:00");
+  if (isNaN(d.getTime())) return 12;
+  if (d.getFullYear() < year) return 12;
+  if (d.getFullYear() > year) return 0;
+  const diasDoMes = new Date(year, d.getMonth() + 1, 0).getDate();
+  const primeiro = diasDoMes - d.getDate() + 1 >= 15 ? d.getMonth() : d.getMonth() + 1; // índice (0 a 11) do primeiro mês que conta
+  return Math.max(0, 12 - primeiro);
+}
+// 13º do ano = salário x avos / 12; a 1ª parcela é metade e a 2ª é o restante
+function decimoCalc(salario, avos) {
+  const bruto = round2((Number(salario) || 0) * (Number(avos) || 0) / 12);
+  const p1 = round2(bruto / 2);
+  return { bruto, p1, p2: round2(bruto - p1) };
+}
+// valor sugerido de uma parcela: a 1ª é a metade do 13º; a 2ª é o que sobra do 13º do ano depois da 1ª (a 1ª já lançada, se houver, ou a metade calculada)
+function decimoSugerido(calc, parcela, rec1) {
+  if (parcela === 1) return calc.p1;
+  return round2(Math.max(0, calc.bruto - (rec1 ? (Number(rec1.total_earnings) || 0) : calc.p1)));
+}
+// "Novembro de 2026"
+function monthTitlePT(mk) { const [y, m] = String(mk).split("-").map(Number); return `${MONTHS_PT[(m || 1) - 1]} de ${y}`; }
+// o que o banco precisa receber UMA vez para guardar o 13º (arquivo adicionar-13o-folha.sql)
+const SQL_13O = `alter table public.payroll_records
+  add column if not exists kind text,
+  add column if not exists decimo_year integer,
+  add column if not exists decimo_avos integer;
+
+notify pgrst, 'reload schema';`;
+// mês (AAAA-MM) em que o lançamento "cai" na tela da folha: a referência, ou o mês do pagamento quando a referência não é um mês (13º, textos antigos)
+function payrollMonthKey(r) {
+  const ref = String(r?.reference_month || "").trim();
+  if (!isDecimo(r) && /^\d{4}-\d{2}$/.test(ref)) return ref;
+  const pd = String(r?.payment_date || "");
+  if (/^\d{4}-\d{2}/.test(pd)) return pd.slice(0, 7);
+  if (/^\d{4}-\d{2}$/.test(ref)) return ref;
+  const ca = String(r?.created_at || "");
+  return /^\d{4}-\d{2}/.test(ca) ? ca.slice(0, 7) : "";
+}
+function prazoTexto(iso, hoje) {
+  if (!iso) return "sem data";
+  const n = Math.round((new Date(iso + "T00:00:00") - new Date((hoje || todayStr()) + "T00:00:00")) / 86400000);
+  if (n === 0) return "vence hoje";
+  if (n === 1) return "vence amanhã";
+  if (n > 1) return `vence em ${n} dias`;
+  if (n === -1) return "venceu ontem";
+  return `venceu há ${-n} dias`;
+}
+// monta o lançamento de uma parcela do 13º (valor = o que soma nesta parcela; na 2ª parcela entram o INSS e o IRRF como descontos)
+function buildDecimoRecord({ id, emp, year, kind, avos, salario, valor, inss, irrf, dataPagamento, paid, paidDate, notes }) {
+  const earnings = round2(valor);
+  const i = kind === "13_2" ? round2(inss) : 0, f = kind === "13_2" ? round2(irrf) : 0;
+  return {
+    id: id || uid(), employee_id: emp?.id || "", employee_name: emp?.name || "", employee_cargo: emp?.cargo || null,
+    kind, decimo_year: Number(year), decimo_avos: Number(avos) || 0,
+    reference_month: decimoRefLabel(kind, year), payment_date: dataPagamento || null, is_advance: false,
+    base_salary: round2(salario), overtime: 0, bonus: 0, other_earnings: 0,
+    inss: i, irrf: f, vt_discount: 0, vr_discount: 0, advance: 0, other_discounts: 0,
+    total_earnings: earnings, total_discounts: round2(i + f), net_total: round2(earnings - i - f),
+    paid: !!paid, paid_date: paidDate || null, notes: (notes || "").trim() || null,
+  };
+}
+
+// Aviso "falta rodar o SQL do 13º": mostra o texto do SQL com botão de copiar e de verificar de novo
+function Sql13Aviso({ onCopy, onRecheck }) {
+  return (
+    <div data-sql13-aviso="1" className="rounded-2xl border p-4" style={{ borderColor: rgba(COLORS.warn, 0.6), background: rgba(COLORS.warn, 0.08) }}>
+      <div className="text-sm font-bold" style={{ color: COLORS.ink }}>⚙️ Falta uma configuração única no banco de dados</div>
+      <div className="text-xs mt-1 leading-relaxed" style={{ color: COLORS.inkMuted }}>
+        Para guardar o 13º salário, rode o SQL abaixo <b style={{ color: COLORS.ink }}>uma vez</b>: abra o Supabase → <b style={{ color: COLORS.ink }}>SQL Editor</b> → <b style={{ color: COLORS.ink }}>New query</b> → cole → <b style={{ color: COLORS.ink }}>Run</b>. A folha e os vales continuam funcionando normalmente. (O mesmo texto está no arquivo <b style={{ color: COLORS.ink }}>adicionar-13o-folha.sql</b>.)
+      </div>
+      <pre className="mt-2 p-3 rounded-lg text-[11px] overflow-x-auto" style={{ background: "rgba(0,0,0,0.35)", color: "#E2E8F0" }}>{SQL_13O}</pre>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={onCopy} className="px-3 py-2 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📋 Copiar SQL</button>
+        <button type="button" onClick={onRecheck} className="px-3 py-2 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.warn, color: COLORS.warn }}>🔄 Já rodei, verificar de novo</button>
+      </div>
+    </div>
+  );
+}
+
+// Barra do recibo anexado (arquivo da contabilidade): ver, status da assinatura, enviar para assinar pelo WhatsApp
+function PayrollReceiptBar({ r, emp, h }) {
+  if (!r.receipt_file_url) return null;
+  return (
+    <div className="mt-3 pt-3 flex items-center gap-2 flex-wrap text-xs" style={{ borderTop: `1px dashed ${COLORS.cardBorder}` }}>
+      <a href={r.receipt_file_url} target="_blank" rel="noreferrer" className="underline font-semibold" style={{ color: COLORS.brandLight }}>📎 ver recibo original</a>
+      {r.receipt_signed ? (
+        <>
+          <span className="font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.12)" }}>✓ Assinado em {fmtDateTime(r.receipt_signed_at)}</span>
+          {r.receipt_signed_file_url ? (
+            <a href={r.receipt_signed_file_url} target="_blank" rel="noreferrer" className="underline font-bold" style={{ color: COLORS.success }}>📄 ver recibo assinado</a>
+          ) : r.receipt_signature && (
+            <button onClick={() => h.showSignature(r.receipt_signature)} className="underline font-semibold" style={{ color: COLORS.inkMuted }}>ver assinatura</button>
+          )}
+        </>
+      ) : (
+        <>
+          <span className="font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.12)" }}>aguardando assinatura</span>
+          <button onClick={() => h.sendWhatsApp(r, emp)} className="px-2 py-1 rounded-lg font-semibold border" style={{ borderColor: COLORS.wa, color: COLORS.wa }}>💬 Enviar p/ assinar</button>
+          <button onClick={() => h.copyLink(r)} className="px-2 py-1 rounded-lg font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>🔗 copiar link</button>
+        </>
+      )}
+      <button onClick={() => h.removeReceipt(r)} className="px-2 py-1 rounded-lg font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ remover recibo</button>
+    </div>
+  );
+}
+
+// Cartão de um lançamento da folha (folha, vale ou parcela do 13º) na tela "Folha do mês"
+function PayrollCard({ r, emp, money, hoje, h }) {
+  const info = PAYROLL_KIND_INFO[payrollKind(r)];
+  const atrasado = !r.paid && !!r.payment_date && r.payment_date < hoje;
+  const cor = r.paid ? COLORS.success : atrasado ? COLORS.danger : COLORS.warn;
+  return (
+    <div data-payroll-card={r.id} className="rounded-2xl border overflow-hidden relative transition hover:-translate-y-0.5" style={{ borderColor: COLORS.cardBorder, background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(cor, 0.06)})` }}>
+      <div aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: cor }} />
+      <div className="p-4 pl-5">
+        <div className="flex items-start gap-3">
+          <Avatar name={r.employee_name || "?"} size={42} />
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold truncate" style={{ color: COLORS.ink }} title={r.employee_name}>{r.employee_name}</div>
+            <div className="text-xs truncate" style={{ color: COLORS.inkMuted }}>{r.employee_cargo || "sem cargo"}</div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-lg font-extrabold leading-tight" style={{ color: COLORS.ink }}>{money(r.net_total)}</div>
+            <div className="text-[11px] font-semibold" style={{ color: r.paid ? COLORS.success : atrasado ? COLORS.danger : COLORS.inkMuted }}>{r.paid ? `pago em ${fmtDate(r.paid_date)}` : prazoTexto(r.payment_date, hoje)}</div>
+          </div>
+        </div>
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" style={{ color: COLORS.inkMuted }}>
+          <span className="font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ color: info.color, background: rgba(info.color, 0.15) }}>{info.icon} {info.label}</span>
+          {!isDecimo(r) && <span className="whitespace-nowrap">Ref. {/^\d{4}-\d{2}$/.test(String(r.reference_month || "")) ? monthLabelPT(r.reference_month) : (r.reference_month || "-")}</span>}
+          <span className="whitespace-nowrap">pagamento {fmtDate(r.payment_date)}</span>
+          {isDecimo(r) && r.decimo_avos != null && <span className="whitespace-nowrap">{r.decimo_avos}/12 avos</span>}
+        </div>
+        <div className="mt-3 flex items-start justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <PaidChip paid={!!r.paid} onClick={() => h.togglePaid(r)} labelOpen="○ Marcar como pago" />
+            {!r.receipt_file_url && (
+              <label className="px-3 py-1 rounded-full text-xs font-bold border cursor-pointer whitespace-nowrap" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>
+                📎 Anexar recibo
+                <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) h.upload(r, f); }} />
+              </label>
+            )}
+          </div>
+          <RowMenu items={[
+            { label: "📄 Gerar recibo (PDF)", onClick: () => h.recibo(r) },
+            r.receipt_file_url && { label: "📎 Trocar o recibo anexado", file: { accept: ".pdf,image/*", onFile: (f) => h.upload(r, f) } },
+            { label: "✏️ Editar", onClick: () => h.edit(r) },
+            { label: "🗑️ Excluir", danger: true, onClick: () => h.del(r.id) },
+          ]} />
+        </div>
+        <PayrollReceiptBar r={r} emp={emp} h={h} />
+      </div>
+    </div>
+  );
+}
+
+// Uma parcela do 13º dentro do cartão do funcionário: lançada (com situação e ações) ou ainda só prevista (com o botão "Lançar")
+function DecimoTile({ kind, rec, sugerido, prazo, emp, money, hoje, h, podeLancar, motivo }) {
+  const parcela = kind === "13_1" ? "1ª" : "2ª";
+  const info = PAYROLL_KIND_INFO[kind];
+  if (!rec) {
+    const venc = prazoTexto(prazo, hoje);
+    const atrasada = !!prazo && prazo < hoje;
+    return (
+      <div data-decimo-tile={kind} data-launched="0" className="rounded-xl p-3 border border-dashed flex flex-col gap-1" style={{ borderColor: atrasada ? rgba(COLORS.danger, 0.6) : COLORS.cardBorder, background: "rgba(255,255,255,0.02)" }}>
+        <span className="text-xs font-bold uppercase tracking-wide" style={{ color: info.color }}>{parcela} parcela</span>
+        <span className="text-[11px]" style={{ color: atrasada ? COLORS.danger : COLORS.inkFaint }}>até {fmtDate(prazo)} · {venc}</span>
+        <div className="text-lg font-extrabold" style={{ color: sugerido > 0 ? COLORS.inkMuted : COLORS.inkFaint }}>{sugerido > 0 ? money(sugerido) : "—"}</div>
+        <div className="text-[11px]" style={{ color: COLORS.inkFaint }}>{sugerido > 0 ? "previsto · ainda não lançada" : (motivo || "sem valor a lançar")}</div>
+        <button disabled={!podeLancar} onClick={() => h.lancar(emp, kind)} className="mt-1 self-start px-3 py-1.5 rounded-lg text-xs font-bold border disabled:opacity-40" style={{ borderColor: info.color, color: info.color }}>＋ Lançar {parcela} parcela</button>
+      </div>
+    );
+  }
+  const atrasado = !rec.paid && !!rec.payment_date && rec.payment_date < hoje;
+  const cor = rec.paid ? COLORS.success : atrasado ? COLORS.danger : COLORS.warn;
+  return (
+    <div data-decimo-tile={kind} data-launched="1" data-payroll-card={rec.id} className="rounded-xl p-3 border" style={{ borderColor: rgba(cor, 0.5), background: rgba(cor, 0.07) }}>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs font-bold uppercase tracking-wide" style={{ color: info.color }}>{parcela} parcela</span>
+        <span className="text-[11px]" style={{ color: COLORS.inkMuted }}>pagamento {fmtDate(rec.payment_date)}</span>
+      </div>
+      <div className="text-lg font-extrabold mt-1" style={{ color: COLORS.ink }}>{money(rec.net_total)}</div>
+      {(Number(rec.inss) > 0 || Number(rec.irrf) > 0) && (
+        <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{money(rec.total_earnings)} − descontos {Number(rec.inss) > 0 ? `INSS ${money(rec.inss)}` : ""}{Number(rec.inss) > 0 && Number(rec.irrf) > 0 ? " · " : ""}{Number(rec.irrf) > 0 ? `IRRF ${money(rec.irrf)}` : ""}</div>
+      )}
+      <div className="text-[11px] font-semibold" style={{ color: rec.paid ? COLORS.success : atrasado ? COLORS.danger : COLORS.inkMuted }}>{rec.paid ? `pago em ${fmtDate(rec.paid_date)}` : prazoTexto(rec.payment_date, hoje)}</div>
+      <div className="mt-2 flex items-start justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <PaidChip paid={!!rec.paid} onClick={() => h.togglePaid(rec)} labelOpen="○ Marcar como pago" />
+          {!rec.receipt_file_url && (
+            <label className="px-3 py-1 rounded-full text-xs font-bold border cursor-pointer whitespace-nowrap" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>
+              📎 Anexar recibo
+              <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) h.upload(rec, f); }} />
+            </label>
+          )}
+        </div>
+        <RowMenu items={[
+          { label: "📄 Gerar recibo (PDF)", onClick: () => h.recibo(rec) },
+          rec.receipt_file_url && { label: "📎 Trocar o recibo anexado", file: { accept: ".pdf,image/*", onFile: (f) => h.upload(rec, f) } },
+          { label: "✏️ Editar", onClick: () => h.edit(rec) },
+          { label: "🗑️ Excluir", danger: true, onClick: () => h.del(rec.id) },
+        ]} />
+      </div>
+      <PayrollReceiptBar r={rec} emp={emp} h={h} />
+    </div>
+  );
+}
+
+// Cartão do 13º de um funcionário: o 13º do ano (salário x meses trabalhados) e as duas parcelas lado a lado
+function DecimoCard({ emp, year, rec1, rec2, money, hoje, h, podeLancar }) {
+  const salario = Number(rec1?.base_salary || rec2?.base_salary || emp.base_salary) || 0;
+  const avos = rec1?.decimo_avos != null ? Number(rec1.decimo_avos) : rec2?.decimo_avos != null ? Number(rec2.decimo_avos) : avosNoAno(emp.admission_date, year);
+  const calc = decimoCalc(salario, avos);
+  const prazos = decimoPrazos(year);
+  const semBase = !(salario > 0) ? "cadastre o salário em Funcionários" : avos <= 0 ? "sem meses trabalhados em " + year : "";
+  return (
+    <div data-decimo-card={emp.id} className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: `linear-gradient(160deg, ${COLORS.card}, ${rgba("#2DD4BF", 0.05)})`, opacity: emp.active === false ? 0.7 : 1 }}>
+      <div className="flex items-start gap-3">
+        <Avatar name={emp.name || "?"} size={42} />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
+            <span className="truncate" title={emp.name}>{emp.name}</span>
+            {emp.active === false && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>INATIVO</span>}
+          </div>
+          <div className="text-xs truncate" style={{ color: COLORS.inkMuted }}>{emp.cargo || "sem cargo"}</div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkFaint }}>13º de {year}</div>
+          <div className="text-sm font-extrabold" style={{ color: COLORS.ink }}>{calc.bruto > 0 ? money(calc.bruto) : "—"}</div>
+        </div>
+      </div>
+      <div className="mt-2 text-[11px]" style={{ color: COLORS.inkMuted }}>
+        {salario > 0 ? `salário ${money(salario)}` : "sem salário cadastrado"} · <b style={{ color: COLORS.ink }}>{avos}/12</b> avos{emp.admission_date ? ` · admissão ${fmtDate(emp.admission_date)}` : ""}
+      </div>
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <DecimoTile kind="13_1" rec={rec1} sugerido={decimoSugerido(calc, 1, rec1)} prazo={prazos["13_1"]} emp={emp} money={money} hoje={hoje} h={h} podeLancar={podeLancar && !semBase} motivo={semBase} />
+        <DecimoTile kind="13_2" rec={rec2} sugerido={decimoSugerido(calc, 2, rec1)} prazo={prazos["13_2"]} emp={emp} money={money} hoje={hoje} h={h} podeLancar={podeLancar && !semBase} motivo={semBase} />
+      </div>
+    </div>
+  );
+}
+
+// Cartão de um funcionário na tela "Funcionários"
+function EmployeeCard({ e, money, onEdit, onDelete }) {
+  const chip = (txt, ok) => <span className="px-2 py-0.5 rounded-full font-semibold" style={{ color: ok ? COLORS.success : COLORS.inkMuted, background: ok ? "rgba(34,197,94,0.12)" : "rgba(255,255,255,0.06)" }}>{txt}</span>;
+  return (
+    <div data-employee-card={e.id} className="rounded-2xl border p-4 transition hover:-translate-y-0.5" style={{ borderColor: COLORS.cardBorder, background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.04)})`, opacity: e.active === false ? 0.55 : 1 }}>
+      <div className="flex items-start gap-3">
+        <Avatar name={e.name} size={44} />
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
+            <span className="truncate" title={e.name}>{e.name}</span>
+            {e.active === false && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>INATIVO</span>}
+          </div>
+          <div className="text-xs truncate" style={{ color: COLORS.inkMuted }}>{e.cargo || "sem cargo"}</div>
+        </div>
+        <div className="text-right shrink-0">
+          <div className="text-[10px] font-bold uppercase tracking-wide" style={{ color: COLORS.inkFaint }}>Salário</div>
+          <div className="text-sm font-extrabold" style={{ color: COLORS.ink }}>{e.base_salary ? money(e.base_salary) : "—"}</div>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
+        {e.admission_date && chip(`📅 desde ${fmtDate(e.admission_date)}`, false)}
+        {chip(e.pix_key ? "🔑 PIX" : "🔑 sem PIX", !!e.pix_key)}
+        {chip(e.phone ? "💬 WhatsApp" : "💬 sem WhatsApp", !!e.phone)}
+      </div>
+      {e.pix_key && <div className="mt-2 text-xs break-all" style={{ color: COLORS.success }}>🔑 PIX: {e.pix_key}</div>}
+      <div className="mt-3 flex items-center gap-1.5">
+        <button onClick={() => onEdit(e)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
+        <button onClick={() => onDelete(e.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }} title="Excluir funcionário">🗑️</button>
+      </div>
+    </div>
+  );
+}
+
+// Formulário de pagamento da folha: salário, vale/adiantamento ou 13º salário (1ª e 2ª parcela)
+function PayrollForm({ initial, employees, records = [], defaultMonth, decimoReady = true, onCopySql, onRecheck, onSave, onCancel }) {
+  const isEdit = !!initial?.id;
+  const [tipo, setTipo] = useState(isDecimo(initial) ? "13" : initial?.is_advance ? "vale" : "folha");
+  const isAdvance = tipo === "vale";
+  const isDec = tipo === "13";
   const [employeeId, setEmployeeId] = useState(initial?.employee_id || "");
-  const [isAdvance, setIsAdvance] = useState(initial?.is_advance || false);
-  const [referenceMonth, setReferenceMonth] = useState(initial?.reference_month || monthKey(new Date()));
-  const [paymentDate, setPaymentDate] = useState(initial?.payment_date || (() => { const n = new Date(); return quintoDiaUtil(n.getFullYear(), n.getMonth()); })());
+  const [referenceMonth, setReferenceMonth] = useState(isDecimo(initial) ? (defaultMonth || monthKey(new Date())) : (initial?.reference_month || defaultMonth || monthKey(new Date())));
+  const quintoDoMes = (mes) => { const m = /^(\d{4})-(\d{2})$/.exec(String(mes || "").trim()); const n = new Date(); return m ? quintoDiaUtil(Number(m[1]), Number(m[2]) - 1) : quintoDiaUtil(n.getFullYear(), n.getMonth()); };
+  const [paymentDate, setPaymentDate] = useState(initial?.payment_date || quintoDoMes(initial?.reference_month || defaultMonth));
   const [baseSalary, setBaseSalary] = useState(initial?.base_salary ?? "");
   const [overtime, setOvertime] = useState(initial?.overtime ?? "");
   const [bonus, setBonus] = useState(initial?.bonus ?? "");
   const [otherEarnings, setOtherEarnings] = useState(initial?.other_earnings ?? "");
   const [notes, setNotes] = useState(initial?.notes || "");
+  // 13º salário
+  const anoAtual = new Date().getFullYear();
+  const [decYear, setDecYear] = useState(initial?.decimo_year || anoAtual);
+  const [parcela, setParcela] = useState(initial?.kind === "13_2" ? 2 : 1);
+  const [avos, setAvos] = useState(initial?.decimo_avos ?? "");
+  const eraDecimo = isEdit && isDecimo(initial); // editando um 13º que já existe: os valores salvos valem; um 13º novo (ou um lançamento comum virando 13º) parte do cálculo
+  const [tocouAvos, setTocouAvos] = useState(eraDecimo || initial?.decimo_avos != null);
+  const [valorParcela, setValorParcela] = useState(eraDecimo ? (initial.total_earnings ?? "") : "");
+  const [tocouValor, setTocouValor] = useState(eraDecimo);
+  const [tocouData, setTocouData] = useState(eraDecimo);
+  const [inss, setInss] = useState(isDecimo(initial) ? (initial.inss || "") : "");
+  const [irrf, setIrrf] = useState(isDecimo(initial) ? (initial.irrf || "") : "");
 
   const employee = employees.find((e) => e.id === employeeId);
+  const prazos = decimoPrazos(Number(decYear) || anoAtual);
 
   useEffect(() => {
-    if (employee && !initial && !isAdvance) setBaseSalary(employee.base_salary || "");
+    if (employee && !isEdit && !isAdvance && !(initial && initial.employee_id === employeeId && initial.base_salary != null)) setBaseSalary(employee.base_salary || "");
   }, [employeeId, isAdvance]);
+  // 13º: meses trabalhados no ano, pela data de admissão do funcionário
+  useEffect(() => {
+    if (isDec && employee && !tocouAvos) setAvos(avosNoAno(employee.admission_date, Number(decYear) || anoAtual));
+  }, [employeeId, decYear, isDec]);
 
-  const totalEarnings = (Number(baseSalary) || 0) + (Number(overtime) || 0) + (Number(bonus) || 0) + (Number(otherEarnings) || 0);
-  const totalDiscounts = 0;
-  const netTotal = totalEarnings;
-  const canSave = employeeId && totalEarnings > 0;
+  const salarioMensal = Number(baseSalary) || 0;
+  const calc = decimoCalc(salarioMensal, Number(avos) || 0);
+  const outra1 = records.find((r) => r.kind === "13_1" && r.employee_id === employeeId && Number(r.decimo_year) === Number(decYear) && r.id !== initial?.id);
+  const sugerido = decimoSugerido(calc, parcela, outra1);
+  useEffect(() => { if (isDec && !tocouValor) setValorParcela(sugerido > 0 ? String(sugerido) : ""); }, [isDec, tocouValor, sugerido]);
+  useEffect(() => { if (isDec && !tocouData) setPaymentDate(prazos[parcela === 1 ? "13_1" : "13_2"]); }, [isDec, tocouData, decYear, parcela]);
+
+  const valorNum = Number(valorParcela) || 0;
+  const descontos = isDec && parcela === 2 ? round2((Number(inss) || 0) + (Number(irrf) || 0)) : 0;
+  const totalEarnings = isDec ? valorNum : (Number(baseSalary) || 0) + (Number(overtime) || 0) + (Number(bonus) || 0) + (Number(otherEarnings) || 0);
+  const totalDiscounts = isDec ? descontos : 0;
+  const netTotal = isDec ? round2(totalEarnings - totalDiscounts) : totalEarnings;
+  const canSave = employeeId && (isDec ? (decimoReady && valorNum > 0 && netTotal > 0) : totalEarnings > 0);
+  const kindAtual = parcela === 1 ? "13_1" : "13_2";
+  const jaLancada = isDec && !!employeeId && records.some((r) => r.kind === kindAtual && r.employee_id === employeeId && Number(r.decimo_year) === Number(decYear) && r.id !== initial?.id);
+  const selStyle = { borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink };
+  const pillBtn = (ativo, cor) => ({ borderColor: ativo ? cor : COLORS.cardBorder, color: ativo ? cor : COLORS.inkMuted, background: ativo ? rgba(cor, 0.12) : "transparent" });
+
+  function salvar() {
+    if (isDec) {
+      onSave(buildDecimoRecord({ id: initial?.id, emp: employee, year: Number(decYear) || anoAtual, kind: kindAtual, avos: Number(avos) || 0, salario: salarioMensal, valor: valorNum, inss, irrf, dataPagamento: paymentDate, paid: initial?.paid, paidDate: initial?.paid_date, notes }));
+      return;
+    }
+    onSave({
+      id: initial?.id || uid(), employee_id: employeeId, employee_name: employee?.name || "", employee_cargo: employee?.cargo || null,
+      reference_month: referenceMonth.trim(), payment_date: paymentDate || null, is_advance: isAdvance,
+      base_salary: Number(baseSalary) || 0, overtime: Number(overtime) || 0, bonus: Number(bonus) || 0, other_earnings: Number(otherEarnings) || 0,
+      inss: 0, irrf: 0, vt_discount: 0, vr_discount: 0, advance: 0, other_discounts: 0,
+      total_earnings: totalEarnings, total_discounts: totalDiscounts, net_total: netTotal,
+      paid: initial?.paid || false, paid_date: initial?.paid_date || null, notes: notes.trim() || null,
+      ...(isDecimo(initial) ? { kind: null, decimo_year: null, decimo_avos: null } : {}), // um lançamento que era 13º e virou folha/vale
+    });
+  }
 
   return (
     <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
-      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{isAdvance ? "Novo vale / adiantamento" : "Novo pagamento de folha"}</div>
+      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{isEdit ? "Editar" : "Novo"} {isDec ? "13º salário" : isAdvance ? "vale / adiantamento" : "pagamento de folha"}</div>
 
       <div className="flex gap-2 flex-wrap">
-        <button type="button" onClick={() => setIsAdvance(false)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: !isAdvance ? COLORS.brandLight : COLORS.cardBorder, color: !isAdvance ? COLORS.brandLight : COLORS.inkMuted, background: !isAdvance ? "rgba(124,92,255,0.1)" : "transparent" }}>💼 Folha (salário)</button>
-        <button type="button" onClick={() => setIsAdvance(true)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: isAdvance ? COLORS.warn : COLORS.cardBorder, color: isAdvance ? COLORS.warn : COLORS.inkMuted, background: isAdvance ? "rgba(245,158,11,0.1)" : "transparent" }}>💵 Vale / adiantamento</button>
+        <button type="button" onClick={() => setTipo("folha")} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={pillBtn(tipo === "folha", COLORS.brandLight)}>💼 Folha (salário)</button>
+        <button type="button" onClick={() => setTipo("vale")} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={pillBtn(tipo === "vale", COLORS.warn)}>💵 Vale / adiantamento</button>
+        <button type="button" onClick={() => setTipo("13")} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={pillBtn(tipo === "13", "#2DD4BF")}>🎁 13º salário</button>
       </div>
+
+      {isDec && !decimoReady && <Sql13Aviso onCopy={onCopySql} onRecheck={onRecheck} />}
+      {jaLancada && (
+        <div data-aviso-duplicada="1" className="rounded-lg p-3 text-xs" style={{ background: rgba(COLORS.warn, 0.12), color: COLORS.ink, border: `1px solid ${rgba(COLORS.warn, 0.5)}` }}>
+          ⚠️ A {parcela}ª parcela do 13º de {decYear} já está lançada para {employee?.name || "este funcionário"}. Se salvar, ficam dois lançamentos — para corrigir o valor, edite o que já existe.
+        </div>
+      )}
+      {isDec && (
+        <div className="rounded-lg p-3 text-xs leading-relaxed" style={{ background: rgba(COLORS.info, 0.1), color: COLORS.inkMuted }}>
+          O 13º é proporcional aos meses trabalhados no ano (avos). <b style={{ color: COLORS.ink }}>1ª parcela</b>: metade do 13º, sem descontos, até {fmtDate(prazos["13_1"])}. <b style={{ color: COLORS.ink }}>2ª parcela</b>: o restante, com os descontos de INSS e IRRF, até {fmtDate(prazos["13_2"])}.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <label className="block">
           <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Funcionário *</span>
-          <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
+          <select value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={selStyle}>
             <option value="">Selecione...</option>
-            {employees.filter((e) => e.active !== false).map((e) => <option key={e.id} value={e.id}>{e.name}{e.cargo ? ` — ${e.cargo}` : ""}</option>)}
+            {employees.filter((e) => e.active !== false || e.id === employeeId).map((e) => <option key={e.id} value={e.id}>{e.name}{e.cargo ? ` — ${e.cargo}` : ""}</option>)}
           </select>
         </label>
-        <TextField label="Mês de referência" value={referenceMonth} onChange={setReferenceMonth} placeholder="2026-09" />
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pagamento</span>
-          <div className="flex gap-2">
-            <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
-            {!isAdvance && <button type="button" onClick={() => { const n = new Date(); setPaymentDate(quintoDiaUtil(n.getFullYear(), n.getMonth())); }} className="px-2.5 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>5º dia útil</button>}
-          </div>
-        </label>
+        {isDec ? (
+          <>
+            <label className="block">
+              <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Ano do 13º</span>
+              <select value={decYear} onChange={(e) => { setDecYear(Number(e.target.value)); }} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={selStyle}>
+                {[...new Set([anoAtual - 1, anoAtual, anoAtual + 1, Number(decYear)])].sort().map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </label>
+            <div className="block">
+              <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Parcela</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setParcela(1)} className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold border" style={pillBtn(parcela === 1, "#2DD4BF")}>1ª parcela</button>
+                <button type="button" onClick={() => setParcela(2)} className="flex-1 px-3 py-2 rounded-lg text-sm font-semibold border" style={pillBtn(parcela === 2, "#38BDF8")}>2ª parcela</button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <TextField label="Mês de referência" value={referenceMonth} onChange={setReferenceMonth} placeholder="2026-09" />
+            <label className="block">
+              <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pagamento</span>
+              <div className="flex gap-2">
+                <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={selStyle} />
+                {!isAdvance && <button type="button" onClick={() => setPaymentDate(quintoDoMes(referenceMonth))} className="px-2.5 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>5º dia útil</button>}
+              </div>
+            </label>
+          </>
+        )}
       </div>
 
-      <div className="pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
-        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Proventos (o que soma)</div>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <TextField label={isAdvance ? "Valor do vale" : "Salário base"} value={baseSalary} onChange={setBaseSalary} type="number" placeholder="0" />
-          {!isAdvance && <TextField label="Horas extras" value={overtime} onChange={setOvertime} type="number" placeholder="0" />}
-          {!isAdvance && <TextField label="Bônus / comissão" value={bonus} onChange={setBonus} type="number" placeholder="0" />}
-          {!isAdvance && <TextField label="Outros proventos" value={otherEarnings} onChange={setOtherEarnings} type="number" placeholder="0" />}
+      {isDec ? (
+        <>
+          <div className="pt-3 border-t grid grid-cols-1 sm:grid-cols-3 gap-3" style={{ borderColor: COLORS.cardBorder }}>
+            <TextField label="Salário mensal (base do cálculo)" value={baseSalary} onChange={(v) => { setBaseSalary(v); }} type="number" placeholder="0" />
+            <div>
+              <TextField label="Meses trabalhados no ano (avos)" value={avos} onChange={(v) => { setAvos(v); setTocouAvos(true); }} type="number" placeholder="12" />
+              {employee?.admission_date && <div className="text-[11px] mt-1" style={{ color: COLORS.inkFaint }}>Admissão em {fmtDate(employee.admission_date)} → {avosNoAno(employee.admission_date, Number(decYear) || anoAtual)}/12 neste ano</div>}
+            </div>
+            <label className="block">
+              <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data do pagamento</span>
+              <div className="flex gap-2">
+                <input type="date" value={paymentDate} onChange={(e) => { setPaymentDate(e.target.value); setTocouData(true); }} className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none" style={selStyle} />
+                <button type="button" onClick={() => { setTocouData(false); setPaymentDate(prazos[kindAtual]); }} className="px-2.5 py-2 rounded-lg text-xs font-semibold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }} title="Usar o prazo legal">Prazo legal</button>
+              </div>
+            </label>
+          </div>
+          <div className="rounded-lg p-3 grid grid-cols-3 gap-2 text-xs" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <div><div className="text-[10px] font-bold uppercase" style={{ color: COLORS.inkFaint }}>13º do ano ({Number(avos) || 0}/12)</div><div className="text-sm font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(calc.bruto)}</div></div>
+            <div><div className="text-[10px] font-bold uppercase" style={{ color: COLORS.inkFaint }}>1ª parcela (50%)</div><div className="text-sm font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(calc.p1)}</div></div>
+            <div><div className="text-[10px] font-bold uppercase" style={{ color: COLORS.inkFaint }}>2ª parcela (restante)</div><div className="text-sm font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(parcela === 2 ? sugerido : calc.p2)}</div></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <TextField label={`Valor da ${parcela}ª parcela (bruto)`} value={valorParcela} onChange={(v) => { setValorParcela(v); setTocouValor(true); }} type="number" placeholder="0" />
+              {tocouValor && Math.abs(valorNum - sugerido) > 0.004 && <button type="button" onClick={() => setTocouValor(false)} className="text-[11px] mt-1 underline" style={{ color: COLORS.brandLight }}>usar o valor calculado ({fmtMoney(sugerido)})</button>}
+            </div>
+            {parcela === 2 && <TextField label="Desconto de INSS (opcional)" value={inss} onChange={setInss} type="number" placeholder="0" />}
+            {parcela === 2 && <TextField label="Desconto de IRRF (opcional)" value={irrf} onChange={setIrrf} type="number" placeholder="0" />}
+          </div>
+        </>
+      ) : (
+        <div className="pt-3 border-t" style={{ borderColor: COLORS.cardBorder }}>
+          <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Proventos (o que soma)</div>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <TextField label={isAdvance ? "Valor do vale" : "Salário base"} value={baseSalary} onChange={setBaseSalary} type="number" placeholder="0" />
+            {!isAdvance && <TextField label="Horas extras" value={overtime} onChange={setOvertime} type="number" placeholder="0" />}
+            {!isAdvance && <TextField label="Bônus / comissão" value={bonus} onChange={setBonus} type="number" placeholder="0" />}
+            {!isAdvance && <TextField label="Outros proventos" value={otherEarnings} onChange={setOtherEarnings} type="number" placeholder="0" />}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="rounded-lg p-3 mt-3" style={{ background: "rgba(124,92,255,0.12)" }}>
         <div className="text-[11px] font-bold uppercase mb-1" style={{ color: COLORS.brandLight }}>Total a receber</div>
         <div className="text-xl font-extrabold" style={{ color: COLORS.ink }}>{fmtMoney(netTotal)}</div>
+        {isDec && descontos > 0 && <div className="text-[11px] mt-0.5" style={{ color: COLORS.inkMuted }}>{fmtMoney(totalEarnings)} − descontos {fmtMoney(descontos)}</div>}
       </div>
 
       <TextField label="Observações" value={notes} onChange={setNotes} placeholder="Opcional" />
 
       <div className="flex gap-2">
-        <button disabled={!canSave}
-          onClick={() => onSave({
-            id: initial?.id || uid(), employee_id: employeeId, employee_name: employee?.name || "", employee_cargo: employee?.cargo || null,
-            reference_month: referenceMonth.trim(), payment_date: paymentDate || null, is_advance: isAdvance,
-            base_salary: Number(baseSalary) || 0, overtime: Number(overtime) || 0, bonus: Number(bonus) || 0, other_earnings: Number(otherEarnings) || 0,
-            inss: 0, irrf: 0, vt_discount: 0, vr_discount: 0, advance: 0, other_discounts: 0,
-            total_earnings: totalEarnings, total_discounts: totalDiscounts, net_total: netTotal,
-            paid: initial?.paid || false, paid_date: initial?.paid_date || null, notes: notes.trim() || null,
-          })}
+        <button disabled={!canSave} onClick={salvar}
           className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
-          Salvar {isAdvance ? "vale" : "folha"}
+          Salvar {isDec ? "13º" : isAdvance ? "vale" : "folha"}
         </button>
         <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
       </div>
@@ -6796,7 +7209,14 @@ function App() {
   const [showEmployeeForm, setShowEmployeeForm] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [payrollSubTab, setPayrollSubTab] = useState("pagamentos");
-  const [showPaidPayroll, setShowPaidPayroll] = useState(false);
+  const [payrollMonth, setPayrollMonth] = useState(() => monthKey(new Date()));   // mês que a Folha de Pagamento está mostrando
+  const [payrollStatus, setPayrollStatus] = useState("todos");                    // filtro da lista do mês: todos | aberto | pago
+  const [decimoYear, setDecimoYear] = useState(() => new Date().getFullYear());   // ano que a aba 13º salário está mostrando
+  const [decimoReady, setDecimoReady] = useState(true);                            // false = faltam as colunas do 13º no banco (falta rodar o SQL uma vez)
+  // ao sair da Folha de Pagamento ela volta a abrir no mês (e no ano) de hoje, mostrando tudo
+  useEffect(() => { if (tab !== "folha") { setPayrollMonth(monthKey(new Date())); setPayrollStatus("todos"); setDecimoYear(new Date().getFullYear()); } }, [tab]);
+  // ao abrir a Folha de Pagamento confere se o banco já tem as colunas do 13º
+  useEffect(() => { if (session && tab === "folha") checkDecimoColumns(); }, [session, tab]);
   const [showPaidCommissionSellers, setShowPaidCommissionSellers] = useState(() => new Set());
   const [showPaidRomaneios, setShowPaidRomaneios] = useState(false);
   const [showCancelledRomaneios, setShowCancelledRomaneios] = useState(false);
@@ -8331,9 +8751,16 @@ function App() {
   }
   async function handleSavePayroll(rec) {
     const { error } = await supa.from("payroll_records").upsert(rec);
-    if (error) { showToast(`Erro: ${error.message}`); return; }
+    if (error) {
+      // o 13º usa colunas novas: se o SQL ainda não foi rodado, o formulário continua aberto e mostra o passo a passo
+      if (decimoColunasFaltando(error)) { setDecimoReady(false); showToast("Falta rodar o SQL do 13º salário (o passo a passo está no formulário).", 5000); return; }
+      showToast(`Erro: ${error.message}`); return;
+    }
     await loadPayrollRecords();
     setShowPayrollForm(false); setEditingPayroll(null);
+    // leva a tela até onde o lançamento salvo aparece (o mês dele, ou o ano do 13º)
+    if (isDecimo(rec)) { setPayrollSubTab("decimo"); setDecimoYear(Number(rec.decimo_year) || new Date().getFullYear()); }
+    else { setPayrollSubTab("pagamentos"); setPayrollMonth(payrollMonthKey(rec) || monthKey(new Date())); setPayrollStatus("todos"); }
     logActivity(`Folha salva: ${rec.employee_name} (${rec.reference_month})`);
     showToast("Salvo.");
   }
@@ -8391,6 +8818,78 @@ function App() {
     if (!rec.public_token || !rec.receipt_file_url) { showToast("Anexe o recibo primeiro."); return; }
     navigator.clipboard.writeText(payrollReceiptLink(rec)).then(() => showToast("Link copiado!"));
   }
+  // ---- Folha de Pagamento: lançar a folha do mês para todos e 13º salário (1ª e 2ª parcela) ----
+  // As colunas do 13º (kind, decimo_year, decimo_avos) vêm do arquivo adicionar-13o-folha.sql, que se roda UMA vez no Supabase.
+  const checkDecimoColumns = useCallback(async () => {
+    const { error } = await supa.from("payroll_records").select("id,kind,decimo_year,decimo_avos").limit(1);
+    const faltando = decimoColunasFaltando(error);
+    setDecimoReady(!faltando);
+    return !faltando;
+  }, []);
+  function handleCopySql13() {
+    navigator.clipboard.writeText(SQL_13O).then(() => showToast("SQL copiado! Cole no SQL Editor do Supabase e clique em Run.", 4000));
+  }
+  async function handleRecheckDecimo() {
+    const ok = await checkDecimoColumns();
+    showToast(ok ? "Tudo certo! O 13º já pode ser lançado." : "Ainda não encontrei as colunas. Rode o SQL no Supabase e tente de novo.", 4000);
+  }
+  // Cria a folha do mês (salário base, pagamento no 5º dia útil) para quem ainda não tem; depois cada lançamento pode ser editado (horas extras, bônus...)
+  async function handleGeneratePayrollMonth() {
+    const mes = payrollMonth;
+    const [y, m] = mes.split("-").map(Number);
+    const ativos = employees.filter((e) => e.active !== false);
+    if (ativos.length === 0) { showToast("Cadastre os funcionários primeiro (aba Funcionários)."); return; }
+    const ja = new Set(payrollRecords.filter((r) => !isDecimo(r) && !r.is_advance && payrollMonthKey(r) === mes).map((r) => r.employee_id));
+    const faltam = ativos.filter((e) => !ja.has(e.id));
+    const comSalario = faltam.filter((e) => Number(e.base_salary) > 0);
+    const semSalario = faltam.filter((e) => !(Number(e.base_salary) > 0));
+    if (comSalario.length === 0) { showToast(faltam.length ? "Os funcionários que ainda não têm folha estão sem salário cadastrado (aba Funcionários)." : `A folha de ${monthLabelPT(mes)} já está lançada para todos.`, 4000); return; }
+    const pagamento = quintoDiaUtil(y, m - 1);
+    const total = comSalario.reduce((s, e) => s + (Number(e.base_salary) || 0), 0);
+    if (!confirm(`Lançar a folha de ${monthLabelPT(mes)} para ${comSalario.length} funcionário${comSalario.length === 1 ? "" : "s"}?\n\nTotal: ${money(total)} · pagamento em ${fmtDate(pagamento)} (5º dia útil)${semSalario.length ? `\n\nFicam de fora, por não terem salário cadastrado: ${semSalario.map((e) => e.name).join(", ")}` : ""}\n\nDepois você pode editar cada lançamento (horas extras, bônus...).`)) return;
+    const recs = comSalario.map((e) => {
+      const sal = round2(e.base_salary);
+      return {
+        id: uid(), employee_id: e.id, employee_name: e.name, employee_cargo: e.cargo || null,
+        reference_month: mes, payment_date: pagamento, is_advance: false,
+        base_salary: sal, overtime: 0, bonus: 0, other_earnings: 0,
+        inss: 0, irrf: 0, vt_discount: 0, vr_discount: 0, advance: 0, other_discounts: 0,
+        total_earnings: sal, total_discounts: 0, net_total: sal,
+        paid: false, paid_date: null, notes: null,
+      };
+    });
+    const { error } = await supa.from("payroll_records").upsert(recs);
+    if (error) { showToast(`Erro: ${error.message}`); return; }
+    await loadPayrollRecords();
+    logActivity(`Folha de ${monthLabelPT(mes)} lançada para ${recs.length} funcionário${recs.length === 1 ? "" : "s"}`);
+    showToast(`${recs.length} lançamento${recs.length === 1 ? "" : "s"} criado${recs.length === 1 ? "" : "s"}.`);
+  }
+  // Lança a 1ª ou a 2ª parcela do 13º de todos os funcionários ativos que ainda não têm essa parcela (valores sugeridos pelo cálculo; cada um pode ser editado depois)
+  async function handleLaunchDecimoAll(parcela) {
+    const year = decimoYear, kind = parcela === 1 ? "13_1" : "13_2";
+    if (!decimoReady) { showToast("Antes, rode o SQL do 13º (o passo a passo está nesta tela).", 4000); return; }
+    const prazos = decimoPrazos(year);
+    const tem = (e, k) => payrollRecords.find((r) => r.kind === k && r.employee_id === e.id && Number(r.decimo_year) === year);
+    const novos = [], semValor = [];
+    employees.filter((e) => e.active !== false).forEach((e) => {
+      if (tem(e, kind)) return;
+      const avos = avosNoAno(e.admission_date, year);
+      const valor = decimoSugerido(decimoCalc(e.base_salary, avos), parcela, tem(e, "13_1"));
+      if (!(valor > 0)) { semValor.push(e.name); return; }
+      novos.push(buildDecimoRecord({ emp: e, year, kind, avos, salario: e.base_salary, valor, dataPagamento: prazos[kind] }));
+    });
+    if (novos.length === 0) { showToast(semValor.length ? `Nenhum lançamento novo: ${semValor.join(", ")} sem salário cadastrado ou sem meses trabalhados em ${year}.` : `A ${parcela}ª parcela de ${year} já está lançada para todos.`, 4500); return; }
+    const total = novos.reduce((s, r) => s + (Number(r.net_total) || 0), 0);
+    if (!confirm(`Lançar a ${parcela}ª parcela do 13º de ${year} para ${novos.length} funcionário${novos.length === 1 ? "" : "s"}?\n\nTotal: ${money(total)} · pagamento até ${fmtDate(prazos[kind])}${semValor.length ? `\n\nFicam de fora (sem salário cadastrado ou sem meses trabalhados): ${semValor.join(", ")}` : ""}\n\nOs valores são sugestões do cálculo; você pode editar cada um depois${parcela === 2 ? " (e informar INSS e IRRF)" : ""}.`)) return;
+    const { error } = await supa.from("payroll_records").upsert(novos);
+    if (error) {
+      if (decimoColunasFaltando(error)) { setDecimoReady(false); showToast("Falta rodar o SQL do 13º (o passo a passo está nesta tela).", 5000); return; }
+      showToast(`Erro: ${error.message}`); return;
+    }
+    await loadPayrollRecords();
+    logActivity(`13º salário ${year}: ${parcela}ª parcela lançada para ${novos.length} funcionário${novos.length === 1 ? "" : "s"}`);
+    showToast(`${novos.length} lançamento${novos.length === 1 ? "" : "s"} da ${parcela}ª parcela criado${novos.length === 1 ? "" : "s"}.`);
+  }
   function generateReciboPDF(rec) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ compress: true });
@@ -8414,7 +8913,7 @@ function App() {
       doc.setFontSize(11);
       doc.setFont(undefined, "bold");
       doc.setTextColor(20);
-      doc.text(rec.is_advance ? "Adiantamento" : "Recibo de Pagamento", pageWidth - 14, y, { align: "right" });
+      doc.text(isDecimo(rec) ? "Recibo de 13º Salário" : rec.is_advance ? "Adiantamento" : "Recibo de Pagamento", pageWidth - 14, y, { align: "right" });
       doc.setFont(undefined, "normal");
       doc.setFontSize(8);
       doc.setTextColor(90);
@@ -8438,7 +8937,12 @@ function App() {
       y = doc.lastAutoTable.finalY + 3;
 
       // Tabela de proventos/descontos
-      const itens = [
+      const itens = (isDecimo(rec) ? [
+        // 13º: o salário mensal é só a base do cálculo; o que entra como vencimento é o valor da parcela
+        [rec.kind === "13_1" ? "013" : "014", `13º salário ${rec.decimo_year || ""} - ${rec.kind === "13_1" ? "1ª" : "2ª"} parcela${rec.decimo_avos != null ? ` (${rec.decimo_avos}/12 avos)` : ""}`, rec.total_earnings, null],
+        ["101", "INSS sobre o 13º salário", null, rec.inss],
+        ["102", "IRRF sobre o 13º salário", null, rec.irrf],
+      ] : [
         ["001", "Salário base", rec.base_salary, null],
         ["002", "Horas extras", rec.overtime, null],
         ["003", "Bônus / comissão", rec.bonus, null],
@@ -8449,7 +8953,7 @@ function App() {
         ["104", "Vale refeição", null, rec.vr_discount],
         ["105", "Adiantamento", null, rec.advance],
         ["106", "Outros descontos", null, rec.other_discounts],
-      ].filter((it) => Number(it[2]) > 0 || Number(it[3]) > 0);
+      ]).filter((it) => Number(it[2]) > 0 || Number(it[3]) > 0);
 
       doc.autoTable({
         startY: y,
@@ -8479,7 +8983,9 @@ function App() {
 
       doc.setFontSize(7.5);
       doc.setTextColor(70);
-      const declaracao = `Declaro ter recebido a importância líquida discriminada neste recibo, referente a ${rec.is_advance ? "vale/adiantamento" : "pagamento de salário"} do período de ${rec.reference_month || "-"}.`;
+      const declaracao = isDecimo(rec)
+        ? `Declaro ter recebido a importância líquida discriminada neste recibo, referente à ${rec.kind === "13_1" ? "1ª" : "2ª"} parcela do 13º salário de ${rec.decimo_year || "-"}${rec.decimo_avos != null ? ` (${rec.decimo_avos}/12 avos, sobre o salário base de ${fmtMoney(rec.base_salary)})` : ""}.`
+        : `Declaro ter recebido a importância líquida discriminada neste recibo, referente a ${rec.is_advance ? "vale/adiantamento" : "pagamento de salário"} do período de ${rec.reference_month || "-"}.`;
       doc.text(doc.splitTextToSize(declaracao, pageWidth - 28), 14, y);
       y += 10;
 
@@ -8526,22 +9032,23 @@ function App() {
       window.open(url, "_blank");
     } catch (e) { showToast("Erro ao gerar o recibo."); console.error(e); }
   }
-  function exportPayrollExcel(fullList) {
+  function exportPayrollExcel(fullList, nomeArquivo) {
     const list = [...fullList].sort((a, b) => (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
     const rows = list.map((r) => ({
-      "Funcionário": r.employee_name, "Cargo": r.employee_cargo || "-", "Tipo": r.is_advance ? "Vale" : "Folha",
+      "Funcionário": r.employee_name, "Cargo": r.employee_cargo || "-", "Tipo": payrollTipoLabel(r),
       "Referência": r.reference_month || "-", "Pagamento": fmtDate(r.payment_date),
       "Salário base": r.base_salary, "Horas extras": r.overtime, "Bônus": r.bonus, "Outros proventos": r.other_earnings,
       "Total proventos": r.total_earnings,
       "INSS": r.inss, "IRRF": r.irrf, "VT": r.vt_discount, "VR": r.vr_discount, "Adiantamento": r.advance, "Outros descontos": r.other_discounts,
       "Total descontos": r.total_discounts, "Líquido": r.net_total, "Situação": r.paid ? "Pago" : "Pendente",
+      "Avos (13º)": isDecimo(r) && r.decimo_avos != null ? r.decimo_avos : "",
     }));
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb, ws, "Folha de Pagamento");
-    XLSX.writeFile(wb, `folha-pagamento-${todayStr()}.xlsx`);
+    XLSX.writeFile(wb, `${nomeArquivo || `folha-pagamento-${todayStr()}`}.xlsx`);
   }
-  function exportPayrollPDF(fullList) {
+  function exportPayrollPDF(fullList, opts = {}) {
     try {
     const list = (fullList || []).filter((r) => !r.paid).sort((a, b) => (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
     if (list.length === 0) {
@@ -8553,13 +9060,13 @@ function App() {
     try { doc.addImage(LOGO_DATA_URI, "PNG", 14, 10, 42, 12.5); } catch (e) {}
     doc.setFontSize(13);
     doc.setTextColor(30);
-    doc.text("Folha de Pagamento - Em aberto", 14, 32);
+    doc.text(opts.titulo || "Folha de Pagamento - Em aberto", 14, 32);
     doc.setFontSize(9);
     doc.setTextColor(100);
     doc.text(`Emitido em ${new Date().toLocaleDateString("pt-BR")}`, 14, 38);
 
     const body = list.map((r) => [
-      r.employee_name || "-", r.is_advance ? "Vale" : "Folha", r.reference_month || "-", fmtDate(r.payment_date),
+      r.employee_name || "-", payrollTipoLabel(r), r.reference_month || "-", fmtDate(r.payment_date),
       fmtMoney(r.total_earnings), fmtMoney(r.total_discounts), fmtMoney(r.net_total), r.paid ? "Pago" : "Pendente",
     ]);
     const totalLiquido = list.reduce((s, r) => s + (Number(r.net_total) || 0), 0);
@@ -8593,7 +9100,7 @@ function App() {
       qtdTxt: (b) => `${b.qtd} pagamento${b.qtd === 1 ? "" : "s"} em aberto`,
       semChave: () => "Sem chave PIX: cadastre a chave do funcionário (Folha de Pagamento > Funcionários) para gerar o QR Code.",
     });
-    doc.save(`folha-pagamento-${todayStr()}.pdf`);
+    doc.save(`${opts.arquivo || `folha-pagamento-${todayStr()}`}.pdf`);
     } catch (e) {
       console.error("Erro ao gerar PDF da folha:", e);
       alert("Não foi possível gerar o PDF: " + (e?.message || e));
@@ -13768,167 +14275,309 @@ function App() {
           )}
 
           {effectiveTab === "folha" && (
-            <div>
+            <div data-folha-root="1">
               {(() => {
-                const payrollRecordsSorted = [...payrollRecords].sort((a, b) => (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
-                const pagamentos = payrollRecordsSorted.filter((r) => !r.is_advance);
-                const vales = payrollRecordsSorted.filter((r) => r.is_advance);
-                const totalPendente = payrollRecordsSorted.filter((r) => !r.paid).reduce((s, r) => s + (Number(r.net_total) || 0), 0);
-                const totalPago = payrollRecordsSorted.filter((r) => r.paid).reduce((s, r) => s + (Number(r.net_total) || 0), 0);
-                const mask = money;
-                const activeEmployees = employees.filter((e) => e.active !== false);
-                return (
-                  <>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                        <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Funcionários ativos</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{activeEmployees.length}</div>
-                      </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                        <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.warn }}>A pagar</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{mask(totalPendente)}</div>
-                      </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                        <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Já pago</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{mask(totalPago)}</div>
-                      </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                        <div className="text-xs font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Lançamentos</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{pagamentos.length} folha · {vales.length} vale</div>
-                      </div>
-                    </div>
+                const hoje = todayStr();
+                const mesAtual = monthKey(new Date());
+                const anoAtual = new Date().getFullYear();
+                const mesDe = (r) => payrollMonthKey(r) || mesAtual;
+                const KORD = { folha: 0, "13_1": 1, "13_2": 2, vale: 3 };
+                const cmp = (a, b) => ((a.paid ? 1 : 0) - (b.paid ? 1 : 0)) || (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR") || (KORD[payrollKind(a)] - KORD[payrollKind(b)]);
+                const soma = (list) => round2(list.reduce((s, r) => s + (Number(r.net_total) || 0), 0));
+                const abrirForm = (inicial) => { setEditingPayroll(inicial); setShowPayrollForm(true); };
+                const fecharForm = () => { setShowPayrollForm(false); setEditingPayroll(null); };
+                const hCard = {
+                  togglePaid: handleTogglePayrollPaid, upload: handleUploadPayrollReceipt, recibo: previewReciboPDF,
+                  edit: (r) => abrirForm(r), del: handleDeletePayroll, showSignature: (sig) => setSignatureModal(sig),
+                  sendWhatsApp: handleSendPayrollReceiptWhatsApp, copyLink: handleCopyPayrollReceiptLink, removeReceipt: handleRemovePayrollReceipt,
+                  lancar: (emp, kind) => abrirForm({ employee_id: emp.id, kind, decimo_year: decimoYear }),
+                };
+                const botaoNav = { borderColor: COLORS.cardBorder, color: COLORS.ink, background: "rgba(255,255,255,0.05)" };
+                const btnGhost = "px-3 py-2 rounded-xl text-xs font-semibold border whitespace-nowrap disabled:opacity-40";
+                const gradBrand = `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})`;
+                const heroBox = (cor) => ({ borderColor: rgba(cor, 0.35), background: `radial-gradient(120% 160% at 0% 0%, ${rgba(cor, 0.28)}, transparent 55%), linear-gradient(160deg, ${COLORS.card}, #1B2A47)` });
+                const kpiBox = { background: "rgba(0,0,0,0.22)", border: `1px solid ${COLORS.cardBorder}` };
+                const formBlock = (
+                  <FormHost item={editingPayroll}>
+                    <PayrollForm initial={editingPayroll} employees={employees} records={payrollRecords} defaultMonth={payrollMonth} decimoReady={decimoReady}
+                      onCopySql={handleCopySql13} onRecheck={handleRecheckDecimo} onSave={handleSavePayroll} onCancel={fecharForm} />
+                  </FormHost>
+                );
 
-                    <div className="flex items-center gap-1.5 mb-4 flex-wrap">
-                      <button onClick={() => setPayrollSubTab("pagamentos")} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: payrollSubTab === "pagamentos" ? COLORS.brand : "transparent", color: payrollSubTab === "pagamentos" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>💼 Pagamentos</button>
-                      <button onClick={() => setPayrollSubTab("funcionarios")} className="px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: payrollSubTab === "funcionarios" ? COLORS.brand : "transparent", color: payrollSubTab === "funcionarios" ? "#fff" : COLORS.inkMuted, border: `1px solid ${COLORS.cardBorder}` }}>👥 Funcionários</button>
-                      <div className="ml-auto flex gap-2">
-                        {payrollSubTab === "pagamentos" && payrollRecordsSorted.length > 0 && (
-                          <>
-                            <button onClick={() => exportPayrollExcel(payrollRecordsSorted)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
-                            <button onClick={() => exportPayrollPDF(payrollRecordsSorted)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
-                          </>
-                        )}
-                        <button onClick={() => { if (payrollSubTab === "pagamentos") { setEditingPayroll(null); setShowPayrollForm(true); } else { setEditingEmployee(null); setShowEmployeeForm(true); } }}
-                          className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>
-                          ＋ {payrollSubTab === "pagamentos" ? "Novo pagamento" : "Novo funcionário"}
+                // ---------- abas: Folha do mês | 13º salário | Funcionários ----------
+                const tabBar = (
+                  <div role="tablist" aria-label="Seções da folha de pagamento" className="grid grid-cols-3 gap-1 p-1 rounded-2xl mb-4 w-full sm:inline-grid sm:w-auto" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${COLORS.cardBorder}` }}>
+                    {[["pagamentos", "💼", "Folha do mês"], ["decimo", "🎁", "13º salário"], ["funcionarios", "👥", "Funcionários"]].map(([id, ic, nome]) => {
+                      const ativo = payrollSubTab === id;
+                      return (
+                        <button key={id} role="tab" aria-selected={ativo} data-folha-tab={id} onClick={() => setPayrollSubTab(id)}
+                          className="flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-2 py-2 sm:px-5 rounded-xl transition"
+                          style={{ background: ativo ? gradBrand : "transparent", color: ativo ? "#fff" : COLORS.inkMuted, boxShadow: ativo ? "0 6px 16px rgba(124,92,255,0.35)" : "none" }}>
+                          <span className="text-base sm:text-sm leading-none">{ic}</span>
+                          <span className="text-[11px] sm:text-sm font-semibold whitespace-nowrap">{nome}</span>
                         </button>
-                      </div>
-                    </div>
+                      );
+                    })}
+                  </div>
+                );
 
-                    {payrollSubTab === "pagamentos" && (
-                      <>
-                        {showPayrollForm && <FormHost item={editingPayroll}><PayrollForm initial={editingPayroll} employees={employees} onSave={handleSavePayroll} onCancel={() => { setShowPayrollForm(false); setEditingPayroll(null); }} /></FormHost>}
-                        {!showPayrollForm && (() => {
-                          const abertoList = payrollRecordsSorted.filter((r) => !r.paid);
-                          const pagoList = payrollRecordsSorted.filter((r) => r.paid);
-                          const renderRow = (r, i) => {
-                            const emp = employees.find((e) => e.id === r.employee_id);
-                            return (
-                            <div key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                              <div className="flex items-center gap-3">
-                                <Avatar name={r.employee_name || "?"} size={34} />
-                                <div>
-                                  <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
-                                    {r.employee_name}
-                                    {r.employee_cargo && <span className="text-xs font-normal" style={{ color: COLORS.inkMuted }}>{r.employee_cargo}</span>}
-                                    <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: r.is_advance ? COLORS.warn : COLORS.brandLight, background: r.is_advance ? "rgba(245,158,11,0.15)" : "rgba(124,92,255,0.15)" }}>{r.is_advance ? "💵 VALE" : "💼 FOLHA"}</span>
-                                  </div>
-                                  <div className="text-xs" style={{ color: COLORS.inkMuted }}>
-                                    Ref. {r.reference_month || "-"} · pagamento {fmtDate(r.payment_date)} · líquido <b style={{ color: COLORS.ink }}>{mask(r.net_total)}</b>
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <button onClick={() => previewReciboPDF(r)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>📄 Gerar recibo</button>
-                                <label className="px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>
-                                  📎 {r.receipt_file_url ? "Trocar recibo" : "Anexar recibo"}
-                                  <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files[0]; e.target.value = ""; if (f) handleUploadPayrollReceipt(r, f); }} />
-                                </label>
-                                <PaidChip paid={!!r.paid} onClick={() => handleTogglePayrollPaid(r)} labelOpen="○ Marcar como pago" />
-                                <button onClick={() => { setEditingPayroll(r); setShowPayrollForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
-                                <button onClick={() => handleDeletePayroll(r.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
-                              </div>
-                              {r.receipt_file_url && (
-                                <div className="w-full mt-1 pt-2 flex items-center gap-2 flex-wrap text-xs" style={{ borderTop: `1px dashed ${COLORS.cardBorder}` }}>
-                                  <a href={r.receipt_file_url} target="_blank" className="underline font-semibold" style={{ color: COLORS.brandLight }}>📎 ver recibo original</a>
-                                  {r.receipt_signed ? (
-                                    <>
-                                      <span className="font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.success, background: "rgba(34,197,94,0.12)" }}>
-                                        ✓ Assinado em {fmtDateTime(r.receipt_signed_at)}
-                                      </span>
-                                      {r.receipt_signed_file_url ? (
-                                        <a href={r.receipt_signed_file_url} target="_blank" className="underline font-bold" style={{ color: COLORS.success }}>📄 ver recibo assinado</a>
-                                      ) : r.receipt_signature && (
-                                        <button onClick={() => setSignatureModal(r.receipt_signature)} className="underline font-semibold" style={{ color: COLORS.inkMuted }}>ver assinatura</button>
-                                      )}
-                                    </>
-                                  ) : (
-                                    <>
-                                      <span className="font-bold px-2 py-0.5 rounded-full" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.12)" }}>aguardando assinatura</span>
-                                      <button onClick={() => handleSendPayrollReceiptWhatsApp(r, emp)} className="px-2 py-1 rounded-lg font-semibold border" style={{ borderColor: COLORS.wa, color: COLORS.wa }}>💬 Enviar p/ assinar</button>
-                                      <button onClick={() => handleCopyPayrollReceiptLink(r)} className="px-2 py-1 rounded-lg font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>🔗 copiar link</button>
-                                    </>
-                                  )}
-                                  <button onClick={() => handleRemovePayrollReceipt(r)} className="px-2 py-1 rounded-lg font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️ remover recibo</button>
-                                </div>
-                              )}
+                // ---------- FOLHA DO MÊS ----------
+                const viewMes = (() => {
+                  const doMes = payrollRecords.filter((r) => mesDe(r) === payrollMonth);
+                  const totalMes = soma(doMes);
+                  const pagoMes = soma(doMes.filter((r) => r.paid));
+                  const abertoMes = round2(totalMes - pagoMes);
+                  const qtdPagos = doMes.filter((r) => r.paid).length;
+                  const pct = totalMes > 0 ? Math.round((pagoMes / totalMes) * 100) : 0;
+                  const decMes = soma(doMes.filter(isDecimo));
+                  const atrasadosMes = doMes.filter((r) => !r.paid && r.payment_date && r.payment_date < hoje);
+                  const atrasadosOutros = payrollRecords.filter((r) => !r.paid && r.payment_date && r.payment_date < hoje && mesDe(r) !== payrollMonth);
+                  const filtrados = doMes.filter((r) => payrollStatus === "todos" || (payrollStatus === "pago" ? !!r.paid : !r.paid)).sort(cmp);
+                  const [py, pm] = payrollMonth.split("-").map(Number);
+                  const quintoMes = quintoDiaUtil(py, pm - 1);
+                  const meses = [...new Set([...payrollRecords.map(mesDe), mesAtual, addMonthsKey(mesAtual, 1), payrollMonth])].sort().reverse();
+                  const plural = (n, um, varios) => (n === 1 ? um : varios);
+                  return (
+                    <>
+                      <div data-folha-hero="mes" className="rounded-3xl border p-4 sm:p-5 mb-4" style={heroBox(COLORS.brand)}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: COLORS.brandLight }}>Mês da folha</div>
+                            <div className="flex items-center gap-1.5 sm:gap-2 mt-1">
+                              <button type="button" aria-label="Mês anterior" data-mes-ant="1" onClick={() => setPayrollMonth((m) => addMonthsKey(m, -1))} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border text-xl leading-none flex items-center justify-center shrink-0" style={botaoNav}>‹</button>
+                              <label className="relative cursor-pointer min-w-0">
+                                <span data-mes-titulo="1" className="block text-[17px] sm:text-3xl font-extrabold leading-tight px-1 whitespace-nowrap" style={{ color: COLORS.ink }}><span className="sm:hidden">{monthTitlePT(payrollMonth).replace(" de ", " ")}</span><span className="hidden sm:inline">{monthTitlePT(payrollMonth)}</span></span>
+                                <select aria-label="Escolher o mês" value={payrollMonth} onChange={(e) => setPayrollMonth(e.target.value)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                                  {meses.map((m) => <option key={m} value={m}>{monthTitlePT(m)}</option>)}
+                                </select>
+                              </label>
+                              <button type="button" aria-label="Próximo mês" data-mes-prox="1" onClick={() => setPayrollMonth((m) => addMonthsKey(m, 1))} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border text-xl leading-none flex items-center justify-center shrink-0" style={botaoNav}>›</button>
+                              {payrollMonth !== mesAtual && <button type="button" data-mes-hoje="1" onClick={() => setPayrollMonth(mesAtual)} className="px-3 py-1.5 rounded-full text-xs font-bold border shrink-0" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>Voltar para hoje</button>}
                             </div>
-                          );};
+                            <div className="text-xs mt-1.5" style={{ color: COLORS.inkMuted }}>5º dia útil: <b style={{ color: COLORS.ink }}>{fmtDate(quintoMes)}</b> · {doMes.length} lançamento{plural(doMes.length, "", "s")}</div>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button disabled={doMes.length === 0} onClick={() => exportPayrollExcel(doMes, `folha-pagamento-${payrollMonth}`)} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
+                            <button disabled={doMes.length === 0} onClick={() => exportPayrollPDF(doMes, { titulo: `Folha de Pagamento - ${monthTitlePT(payrollMonth)} - Em aberto`, arquivo: `folha-pagamento-${payrollMonth}` })} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                            <button data-lancar-folha="1" onClick={handleGeneratePayrollMonth} className={btnGhost} style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>⚡ Lançar folha do mês</button>
+                            <button data-novo-lancamento="1" onClick={() => abrirForm(null)} className="px-4 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: gradBrand }}>＋ Novo lançamento</button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-2 xl:gap-3 mt-4">
+                          <div className="rounded-2xl px-3.5 py-2.5 xl:p-3.5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 xl:block" style={kpiBox}>
+                            <div className="text-[10px] font-bold uppercase tracking-wide whitespace-nowrap col-start-1 row-start-1" style={{ color: COLORS.brandLight }}>Total do mês</div>
+                            <div data-kpi="total" className={"text-lg xl:text-2xl font-extrabold col-start-2 row-start-1 text-right xl:text-left" + (decMes > 0 ? " row-span-2" : "")} style={{ color: COLORS.ink }}>{money(totalMes)}</div>
+                            {decMes > 0 && <div className="text-[11px] col-start-1 row-start-2" style={{ color: COLORS.inkMuted }}>inclui {money(decMes)} de 13º</div>}
+                          </div>
+                          <div className="rounded-2xl px-3.5 py-2.5 xl:p-3.5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 xl:block" style={kpiBox}>
+                            <div className="text-[10px] font-bold uppercase tracking-wide whitespace-nowrap col-start-1 row-start-1" style={{ color: COLORS.success }}>Já pago</div>
+                            <div data-kpi="pago" className="text-lg xl:text-2xl font-extrabold col-start-2 row-start-1 text-right xl:text-left" style={{ color: COLORS.ink }}>{money(pagoMes)}</div>
+                          </div>
+                          <div className="rounded-2xl px-3.5 py-2.5 xl:p-3.5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 xl:block" style={kpiBox}>
+                            <div className="text-[10px] font-bold uppercase tracking-wide whitespace-nowrap col-start-1 row-start-1" style={{ color: abertoMes > 0 ? COLORS.warn : COLORS.success }}>A pagar</div>
+                            <div data-kpi="aberto" className={"text-lg xl:text-2xl font-extrabold col-start-2 row-start-1 text-right xl:text-left" + (atrasadosMes.length > 0 ? " row-span-2" : "")} style={{ color: COLORS.ink }}>{money(abertoMes)}</div>
+                            {atrasadosMes.length > 0 && <div className="text-[11px] font-semibold col-start-1 row-start-2" style={{ color: COLORS.danger }}>{atrasadosMes.length} em atraso</div>}
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between text-[11px] mb-1" style={{ color: COLORS.inkMuted }}>
+                            <span data-progresso-txt="1">{qtdPagos} de {doMes.length} pago{plural(doMes.length, "", "s")}</span>
+                            <span data-progresso-pct="1" className="font-bold" style={{ color: COLORS.ink }}>{pct}%</span>
+                          </div>
+                          <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.08)" }}>
+                            <div data-progresso-barra="1" className="h-full rounded-full" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${COLORS.success}, #2DD4BF)`, transition: "width .4s ease" }} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {atrasadosOutros.length > 0 && (() => {
+                        const maisAntigo = atrasadosOutros.map(mesDe).sort()[0];
+                        return (
+                          <div data-folha-atraso="1" className="rounded-2xl border p-3 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: rgba(COLORS.danger, 0.5), background: rgba(COLORS.danger, 0.08) }}>
+                            <span className="text-sm" style={{ color: COLORS.ink }}>⚠️ <b>{atrasadosOutros.length}</b> pagamento{plural(atrasadosOutros.length, "", "s")} em atraso em outros meses ({money(soma(atrasadosOutros))}).</span>
+                            <button data-ver-atraso="1" onClick={() => { setPayrollMonth(maisAntigo); setPayrollStatus("aberto"); }} className="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.danger, color: COLORS.danger }}>Ver {monthLabelPT(maisAntigo)}</button>
+                          </div>
+                        );
+                      })()}
+
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {[["todos", "Todos", doMes.length], ["aberto", "Em aberto", doMes.length - qtdPagos], ["pago", "Pagos", qtdPagos]].map(([id, nome, n]) => {
+                          const ativo = payrollStatus === id;
                           return (
+                            <button key={id} data-status-chip={id} onClick={() => setPayrollStatus(id)} className="px-3.5 py-1.5 rounded-full text-xs font-bold border transition"
+                              style={{ borderColor: ativo ? COLORS.brandLight : COLORS.cardBorder, background: ativo ? rgba(COLORS.brand, 0.18) : "transparent", color: ativo ? COLORS.brandLight : COLORS.inkMuted }}>
+                              {nome} <span style={{ opacity: 0.8 }}>({n})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {filtrados.length === 0 ? (
+                        <div data-folha-vazio="1" className="rounded-2xl border p-8 sm:p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                          <div className="text-4xl mb-2">{doMes.length === 0 ? "🗓️" : payrollStatus === "aberto" ? "🎉" : "⏳"}</div>
+                          <div className="text-sm font-semibold" style={{ color: COLORS.ink }}>
+                            {doMes.length === 0 ? `Nenhum lançamento em ${monthTitlePT(payrollMonth)}.` : payrollStatus === "aberto" ? "Tudo pago neste mês!" : "Nenhum pagamento já pago neste mês."}
+                          </div>
+                          {doMes.length === 0 && (
                             <>
-                              <div className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                                <div className="px-4 py-2.5 text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.warn, background: "rgba(245,158,11,0.08)", borderBottom: `1px solid ${COLORS.cardBorder}` }}>🟡 Em aberto ({abertoList.length})</div>
-                                {abertoList.length === 0 ? (
-                                  <div className="p-10 text-center"><div className="text-3xl mb-2">👥</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pagamento em aberto.</div></div>
-                                ) : abertoList.map(renderRow)}
-                              </div>
-                              <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                                <button onClick={() => setShowPaidPayroll((v) => !v)} className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.success, background: "rgba(34,197,94,0.08)" }}>
-                                  <span>✅ Pago ({pagoList.length})</span>
-                                  <span>{showPaidPayroll ? "▲ ocultar" : "▼ mostrar"}</span>
-                                </button>
-                                {showPaidPayroll && (pagoList.length === 0 ? (
-                                  <div className="p-10 text-center"><div className="text-3xl mb-2">👥</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pagamento já pago.</div></div>
-                                ) : pagoList.map(renderRow))}
+                              <div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>Lance a folha de todos de uma vez ou crie um lançamento avulso (vale, 13º...).</div>
+                              <div className="mt-4 flex justify-center gap-2 flex-wrap">
+                                <button onClick={handleGeneratePayrollMonth} className={btnGhost} style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>⚡ Lançar folha do mês</button>
+                                <button onClick={() => abrirForm(null)} className="px-4 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: gradBrand }}>＋ Novo lançamento</button>
                               </div>
                             </>
-                          );
-                        })()}
-                      </>
-                    )}
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
+                          {filtrados.map((r) => <PayrollCard key={r.id} r={r} emp={employees.find((e) => e.id === r.employee_id)} money={money} hoje={hoje} h={hCard} />)}
+                        </div>
+                      )}
+                    </>
+                  );
+                })();
 
-                    {payrollSubTab === "funcionarios" && (
-                      <>
-                        {showEmployeeForm && <FormHost item={editingEmployee}><EmployeeForm initial={editingEmployee} onSave={handleSaveEmployee} onCancel={() => { setShowEmployeeForm(false); setEditingEmployee(null); }} /></FormHost>}
-                        {!showEmployeeForm && (
-                          <div className="rounded-2xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                            {employees.length === 0 ? (
-                              <div className="p-10 text-center"><div className="text-3xl mb-2">👥</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum funcionário cadastrado ainda.</div></div>
-                            ) : [...employees].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR")).map((e, i) => (
-                              <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none", opacity: e.active === false ? 0.5 : 1 }}>
-                                <div className="flex items-center gap-3">
-                                  <Avatar name={e.name} size={34} />
-                                  <div>
-                                    <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
-                                      {e.name}
-                                      {e.active === false && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.danger, background: "rgba(239,68,68,0.15)" }}>INATIVO</span>}
-                                    </div>
-                                    <div className="text-xs" style={{ color: COLORS.inkMuted }}>
-                                      {e.cargo || "sem cargo"}{e.base_salary ? ` · salário ${mask(e.base_salary)}` : ""}{e.admission_date ? ` · desde ${fmtDate(e.admission_date)}` : ""}
-                                    </div>
-                                    {e.pix_key && <div className="text-xs flex items-center gap-1" style={{ color: COLORS.success }}>🔑 PIX: {e.pix_key}</div>}
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <button onClick={() => { setEditingEmployee(e); setShowEmployeeForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️ Editar</button>
-                                  <button onClick={() => handleDeleteEmployee(e.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
-                                </div>
-                              </div>
-                            ))}
+                // ---------- 13º SALÁRIO ----------
+                const view13 = (() => {
+                  const prazos = decimoPrazos(decimoYear);
+                  const recs13 = payrollRecords.filter((r) => isDecimo(r) && Number(r.decimo_year) === Number(decimoYear));
+                  const rec13 = (empId, kind) => recs13.find((r) => r.employee_id === empId && r.kind === kind);
+                  const ids = new Set(employees.map((e) => e.id));
+                  const orfaos = [];   // funcionário que foi removido mas ainda tem 13º lançado: continua aparecendo
+                  recs13.forEach((r) => { if (!ids.has(r.employee_id) && !orfaos.some((o) => o.id === r.employee_id)) orfaos.push({ id: r.employee_id, name: r.employee_name, cargo: r.employee_cargo, active: false, base_salary: r.base_salary }); });
+                  const pessoas = [...employees.filter((e) => e.active !== false || recs13.some((r) => r.employee_id === e.id)), ...orfaos].sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR"));
+                  const previsto = round2(pessoas.reduce((s, e) => {
+                    const r1 = rec13(e.id, "13_1"), r2 = rec13(e.id, "13_2");
+                    const sal = Number(r1?.base_salary || r2?.base_salary || e.base_salary) || 0;
+                    const av = r1?.decimo_avos != null ? Number(r1.decimo_avos) : r2?.decimo_avos != null ? Number(r2.decimo_avos) : avosNoAno(e.admission_date, decimoYear);
+                    return s + decimoCalc(sal, av).bruto;
+                  }, 0));
+                  const lancado = soma(recs13);
+                  const pago13 = soma(recs13.filter((r) => r.paid));
+                  const aberto13 = round2(lancado - pago13);
+                  const ativos = employees.filter((e) => e.active !== false);
+                  const faltam = (kind) => ativos.filter((e) => !rec13(e.id, kind)).length;
+                  const tudoPago = (kind) => pessoas.length > 0 && pessoas.every((e) => rec13(e.id, kind)?.paid);
+                  const anos = [...new Set([anoAtual - 1, anoAtual, anoAtual + 1, ...payrollRecords.filter(isDecimo).map((r) => Number(r.decimo_year)), Number(decimoYear)].filter(Boolean))].sort((a, b) => b - a);
+                  return (
+                    <>
+                      {!decimoReady && <div className="mb-4"><Sql13Aviso onCopy={handleCopySql13} onRecheck={handleRecheckDecimo} /></div>}
+                      <div data-folha-hero="13" className="rounded-3xl border p-4 sm:p-5 mb-4" style={heroBox("#2DD4BF")}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "#2DD4BF" }}>13º salário</div>
+                            <div className="flex items-center gap-1.5 sm:gap-2 mt-1">
+                              <button type="button" aria-label="Ano anterior" data-ano-ant="1" onClick={() => setDecimoYear((y) => y - 1)} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border text-xl leading-none flex items-center justify-center shrink-0" style={botaoNav}>‹</button>
+                              <label className="relative cursor-pointer">
+                                <span data-ano-titulo="1" className="block text-xl sm:text-3xl font-extrabold leading-tight px-1" style={{ color: COLORS.ink }}>{decimoYear}</span>
+                                <select aria-label="Escolher o ano" value={decimoYear} onChange={(e) => setDecimoYear(Number(e.target.value))} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                                  {anos.map((y) => <option key={y} value={y}>{y}</option>)}
+                                </select>
+                              </label>
+                              <button type="button" aria-label="Próximo ano" data-ano-prox="1" onClick={() => setDecimoYear((y) => y + 1)} className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border text-xl leading-none flex items-center justify-center shrink-0" style={botaoNav}>›</button>
+                              {decimoYear !== anoAtual && <button type="button" data-ano-hoje="1" onClick={() => setDecimoYear(anoAtual)} className="px-3 py-1.5 rounded-full text-xs font-bold border shrink-0" style={{ borderColor: "#2DD4BF", color: "#2DD4BF" }}>Voltar para {anoAtual}</button>}
+                            </div>
+                            <div className="text-xs mt-1.5" style={{ color: COLORS.inkMuted }}>{recs13.length} lançamento{recs13.length === 1 ? "" : "s"} · {pessoas.length} pessoa{pessoas.length === 1 ? "" : "s"}</div>
                           </div>
-                        )}
-                      </>
-                    )}
+                          <div className="flex flex-wrap gap-2">
+                            <button disabled={recs13.length === 0} onClick={() => exportPayrollExcel(recs13, `decimo-terceiro-${decimoYear}`)} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
+                            <button disabled={recs13.length === 0} onClick={() => exportPayrollPDF(recs13, { titulo: `13º Salário ${decimoYear} - Em aberto`, arquivo: `decimo-terceiro-${decimoYear}` })} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                            <button data-novo-13="1" onClick={() => abrirForm({ kind: "13_1", decimo_year: decimoYear })} className="px-4 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: gradBrand }}>＋ Novo 13º</button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
+                          {[1, 2].map((n) => {
+                            const kind = n === 1 ? "13_1" : "13_2";
+                            const info = PAYROLL_KIND_INFO[kind];
+                            const falta = faltam(kind);
+                            const quitada = tudoPago(kind);
+                            const atras = !quitada && prazos[kind] < hoje;
+                            return (
+                              <div key={n} data-decimo-prazo={kind} className="rounded-2xl p-3.5" style={kpiBox}>
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div>
+                                    <div className="text-xs font-bold uppercase tracking-wide" style={{ color: info.color }}>{n}ª parcela</div>
+                                    <div className="text-sm font-bold mt-0.5" style={{ color: COLORS.ink }}>até {fmtDate(prazos[kind])}</div>
+                                    <div className="text-[11px] font-semibold" style={{ color: quitada ? COLORS.success : atras ? COLORS.danger : COLORS.inkMuted }}>{quitada ? "✓ tudo pago" : prazoTexto(prazos[kind], hoje)}</div>
+                                  </div>
+                                  <button data-lancar-todos={n} disabled={falta === 0 || !decimoReady} onClick={() => handleLaunchDecimoAll(n)} className="px-3 py-2 rounded-xl text-xs font-bold border disabled:opacity-40" style={{ borderColor: info.color, color: info.color }}>⚡ Lançar para todos{falta > 0 ? ` (${falta})` : ""}</button>
+                                </div>
+                                <div className="text-[11px] mt-2" style={{ color: COLORS.inkFaint }}>{n === 1 ? "50% do 13º (proporcional aos meses trabalhados), sem descontos." : "O restante do 13º, com os descontos de INSS e IRRF."}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="grid grid-cols-1 xl:grid-cols-3 gap-2 xl:gap-3 mt-3">
+                          <div className="rounded-2xl px-3.5 py-2.5 xl:p-3 flex flex-wrap xl:block items-center justify-between gap-x-3 gap-y-0.5" style={kpiBox}>
+                            <div className="text-[10px] font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: "#2DD4BF" }}>Previsto no ano</div>
+                            <div data-kpi13="previsto" className="text-lg xl:text-xl font-extrabold" style={{ color: COLORS.ink }}>{money(previsto)}</div>
+                          </div>
+                          <div className="rounded-2xl px-3.5 py-2.5 xl:p-3 flex flex-wrap xl:block items-center justify-between gap-x-3 gap-y-0.5" style={kpiBox}>
+                            <div className="text-[10px] font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: COLORS.success }}>Já pago</div>
+                            <div data-kpi13="pago" className="text-lg xl:text-xl font-extrabold" style={{ color: COLORS.ink }}>{money(pago13)}</div>
+                          </div>
+                          <div className="rounded-2xl px-3.5 py-2.5 xl:p-3 flex flex-wrap xl:block items-center justify-between gap-x-3 gap-y-0.5" style={kpiBox}>
+                            <div className="text-[10px] font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: aberto13 > 0 ? COLORS.warn : COLORS.success }}>A pagar</div>
+                            <div data-kpi13="aberto" className="text-lg xl:text-xl font-extrabold" style={{ color: COLORS.ink }}>{money(aberto13)}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {pessoas.length === 0 ? (
+                        <div className="rounded-2xl border p-8 sm:p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                          <div className="text-4xl mb-2">🎁</div>
+                          <div className="text-sm font-semibold" style={{ color: COLORS.ink }}>Cadastre os funcionários para calcular o 13º.</div>
+                          <button onClick={() => setPayrollSubTab("funcionarios")} className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: gradBrand }}>👥 Ir para Funcionários</button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                          {pessoas.map((e) => <DecimoCard key={e.id} emp={e} year={Number(decimoYear)} rec1={rec13(e.id, "13_1")} rec2={rec13(e.id, "13_2")} money={money} hoje={hoje} h={hCard} podeLancar={decimoReady} />)}
+                        </div>
+                      )}
+                    </>
+                  );
+                })();
+
+                // ---------- FUNCIONÁRIOS ----------
+                const viewEquipe = (() => {
+                  const ativos = employees.filter((e) => e.active !== false);
+                  const inativos = employees.length - ativos.length;
+                  const folhaBase = round2(ativos.reduce((s, e) => s + (Number(e.base_salary) || 0), 0));
+                  const ordenados = [...employees].sort((a, b) => ((a.active === false ? 1 : 0) - (b.active === false ? 1 : 0)) || (a.name || "").localeCompare(b.name || "", "pt-BR"));
+                  return (
+                    <>
+                      <div data-folha-hero="equipe" className="rounded-3xl border p-4 sm:p-5 mb-4" style={heroBox(COLORS.info)}>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "#7DB5FF" }}>Equipe</div>
+                            <div data-equipe-titulo="1" className="text-xl sm:text-3xl font-extrabold leading-tight mt-1" style={{ color: COLORS.ink }}>{ativos.length} funcionário{ativos.length === 1 ? "" : "s"} ativo{ativos.length === 1 ? "" : "s"}</div>
+                            <div className="text-xs mt-1.5" style={{ color: COLORS.inkMuted }}>Folha mensal base: <b style={{ color: COLORS.ink }}>{money(folhaBase)}</b>{inativos > 0 ? ` · ${inativos} inativo${inativos === 1 ? "" : "s"}` : ""}</div>
+                          </div>
+                          <button data-novo-func="1" onClick={() => { setEditingEmployee(null); setShowEmployeeForm(true); }} className="px-4 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: gradBrand }}>＋ Novo funcionário</button>
+                        </div>
+                      </div>
+                      {employees.length === 0 ? (
+                        <div className="rounded-2xl border p-8 sm:p-10 text-center" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                          <div className="text-4xl mb-2">👥</div>
+                          <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhum funcionário cadastrado ainda.</div>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
+                          {ordenados.map((e) => <EmployeeCard key={e.id} e={e} money={money} onEdit={(x) => { setEditingEmployee(x); setShowEmployeeForm(true); }} onDelete={handleDeleteEmployee} />)}
+                        </div>
+                      )}
+                    </>
+                  );
+                })();
+
+                return (
+                  <>
+                    {tabBar}
+                    {payrollSubTab === "pagamentos" && (showPayrollForm ? formBlock : viewMes)}
+                    {payrollSubTab === "decimo" && (showPayrollForm ? formBlock : view13)}
+                    {payrollSubTab === "funcionarios" && (showEmployeeForm
+                      ? <FormHost item={editingEmployee}><EmployeeForm initial={editingEmployee} onSave={handleSaveEmployee} onCancel={() => { setShowEmployeeForm(false); setEditingEmployee(null); }} /></FormHost>
+                      : viewEquipe)}
                   </>
                 );
               })()}

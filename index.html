@@ -4271,6 +4271,62 @@ function Sql13Aviso({ onCopy, onRecheck }) {
   );
 }
 
+// Campos de Configurações que antes só ficavam na tela (não eram gravados no banco e voltavam ao padrão ao recarregar a página)
+// Ao EDITAR um lançamento que já existe, grava só o que mudou (o banco junta com o resto): uma tela aberta há muito tempo nunca desfaz o que foi salvo depois (pago, recibo anexado...)
+function soMudancas(novo, base, estritos) {   // estritos: campos em que "falso" e "vazio" NÃO são a mesma coisa (ex.: "ativo", em que vazio vale como ativo)
+  if (!base || !base.id || base.id !== novo.id) return novo;
+  const frouxo = (v) => (v === undefined || v === "" || v === false ? null : v);
+  const estrito = (v) => (v === undefined || v === "" ? null : v);
+  const grava = { id: novo.id };
+  Object.keys(novo).forEach((k) => {
+    if (k === "id") return;
+    const n = estritos && estritos.includes(k) ? estrito : frouxo;
+    if (JSON.stringify(n(novo[k])) !== JSON.stringify(n(base[k]))) grava[k] = novo[k];
+  });
+  return grava;
+}
+// Tabelas do "Backup completo" (o banco devolve no máximo 1000 linhas por pedido: lê de 1000 em 1000 até acabar)
+const TABELAS_BACKUP = ["clients", "settings", "boletos", "client_notes", "company_expenses", "payroll_records", "employees", "vt_vr_records", "petty_cash_entries", "lunch_entries",
+  "consultations", "client_commissions", "commission_history", "romaneio_clients", "romaneios", "proposals", "prospects", "presentations", "implantacoes", "tech_implementations",
+  "db_migrations", "cloud_contratos", "supplier_orders", "itag_entries", "itag_billings", "itag_orders", "trainings", "training_agenda", "saturday_schedule", "client_attachments"];
+async function lerTudoDaTabela(nome) {
+  const linhas = [];
+  for (let ini = 0; ; ini += 1000) {
+    let r = await supa.from(nome).select("*").order("id").range(ini, ini + 999);
+    if (r.error && /42703|does not exist/i.test(`${r.error.code || ""} ${r.error.message || ""}`)) r = await supa.from(nome).select("*").range(ini, ini + 999);   // tabela sem coluna "id"
+    if (r.error) return { erro: r.error };
+    linhas.push(...(r.data || []));
+    if (!r.data || r.data.length < 1000) break;
+  }
+  return { linhas };
+}
+const CONFIG_EXTRAS = ["expenses_alert_phone", "payroll_company_name", "payroll_company_cnpj"];
+const SQL_CONFIG = `alter table public.settings
+  add column if not exists expenses_alert_phone text,
+  add column if not exists payroll_company_name text,
+  add column if not exists payroll_company_cnpj text;
+
+-- faz o Supabase enxergar as colunas novas na hora
+notify pgrst, 'reload schema';`;
+function configColunasFaltando(error) {
+  return !!error && /expenses_alert_phone|payroll_company/i.test(String(error.message || "")) && /PGRST204|42703|does not exist|could not find/i.test(`${error.code || ""} ${error.message || ""}`);
+}
+function SqlConfigAviso({ onCopy, onRecheck }) {
+  return (
+    <div data-sql-config-aviso="1" className="rounded-2xl border p-4" style={{ borderColor: rgba(COLORS.warn, 0.6), background: rgba(COLORS.warn, 0.08) }}>
+      <div className="text-sm font-bold" style={{ color: COLORS.ink }}>⚙️ Falta uma configuração única no banco de dados</div>
+      <div className="text-xs mt-1 leading-relaxed" style={{ color: COLORS.inkMuted }}>
+        Para o sistema <b style={{ color: COLORS.ink }}>guardar</b> o número de WhatsApp para avisos, a razão social e o CNPJ do recibo, rode o SQL abaixo <b style={{ color: COLORS.ink }}>uma vez</b>: abra o Supabase → <b style={{ color: COLORS.ink }}>SQL Editor</b> → <b style={{ color: COLORS.ink }}>New query</b> → cole → <b style={{ color: COLORS.ink }}>Run</b>. Enquanto isso não for feito, esses 3 campos voltam ao padrão quando a página é recarregada. (O mesmo texto está no arquivo <b style={{ color: COLORS.ink }}>adicionar-colunas-configuracoes.sql</b>.)
+      </div>
+      <pre className="mt-2 p-3 rounded-lg text-[11px] overflow-x-auto" style={{ background: "rgba(0,0,0,0.35)", color: "#E2E8F0" }}>{SQL_CONFIG}</pre>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={onCopy} className="px-3 py-2 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📋 Copiar SQL</button>
+        <button type="button" onClick={onRecheck} className="px-3 py-2 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.warn, color: COLORS.warn }}>🔄 Já rodei, verificar de novo</button>
+      </div>
+    </div>
+  );
+}
+
 // Barra do recibo anexado (arquivo da contabilidade): ver, status da assinatura, enviar para assinar pelo WhatsApp
 function PayrollReceiptBar({ r, emp, h }) {
   if (!r.receipt_file_url) return null;
@@ -7074,6 +7130,13 @@ function App() {
   const [session, setSession] = useState(undefined);
   const [clients, setClients] = useState([]);
   const [settings, setSettings] = useState(null);
+  const [falhasLeitura, setFalhasLeitura] = useState({});   // listas que não conseguiram ser lidas do banco (internet/servidor): a tela avisa em vez de mostrar lista vazia
+  const [conferencia, setConferencia] = useState(null);       // resultado de "Conferir o que está salvo" (Configurações)
+  const [conferindo, setConferindo] = useState(false);
+  const [settingsErro, setSettingsErro] = useState(false);   // não conseguiu ler as configurações por falta de conexão
+  const [configColsOk, setConfigColsOk] = useState(null);      // null = não verificado; false = faltam as colunas das Configurações no banco
+  const avisoConfigRef = useRef(false);
+  const configPendRef = useRef({});   // o que foi digitado em Configurações enquanto as colunas novas ainda não existiam no banco (é gravado assim que existirem)
   const [tab, setTab] = useState("dashboard");
   const tabHist = useRef([]); const tabLast = useRef("dashboard"); const tabGoingBack = useRef(false);
   useEffect(() => {
@@ -7103,6 +7166,9 @@ function App() {
   const [showForm, setShowForm] = useState(false);
   const [monthDate, setMonthDate] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [boletos, setBoletos] = useState({});
+  // mês (AAAA-MM) a que os boletos guardados em "boletos" pertencem; null = os do mês da tela ainda não chegaram do banco.
+  // Enquanto isso não bate com o mês da tela, nada é gravado nos boletos (evita levar dados de um mês para outro ou gravar com a tela vazia).
+  const [boletosMes, setBoletosMes] = useState(null);
   const [consultations, setConsultations] = useState([]);
   const [showConsultationForm, setShowConsultationForm] = useState(false);
   const [editingConsultation, setEditingConsultation] = useState(null);
@@ -7261,6 +7327,11 @@ function App() {
   const [editingPresentation, setEditingPresentation] = useState(null);
   const [presentationFilter, setPresentationFilter] = useState("proximas");
   const mKey = monthKey(monthDate);
+  const mKeyRef = useRef(mKey); mKeyRef.current = mKey;   // mês que está na tela agora (para descartar respostas atrasadas de outro mês)
+  // Troca de mês: os boletos do mês anterior saem da tela já na PRIMEIRA renderização do mês novo.
+  // (Antes eles só eram limpos depois; os campos Consultas/VPN/Troca servidor/Valor pago/Data nasciam com o valor do mês anterior e ficavam travados nele.)
+  const [boletosChave, setBoletosChave] = useState(mKey);
+  if (boletosChave !== mKey) { setBoletosChave(mKey); setBoletos({}); setBoletosMes(null); }
   // Todos os totais usam o valor do mês que está na tela (cliente sem boleto lançado nesse mês também)
   const effectiveValue = (c, b) => effectiveValueAt(c, b, mKey);
   // quais colunas de valor existem no banco (o Supabase devolve todas as colunas, mesmo vazias)
@@ -7307,25 +7378,52 @@ function App() {
   }, [tab, proposals, romaneios]);
 
   const loadClients = useCallback(async () => {
-    const { data } = await supa.from("clients").select("*").order("name");
-    setClients((data || []).map((c) => ({
+    await lerTabela("os clientes", () => supa.from("clients").select("*").order("name"), (rows) => setClients(rows.map((c) => ({
       ...c,
       bank_number: c.bank_number ? padBankNumber(c.bank_number) : c.bank_number,
       phone: c.phone ? maskPhone(c.phone) : c.phone,
-    })));
+    }))));
   }, []);
-  const loadSettings = useCallback(async () => {
-    const { data } = await supa.from("settings").select("*").eq("id", "default").single();
+  // Lê uma tabela do banco. Se a conexão falhar, tenta mais 2 vezes; se mesmo assim falhar, NÃO troca a lista da tela por uma lista vazia: mantém o que já estava e avisa no topo da tela.
+  async function lerTabela(nome, consulta, aplicar) {
+    let ultimo = null;
+    for (let t = 0; t < 3; t++) {
+      const { data, error } = await consulta();
+      if (!error) {
+        aplicar(data || []);
+        setFalhasLeitura((p) => { if (!p[nome]) return p; const n = { ...p }; delete n[nome]; return n; });
+        return true;
+      }
+      ultimo = error;
+      if (error.code) break;   // erro do próprio banco (permissão, tabela...): repetir não ajuda
+      if (t < 2) await new Promise((r) => setTimeout(r, 1200 * (t + 1)));   // espera um pouco e tenta de novo (depois da última tentativa não espera)
+    }
+    console.error("Falha ao ler " + nome, ultimo);
+    setFalhasLeitura((p) => ({ ...p, [nome]: true }));
+    return false;
+  }
+  function recarregarFalhas() { loadClients(); loadEmployees(); loadExpenses(); loadPayrollRecords(); }
+  const loadSettings = useCallback(async (tentativa = 0) => {
+    const { data, error } = await supa.from("settings").select("*").eq("id", "default").single();
+    // falha de CONEXÃO (sem código de erro do banco): não cai nos valores padrão, senão o próximo "salvar" gravaria os padrões por cima das configurações reais
+    if (error && !error.code && !data) {
+      if (tentativa < 3) { setTimeout(() => loadSettings(tentativa + 1), 1500 * (tentativa + 1)); return; }
+      setSettingsErro(true); return;
+    }
+    setSettingsErro(false);
     if (!data) { setSettings(DEFAULT_SETTINGS); return; }
     const merged = { ...DEFAULT_SETTINGS };
     Object.keys(data).forEach((k) => { if (data[k] !== null && data[k] !== undefined) merged[k] = data[k]; });
     setSettings(merged);
   }, []);
   const loadBoletos = useCallback(async (mk) => {
-    const { data } = await supa.from("boletos").select("*").eq("month_key", mk);
+    const { data, error } = await supa.from("boletos").select("*").eq("month_key", mk);
+    if (mk !== mKeyRef.current) return;   // resposta de um mês que já saiu da tela: descarta
+    if (error) { showToast("Não consegui carregar os boletos deste mês. Atualize a página e tente de novo.", 6000); return; }
     const map = {};
     (data || []).forEach((b) => { map[b.client_id] = b; });
     setBoletos(map);
+    setBoletosMes(mk);
   }, []);
   const loadConsultations = useCallback(async () => {
     const { data } = await supa.from("consultations").select("*").order("query_date", { ascending: false });
@@ -7911,8 +8009,7 @@ function App() {
     } catch (e) { /* log é best-effort, não trava a ação principal */ }
   }
   const loadExpenses = useCallback(async () => {
-    const { data } = await supa.from("company_expenses").select("*").order("due_date", { ascending: true });
-    setExpenses(data || []);
+    await lerTabela("as contas a pagar", () => supa.from("company_expenses").select("*").order("due_date", { ascending: true }), setExpenses);
   }, []);
   const loadPresentations = useCallback(async () => {
     const { data } = await supa.from("presentations").select("*").order("date", { ascending: true }).order("time", { ascending: true });
@@ -7963,7 +8060,7 @@ function App() {
     }
   }
   async function handleSaveExpense(e) {
-    const { error } = await supa.from("company_expenses").upsert(e);
+    const { error } = await supa.from("company_expenses").upsert(soMudancas(e, editingExpense));
     if (error) { showToast(`Erro: ${error.message}`); return; }
     await loadExpenses();
     setShowExpenseForm(false); setEditingExpense(null);
@@ -8104,6 +8201,7 @@ function App() {
     return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
   async function handleGenerateNextMonthExpenses() {
+    if (falhasLeitura["as contas a pagar"]) { showToast("Não consegui carregar as contas agora (internet). Toque em “Tentar de novo” no aviso do topo antes de gerar, para não duplicar.", 5000); return; }
     const recurring = expenses.filter((e) => e.recurring);
     if (recurring.length === 0) { showToast("Nenhuma despesa recorrente cadastrada."); return; }
     if (!confirm(`Gerar ${recurring.length} despesa(s) recorrente(s) pro próximo mês?`)) return;
@@ -8548,8 +8646,7 @@ function App() {
   }
 
   const loadEmployees = useCallback(async () => {
-    const { data } = await supa.from("employees").select("*").order("name");
-    setEmployees(data || []);
+    await lerTabela("os funcionários", () => supa.from("employees").select("*").order("name"), setEmployees);
   }, []);
   const loadVtVrRecords = useCallback(async () => {
     const { data } = await supa.from("vt_vr_records").select("*").order("payment_date", { ascending: false });
@@ -8733,11 +8830,10 @@ function App() {
     XLSX.writeFile(wb, `pedidos-etiquetas-${supplierYear}.xlsx`);
   }
   const loadPayrollRecords = useCallback(async () => {
-    const { data } = await supa.from("payroll_records").select("*").order("payment_date", { ascending: false });
-    setPayrollRecords(data || []);
+    await lerTabela("a folha de pagamento", () => supa.from("payroll_records").select("*").order("payment_date", { ascending: false }), setPayrollRecords);
   }, []);
   async function handleSaveEmployee(emp) {
-    const { error } = await supa.from("employees").upsert(emp);
+    const { error } = await supa.from("employees").upsert(soMudancas(emp, editingEmployee, ["active"]));
     if (error) { showToast(`Erro: ${error.message}`); return; }
     await loadEmployees();
     setShowEmployeeForm(false); setEditingEmployee(null);
@@ -8750,7 +8846,7 @@ function App() {
     showToast("Funcionário removido.");
   }
   async function handleSavePayroll(rec) {
-    const { error } = await supa.from("payroll_records").upsert(rec);
+    const { error } = await supa.from("payroll_records").upsert(soMudancas(rec, editingPayroll));
     if (error) {
       // o 13º usa colunas novas: se o SQL ainda não foi rodado, o formulário continua aberto e mostra o passo a passo
       if (decimoColunasFaltando(error)) { setDecimoReady(false); showToast("Falta rodar o SQL do 13º salário (o passo a passo está no formulário).", 5000); return; }
@@ -8835,6 +8931,7 @@ function App() {
   }
   // Cria a folha do mês (salário base, pagamento no 5º dia útil) para quem ainda não tem; depois cada lançamento pode ser editado (horas extras, bônus...)
   async function handleGeneratePayrollMonth() {
+    if (falhasLeitura["a folha de pagamento"] || falhasLeitura["os funcionários"]) { showToast("Não consegui carregar a folha agora (internet). Toque em “Tentar de novo” no aviso do topo antes de lançar, para não duplicar.", 5000); return; }
     const mes = payrollMonth;
     const [y, m] = mes.split("-").map(Number);
     const ativos = employees.filter((e) => e.active !== false);
@@ -8866,6 +8963,7 @@ function App() {
   }
   // Lança a 1ª ou a 2ª parcela do 13º de todos os funcionários ativos que ainda não têm essa parcela (valores sugeridos pelo cálculo; cada um pode ser editado depois)
   async function handleLaunchDecimoAll(parcela) {
+    if (falhasLeitura["a folha de pagamento"] || falhasLeitura["os funcionários"]) { showToast("Não consegui carregar a folha agora (internet). Toque em “Tentar de novo” no aviso do topo antes de lançar, para não duplicar.", 5000); return; }
     const year = decimoYear, kind = parcela === 1 ? "13_1" : "13_2";
     if (!decimoReady) { showToast("Antes, rode o SQL do 13º (o passo a passo está nesta tela).", 4000); return; }
     const prazos = decimoPrazos(year);
@@ -9703,7 +9801,9 @@ function App() {
   }
 
   useEffect(() => { if (session) { loadClients(); loadSettings(); loadProposals(); loadProspects(); loadRomaneioClients(); loadRomaneios(); loadItagEntries(); loadItagBillings(); loadItagOrders(); loadDbMigrations(); loadTrainings(); loadTrainingAgenda(); loadClientCommissions(); loadCommissionHistory(); loadImplantacoes(); loadTechImplementations(); loadEmployees(); loadVtVrRecords(); loadActivityLog(); loadExpenses(); loadSaturdaySchedule(); loadPayrollRecords(); loadSupplierOrders(); loadCloudContratos(); loadPettyCashEntries(); loadLunchEntries(); loadPresentations(); loadConsultations(); } }, [session]);
-  useEffect(() => { if (session) loadBoletos(mKey); }, [session, mKey]);
+  useEffect(() => { if (session) { setBoletos({}); setBoletosMes(null); loadBoletos(mKey); } }, [session, mKey]);
+  // confere (ao abrir Configurações) se o banco já tem as colunas dos 3 campos que antes não eram gravados
+  useEffect(() => { if (session && tab === "config") checkConfigColumns().then((r) => { if (r.gravou) showToast("O que você digitou nas Configurações já foi gravado.", 4000); }); }, [session, tab]);
   // Preenche automaticamente o valor de "Consultas" de cada boleto do mês com a soma das
   // consultas já associadas àquele cliente (respeitando a defasagem de 2 meses), mas só
   // quando o campo ainda está vazio e o boleto não foi pago — pra nunca sobrescrever um
@@ -9711,6 +9811,7 @@ function App() {
   // segue disponível normalmente.
   useEffect(() => {
     if (!session || !clients.length || !consultations.length) return;
+    if (boletosMes !== mKey) return;   // só preenche depois que os boletos DESTE mês chegaram do banco (antes, usava os do mês anterior ou uma lista vazia e gravava por cima)
     clients.forEach((c) => {
       const b = boletos[c.id];
       if (b?.paid) return;
@@ -9718,7 +9819,7 @@ function App() {
       const sugestao = consultationsValueForClient(c.id, monthDate);
       if (sugestao > 0) upsertBoleto(c.id, { consultations_value: sugestao });
     });
-  }, [session, clients, consultations, boletos, monthDate]);
+  }, [session, clients, consultations, boletos, boletosMes, monthDate]);
 
   async function computeMonthTotals(monthDefs) {
     const mks = monthDefs.map((w) => w.mk);
@@ -9826,11 +9927,11 @@ function App() {
     setPriceDialog(null); setPriceTick((t) => t + 1);
     // se a mudança alcança o mês da tela e a mensalidade dele já está paga, o "valor pago" acompanha (como antes)
     if (from == null || from <= mKey) {
-      const b = boletos[cli.id];
+      const b = boletosMes === mKey ? boletos[cli.id] : null;
       if (b?.paid) {
         const next = { ...b, paid_value: effectiveValue({ ...cli, ...patch }, b), updated_at: new Date().toISOString() };
-        await supa.from("boletos").upsert(next);
-        setBoletos((prev) => ({ ...prev, [cli.id]: next }));
+        await supa.from("boletos").upsert({ id: b.id || `${mKey}_${cli.id}`, client_id: cli.id, month_key: mKey, paid_value: next.paid_value, updated_at: next.updated_at });
+        if (mKeyRef.current === mKey) setBoletos((prev) => ({ ...prev, [cli.id]: next }));
       }
     }
     const msg = from == null ? `Valor corrigido para ${fmtMoney(d.newValue)} em todos os meses.`
@@ -10704,26 +10805,80 @@ function App() {
       proposal_next_number: next.proposal_next_number || 1, proposal_next_year: next.proposal_next_year || new Date().getFullYear(),
     });
     if (error) showToast(`Erro ao salvar configuração: ${error.message}`);
+    // Número de WhatsApp para avisos e dados da empresa do recibo: antes só ficavam na tela e sumiam ao recarregar. Agora são gravados (só o que foi alterado).
+    const extras = {};
+    CONFIG_EXTRAS.forEach((k) => { if ((next[k] ?? "") !== ((settings && settings[k]) ?? "")) extras[k] = next[k] ?? ""; });
+    if (Object.keys(extras).length) {
+      const r = await supa.from("settings").upsert({ id: "default", ...configPendRef.current, ...extras });
+      if (r.error) {
+        if (configColunasFaltando(r.error)) {
+          configPendRef.current = { ...configPendRef.current, ...extras };   // guarda o que foi digitado para gravar assim que as colunas existirem
+          setConfigColsOk(false);
+          if (!avisoConfigRef.current) { avisoConfigRef.current = true; showToast("Para o sistema guardar esse dado, rode o SQL do aviso amarelo no topo desta tela (uma vez).", 8000); }
+        } else showToast(`Erro ao salvar configuração: ${r.error.message}`);
+      } else { configPendRef.current = {}; setConfigColsOk(true); }
+    }
+  }
+  // Conta, direto no banco, o que está salvo (não depende de filtro, mês nem do que a tela conseguiu carregar)
+  async function conferirDadosSalvos() {
+    setConferindo(true);
+    const lista = [["Clientes", "clients"], ["Boletos de mensalidade (todos os meses)", "boletos"], ["Contas a pagar", "company_expenses", true], ["Folha de pagamento (lançamentos)", "payroll_records", true],
+      ["Funcionários", "employees"], ["VT / VR", "vt_vr_records", true], ["Romaneios", "romaneios"], ["Propostas", "proposals"]];
+    const linhas = [];
+    for (const [nome, tabela, comPagos] of lista) {
+      const r = await supa.from(tabela).select("id", { count: "exact", head: true });
+      if (r.error) { linhas.push({ nome, tabela, erro: true }); continue; }
+      let pagos = null;
+      if (comPagos) { const p = await supa.from(tabela).select("id", { count: "exact", head: true }).eq("paid", true); if (!p.error) pagos = p.count ?? 0; }
+      linhas.push({ nome, tabela, total: r.count ?? 0, pagos });
+    }
+    setConferencia({ quando: new Date(), linhas });
+    setConferindo(false);
+  }
+  async function checkConfigColumns() {
+    const { error } = await supa.from("settings").select("id,expenses_alert_phone,payroll_company_name,payroll_company_cnpj").limit(1);
+    const ok = !(error && configColunasFaltando(error));
+    setConfigColsOk(ok);
+    let gravou = false;
+    // o que foi digitado enquanto as colunas não existiam é gravado assim que elas aparecem (sem precisar digitar de novo)
+    if (ok && Object.keys(configPendRef.current).length) {
+      const r = await supa.from("settings").upsert({ id: "default", ...configPendRef.current });
+      if (!r.error) { configPendRef.current = {}; gravou = true; }
+    }
+    return { ok, gravou };
+  }
+  function handleCopySqlConfig() {
+    navigator.clipboard.writeText(SQL_CONFIG).then(() => showToast("SQL copiado! Cole no SQL Editor do Supabase e clique em Run.", 4000));
+  }
+  async function handleRecheckConfig() {
+    const { ok, gravou } = await checkConfigColumns();
+    showToast(ok ? (gravou ? "Tudo certo! O que você digitou já foi gravado." : "Tudo certo! Os 3 campos já serão gravados.") : "Ainda não encontrei as colunas. Rode o SQL no Supabase e tente de novo.", 4000);
   }
   async function upsertBoleto(clientId, patch) {
+    // só grava depois que os boletos do mês da tela chegaram do banco (senão uma tela vazia ou do mês anterior poderia gravar por cima)
+    if (boletosMes !== mKey) { showToast("Aguarde o mês terminar de carregar e tente de novo."); return; }
     const id = `${mKey}_${clientId}`;
     const current = boletos[clientId] || {};
     const next = { ...current, ...patch, id, client_id: clientId, month_key: mKey, updated_at: new Date().toISOString() };
+    // grava SÓ o que mudou (o banco junta com o que já está lá): uma tela desatualizada nunca desfaz o que outro aparelho ou outra pessoa salvou
+    const grava = { ...patch, id, client_id: clientId, month_key: mKey, updated_at: next.updated_at };
     // Se já está marcado como pago e a mudança não foi no próprio valor pago,
     // resincroniza o "valor pago" com a mensalidade atual — evita que o Dashboard
     // mostre "Pago" desatualizado quando a mensalidade/consultas/etc. mudam depois.
     if (next.paid && !("paid_value" in patch)) {
       const c = clients.find((x) => x.id === clientId);
-      if (c) next.paid_value = effectiveValue(c, next);
+      if (c) { next.paid_value = effectiveValue(c, next); grava.paid_value = next.paid_value; }
     }
-    await supa.from("boletos").upsert(next);
-    setBoletos((prev) => ({ ...prev, [clientId]: next }));
+    const { error: saveErr } = await supa.from("boletos").upsert(grava);
+    if (saveErr) { showToast(`Erro ao salvar o boleto: ${saveErr.message}`, 6000); return; }
+    if (mKeyRef.current === mKey) setBoletos((prev) => ({ ...prev, [clientId]: next }));
     if (patch.paid === true && !current.paid) {
       const c = clients.find((x) => x.id === clientId);
       logActivity(`Mensalidade marcada como paga: ${c?.name || clientId} (${mKey})`);
     }
   }
   async function handleRecalcPaidValues() {
+    if (boletosMes !== mKey) { showToast("Aguarde o mês terminar de carregar e tente de novo."); return; }
     const desatualizados = clients.filter((c) => {
       const b = boletos[c.id];
       if (!b?.paid) return false;
@@ -10735,7 +10890,7 @@ function App() {
       const b = boletos[c.id];
       const next = { ...b, paid_value: effectiveValue(c, b), updated_at: new Date().toISOString() };
       setBoletos((prev) => ({ ...prev, [c.id]: next }));
-      return supa.from("boletos").upsert(next);
+      return supa.from("boletos").upsert({ id: b.id || `${mKey}_${c.id}`, client_id: c.id, month_key: mKey, paid_value: next.paid_value, updated_at: next.updated_at });
     }));
     showToast(`${desatualizados.length} valor(es) corrigido(s).`);
   }
@@ -10770,9 +10925,14 @@ function App() {
   }
 
   async function exportFullBackup() {
-    const { data: allBoletos } = await supa.from("boletos").select("*");
-    const { data: allNotes } = await supa.from("client_notes").select("*");
-    const data = { exportedAt: new Date().toISOString(), clients, settings, boletos: allBoletos || [], notes: allNotes || [] };
+    showToast("Preparando o backup...", 3000);
+    const lidas = {}, naoLidas = [];
+    for (const nome of TABELAS_BACKUP) {
+      const r = await lerTudoDaTabela(nome);
+      if (r.erro) naoLidas.push(nome); else lidas[nome] = r.linhas;
+    }
+    // clientes, configurações, boletos e anotações continuam nos campos de sempre (é o que "Restaurar" lê); o resto vai em "tabelas"
+    const data = { exportedAt: new Date().toISOString(), clients: lidas.clients || clients, settings: (lidas.settings && lidas.settings[0]) || settings, boletos: lidas.boletos || [], notes: lidas.client_notes || [], tabelas: lidas, tabelasNaoLidas: naoLidas };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -10780,7 +10940,7 @@ function App() {
     a.click(); URL.revokeObjectURL(url);
     const today = todayStr();
     await saveSettings({ ...settings, last_backup_at: today });
-    showToast("Backup baixado! Guarde esse arquivo em local seguro.");
+    showToast(naoLidas.length ? `Backup baixado. Não consegui ler: ${naoLidas.join(", ")}.` : "Backup baixado! Guarde esse arquivo em local seguro.", naoLidas.length ? 6000 : undefined);
   }
   function importFullBackup(file) {
     if (!file) return;
@@ -10901,12 +11061,16 @@ function App() {
     });
   }
   async function generateMonth() {
+    if (boletosMes !== mKey) { showToast("Aguarde o mês terminar de carregar e tente de novo."); return; }
     setGenerating(true);
     const missing = clients.filter((c) => !boletos[c.id]);
-    await Promise.all(missing.map((c) => supa.from("boletos").upsert({ id: `${mKey}_${c.id}`, client_id: c.id, month_key: mKey, paid: false, sent_whatsapp: false, sent_email: false })));
+    // "ignoreDuplicates": só CRIA o que ainda não existe; um boleto que já existe (pago, com arquivo...) nunca é mexido
+    const linhas = missing.map((c) => ({ id: `${mKey}_${c.id}`, client_id: c.id, month_key: mKey, paid: false, sent_whatsapp: false, sent_email: false }));
+    let erroGerar = null;
+    if (linhas.length) ({ error: erroGerar } = await supa.from("boletos").upsert(linhas, { onConflict: "id", ignoreDuplicates: true }));
     await loadBoletos(mKey);
     setGenerating(false);
-    showToast(`${missing.length} boleto(s) gerado(s) para o mês.`);
+    showToast(erroGerar ? `Erro ao gerar os boletos: ${erroGerar.message}` : `${missing.length} boleto(s) gerado(s) para o mês.`);
   }
 
   function toggleSelect(id) {
@@ -11111,7 +11275,16 @@ function App() {
   if (session === undefined) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
   if (!session) return <Login />;
   if (userRole === null) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
-  if (!settings) return <div className="min-h-screen flex items-center justify-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>Carregando...</div>;
+  if (!settings) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center" style={{ background: COLORS.bg, color: COLORS.inkMuted }}>
+      {settingsErro ? (
+        <>
+          <div className="text-sm" style={{ color: COLORS.ink }}>Não consegui carregar os dados. Confira a conexão com a internet.</div>
+          <button onClick={() => { setSettingsErro(false); loadSettings(); }} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: COLORS.brand }}>Tentar de novo</button>
+        </>
+      ) : "Carregando..."}
+    </div>
+  );
 
   const effectiveTab = (ROLE_ALLOWED_TABS[userRole] && !ROLE_ALLOWED_TABS[userRole].includes(tab)) ? ROLE_ALLOWED_TABS[userRole][0] : tab;
   const filterButtons = [
@@ -11359,6 +11532,13 @@ function App() {
       <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto">
         <div className={"max-w-6xl mx-auto px-5 sm:px-8 py-7" + (effectiveTab === "dashboard" ? " flex flex-col" : "")} style={effectiveTab === "dashboard" ? { minHeight: "100%" } : undefined}>
+
+          {Object.keys(falhasLeitura).length > 0 && (
+            <div data-falha-leitura="1" className="rounded-2xl border p-3 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: rgba(COLORS.danger, 0.5), background: rgba(COLORS.danger, 0.1) }}>
+              <span className="text-sm" style={{ color: COLORS.ink }}>⚠️ Não consegui carregar <b>{Object.keys(falhasLeitura).join(", ")}</b>. O que você lançou continua salvo no banco; a tela só não conseguiu buscar (internet ou servidor). O que já estava na tela foi mantido.</span>
+              <button type="button" data-falha-tentar="1" onClick={recarregarFalhas} className="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.danger, color: COLORS.danger }}>Tentar de novo</button>
+            </div>
+          )}
 
           {!(ROLE_ALLOWED_TABS[userRole] && effectiveTab === ROLE_ALLOWED_TABS[userRole][0]) && (
             <div className="flex items-center gap-2 mb-4">
@@ -11651,7 +11831,7 @@ function App() {
                   ♻️ Restaurar
                   <input type="file" accept=".json" className="hidden" onChange={(e) => importFullBackup(e.target.files?.[0])} />
                 </label>
-                <span className="text-xs ml-auto" style={{ color: COLORS.inkFaint }}>💾 O backup completo salva clientes, boletos e anotações.</span>
+                <span className="text-xs ml-auto" style={{ color: COLORS.inkFaint }}>💾 O backup completo salva tudo: clientes, boletos, contas a pagar, folha e o restante do sistema.</span>
               </div>
 
               {showForm && <FormHost item={editing}><ClientForm initial={editing} existingReps={[...new Set(clientCommissions.map((cc) => cc.representative_name).filter(Boolean))]} priceCols={priceCols} onSave={handleSaveClient} onCancel={() => { setShowForm(false); setEditing(null); }} /></FormHost>}
@@ -11835,9 +12015,9 @@ function App() {
                       {/* LINHA 2: valores em grade alinhada */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-1 pl-[54px]">
                         <MiniMoneyField label="Mensalidade" value={valueForMonth(c, mKey)} fieldKey={`val-${c.id}-${mKey}-${priceTick}`} onSave={(v) => handleUpdateClientValue(c.id, v)} />
-                        <MiniMoneyField label="Consultas" value={b?.consultations_value} fieldKey={`cons-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { consultations_value: v })} />
-                        <MiniMoneyField label="VPN" value={b?.vpn_value} fieldKey={`vpn-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { vpn_value: v })} title="Cobrança de VPN nesse mês" />
-                        <MiniMoneyField label="Troca servidor" value={b?.server_change_value} fieldKey={`srv-${c.id}-${mKey}`} onSave={(v) => upsertBoleto(c.id, { server_change_value: v })} title="Cobrança de troca de servidor nesse mês" />
+                        <MiniMoneyField label="Consultas" value={b?.consultations_value} fieldKey={`cons-${c.id}-${mKey}-${boletosMes === mKey ? "ok" : "carregando"}`} onSave={(v) => upsertBoleto(c.id, { consultations_value: v })} />
+                        <MiniMoneyField label="VPN" value={b?.vpn_value} fieldKey={`vpn-${c.id}-${mKey}-${boletosMes === mKey ? "ok" : "carregando"}`} onSave={(v) => upsertBoleto(c.id, { vpn_value: v })} title="Cobrança de VPN nesse mês" />
+                        <MiniMoneyField label="Troca servidor" value={b?.server_change_value} fieldKey={`srv-${c.id}-${mKey}-${boletosMes === mKey ? "ok" : "carregando"}`} onSave={(v) => upsertBoleto(c.id, { server_change_value: v })} title="Cobrança de troca de servidor nesse mês" />
                       </div>
                       {(() => {
                         const sugestaoConsultas = consultationsValueForClient(c.id, monthDate);
@@ -14390,6 +14570,29 @@ function App() {
                         </div>
                       </div>
 
+                      {payrollRecords.length > 0 && (() => {
+                        const porMes = {};
+                        payrollRecords.forEach((r) => { const k = mesDe(r); porMes[k] = (porMes[k] || 0) + 1; });
+                        const ks = Object.keys(porMes).sort().reverse();
+                        const curto = (k) => ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"][Number(k.slice(5, 7)) - 1] + "/" + k.slice(0, 4);
+                        return (
+                          <div data-folha-meses="1" className="mb-4">
+                            <div className="text-[11px] mb-1.5 leading-relaxed" style={{ color: COLORS.inkMuted }}>Tudo o que você já lançou está salvo: <b style={{ color: COLORS.ink }}>{payrollRecords.length} lançamento{plural(payrollRecords.length, "", "s")}</b> em {ks.length} {ks.length === 1 ? "mês" : "meses"}. Toque num mês para ver:</div>
+                            <div className="flex gap-1.5 overflow-x-auto pb-1">
+                              {ks.map((k) => {
+                                const ativo = k === payrollMonth;
+                                return (
+                                  <button key={k} type="button" data-mes-chip={k} onClick={() => { setPayrollMonth(k); setPayrollStatus("todos"); }} className="px-3 py-1.5 rounded-full text-xs font-bold border whitespace-nowrap shrink-0"
+                                    style={{ borderColor: ativo ? COLORS.brandLight : COLORS.cardBorder, background: ativo ? rgba(COLORS.brand, 0.18) : "transparent", color: ativo ? COLORS.brandLight : COLORS.inkMuted }}>
+                                    {curto(k)} <span style={{ opacity: 0.8 }}>({porMes[k]})</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {atrasadosOutros.length > 0 && (() => {
                         const maisAntigo = atrasadosOutros.map(mesDe).sort()[0];
                         return (
@@ -14421,6 +14624,7 @@ function App() {
                           {doMes.length === 0 && (
                             <>
                               <div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>Lance a folha de todos de uma vez ou crie um lançamento avulso (vale, 13º...).</div>
+                              {payrollRecords.length > 0 && <div data-folha-outros-meses="1" className="text-xs mt-2 font-semibold" style={{ color: COLORS.brandLight }}>Os lançamentos dos outros meses continuam salvos: toque num mês nos botões acima.</div>}
                               <div className="mt-4 flex justify-center gap-2 flex-wrap">
                                 <button onClick={handleGeneratePayrollMonth} className={btnGhost} style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>⚡ Lançar folha do mês</button>
                                 <button onClick={() => abrirForm(null)} className="px-4 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: gradBrand }}>＋ Novo lançamento</button>
@@ -14824,6 +15028,19 @@ function App() {
                         <button onClick={() => { setEditingExpense(null); setShowExpenseForm(true); }} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova despesa</button>
                       </div>
                     </div>
+
+                    {expenses.length > 0 && (() => {
+                      const nPagas = expenses.filter((x) => x.paid).length;
+                      const nAbertas = expenses.length - nPagas;
+                      const lista = expenseFilter === "todos" ? "todas as contas" : expenseFilter === "aberto" ? "só as contas em aberto" : expenseFilter === "pago" ? "só as contas pagas" : "só as contas atrasadas";
+                      return (
+                        <div data-expenses-resumo="1" className="text-xs mb-3 px-1 leading-relaxed" style={{ color: COLORS.inkMuted }}>
+                          Tudo o que você já lançou está salvo: <b style={{ color: COLORS.ink }}>{expenses.length} conta{expenses.length === 1 ? "" : "s"}</b> ({nAbertas} em aberto · {nPagas} paga{nPagas === 1 ? "" : "s"}).{" "}
+                          A lista abaixo mostra <b style={{ color: COLORS.ink }}>{lista}{expenseCategory ? ` de ${expenseCategory}` : ""}</b>.
+                          {(expenseFilter !== "todos" || expenseCategory) && <>{" "}<button type="button" data-expenses-ver-todas="1" onClick={() => { setExpenseFilter("todos"); setExpenseCategory(""); }} className="underline font-semibold" style={{ color: COLORS.brandLight }}>Ver todas</button></>}
+                        </div>
+                      );
+                    })()}
 
                     {showExpenseForm && <FormHost item={editingExpense}><ExpenseForm initial={editingExpense} onSave={handleSaveExpense} onCancel={() => { setShowExpenseForm(false); setEditingExpense(null); }} /></FormHost>}
 
@@ -15672,6 +15889,30 @@ function App() {
 
           {effectiveTab === "config" && (
             <div className="space-y-4">
+              {configColsOk === false && <SqlConfigAviso onCopy={handleCopySqlConfig} onRecheck={handleRecheckConfig} />}
+              <div data-conferir-dados="1" className="rounded-2xl border p-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                <div className="text-sm font-bold" style={{ color: COLORS.ink }}>🔍 Conferir o que está salvo</div>
+                <div className="text-xs mt-1 leading-relaxed" style={{ color: COLORS.inkMuted }}>
+                  Mostra quantos lançamentos existem de verdade no banco de dados, sem depender de filtros nem de mês na tela. Atualizar o sistema (subir um novo index.html) <b style={{ color: COLORS.ink }}>nunca mexe nesses dados</b>.
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button type="button" data-conferir-btn="1" onClick={conferirDadosSalvos} disabled={conferindo} className="px-3 py-2 rounded-lg text-xs font-bold border disabled:opacity-50" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>{conferindo ? "Conferindo..." : "🔍 Conferir agora"}</button>
+                  <button type="button" data-backup-btn="1" onClick={exportFullBackup} className="px-3 py-2 rounded-lg text-xs font-bold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>💾 Baixar backup completo</button>
+                </div>
+                {conferencia && (
+                  <div data-conferir-resultado="1" className="mt-3">
+                    <div className="text-[11px] mb-1" style={{ color: COLORS.inkFaint }}>Conferido em {conferencia.quando.toLocaleString("pt-BR")}</div>
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: COLORS.cardBorder }}>
+                      {conferencia.linhas.map((l, i) => (
+                        <div key={l.tabela} data-conferir-linha={l.tabela} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
+                          <span style={{ color: COLORS.ink }}>{l.nome}</span>
+                          <span style={{ color: l.erro ? COLORS.warn : COLORS.inkMuted }}>{l.erro ? "não consegui ler" : <><b style={{ color: COLORS.ink }}>{l.total}</b>{l.pagos != null ? ` · ${l.pagos} pago${l.pagos === 1 ? "" : "s"} · ${l.total - l.pagos} em aberto` : ""}</>}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="rounded-2xl border p-4 space-y-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
                 <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>Chaves PIX por módulo</div>
                 <p className="text-xs" style={{ color: COLORS.inkMuted }}>Cada módulo usa sua própria chave PIX padrão pra gerar o QR Code de cobrança. Numa proposta, romaneio ou implantação específica, você ainda pode colocar uma chave diferente naquele cadastro — ela sempre tem prioridade sobre a padrão daqui.</p>

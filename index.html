@@ -1175,6 +1175,19 @@ function PaidChip({ paid, onClick, labelPaid = "✓ Pago", labelOpen = "○ Em a
     : <span className={cls} style={st}>{txt}</span>;
 }
 
+// Uma parcela da compra de tags (vencimento, valor e situação EMPILHADOS): deixa a tabela de Compra Tag RFID estreita o bastante para caber na tela sem rolar.
+function ItagParcela({ date, value, paid, onToggle, money }) {
+  const temValor = Number(value) > 0;
+  if (!date && !temValor) return <span style={{ color: COLORS.inkMuted }}>-</span>;
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className="whitespace-nowrap">{date ? new Date(date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</span>
+      <span className="font-semibold whitespace-nowrap">{money(value)}</span>
+      {temValor && <PaidChip small paid={!!paid} onClick={onToggle} />}
+    </div>
+  );
+}
+
 // Menu "⋯": deixa poucas ações à vista na linha e agrupa o resto aqui.
 // items: { label, onClick } | { label, href, download } | { label, file: { accept, onFile } }, com { danger, disabled } opcionais. Itens falsos são ignorados.
 function RowMenu({ items, label = "Mais ações" }) {
@@ -11910,39 +11923,26 @@ function App() {
                   <table className="w-full text-xs" style={{ color: COLORS.ink }}>
                     <thead>
                       <tr style={{ color: COLORS.inkMuted }}>
-                        <th className="text-left p-3">Data</th><th className="text-left p-3">NF</th><th className="text-left p-3">Modelo</th><th className="text-left p-3">Entrada</th><th className="text-left p-3">Qtd</th><th className="text-left p-3">Vr. Unit.</th>
-                        <th className="text-left p-3">Venc. 1</th><th className="text-left p-3">Valor 1</th><th className="text-left p-3">Situação 1</th>
-                        <th className="text-left p-3">Venc. 2</th><th className="text-left p-3">Valor 2</th><th className="text-left p-3">Situação 2</th>
-                        <th className="text-left p-3">Total</th><th className="text-left p-3"></th>
+                        <th className="text-left pl-4 pr-1.5 py-3">Data</th><th className="text-left px-1.5 py-3">NF</th><th className="text-left px-1.5 py-3">Modelo</th><th className="text-left px-1.5 py-3">Entrada</th><th className="text-left px-1.5 py-3">Qtd</th><th className="text-left px-1.5 py-3">Vr. Unit.</th>
+                        <th className="text-left px-1.5 py-3">Parcela 1<span className="block text-[10px] font-normal opacity-75">venc. · valor · situação</span></th><th className="text-left px-1.5 py-3">Parcela 2<span className="block text-[10px] font-normal opacity-75">venc. · valor · situação</span></th>
+                        <th className="text-left px-1.5 py-3">Total</th><th className="text-left pl-1.5 pr-4 py-3"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {itagEntries.map((e, i) => (
                         <tr key={e.id} style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                          <td className="p-3">{e.purchase_date ? new Date(e.purchase_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                          <td className="p-3">{e.invoice_number || "-"}</td>
-                          <td className="p-3">{e.model || "-"}</td>
-                          <td className="p-3">{e.arrival_date ? new Date(e.arrival_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                          <td className="p-3">{e.quantity}</td>
-                          <td className="p-3">{money(e.unit_value)}</td>
-                          <td className="p-3">{e.due1_date ? new Date(e.due1_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                          <td className="p-3">{money(e.due1_value)}</td>
-                          <td className="p-3">
-                            {e.due1_value > 0 && (
-                              <PaidChip small paid={!!e.due1_paid} onClick={() => handleToggleEntryPaid(e, 1)} />
-                            )}
-                          </td>
-                          <td className="p-3">{e.due2_date ? new Date(e.due2_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
-                          <td className="p-3">{money(e.due2_value)}</td>
-                          <td className="p-3">
-                            {e.due2_value > 0 && (
-                              <PaidChip small paid={!!e.due2_paid} onClick={() => handleToggleEntryPaid(e, 2)} />
-                            )}
-                          </td>
-                          <td className="p-3 font-bold">{money(e.total_value)}</td>
-                          <td className="p-3">
-                            <button onClick={() => { setEditingItagEntry(e); setShowItagEntryForm(true); }} className="mr-2">✏️</button>
-                            <button onClick={() => handleDeleteItagEntry(e.id)} style={{ color: COLORS.danger }}>🗑️</button>
+                          <td className="pl-4 pr-1.5 py-3">{e.purchase_date ? new Date(e.purchase_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                          <td className="px-1.5 py-3">{e.invoice_number || "-"}</td>
+                          <td className="px-1.5 py-3">{e.model || "-"}</td>
+                          <td className="px-1.5 py-3">{e.arrival_date ? new Date(e.arrival_date + "T00:00:00").toLocaleDateString("pt-BR") : "-"}</td>
+                          <td className="px-1.5 py-3">{e.quantity}</td>
+                          <td className="px-1.5 py-3">{money(e.unit_value)}</td>
+                          <td className="px-1.5 py-3"><ItagParcela date={e.due1_date} value={e.due1_value} paid={e.due1_paid} onToggle={() => handleToggleEntryPaid(e, 1)} money={money} /></td>
+                          <td className="px-1.5 py-3"><ItagParcela date={e.due2_date} value={e.due2_value} paid={e.due2_paid} onToggle={() => handleToggleEntryPaid(e, 2)} money={money} /></td>
+                          <td className="px-1.5 py-3 font-bold whitespace-nowrap">{money(e.total_value)}</td>
+                          <td className="pl-1.5 pr-4 py-3 whitespace-nowrap">
+                            <button onClick={() => { setEditingItagEntry(e); setShowItagEntryForm(true); }} className="mr-2" title="Editar">✏️</button>
+                            <button onClick={() => handleDeleteItagEntry(e.id)} style={{ color: COLORS.danger }} title="Excluir">🗑️</button>
                           </td>
                         </tr>
                       ))}

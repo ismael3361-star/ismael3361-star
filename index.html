@@ -3041,6 +3041,13 @@ function DonutCanais({ waCount, emailCount }) {
 }
 
 const EXPENSE_CATEGORIES = ["Imposto", "Água", "Luz", "Telefone", "Internet", "Aluguel", "Condomínio", "Fornecedor", "Estacionamento", "Outros"];
+// Cada categoria de conta tem um ícone e uma cor (bolinha do cartão, botões de filtro e formulário)
+const EXPENSE_CAT_STYLE = {
+  "Imposto": { icon: "🏛️", cor: "#A78BFA" }, "Água": { icon: "💧", cor: "#38BDF8" }, "Luz": { icon: "💡", cor: "#FBBF24" }, "Telefone": { icon: "📞", cor: "#34D399" },
+  "Internet": { icon: "🌐", cor: "#60A5FA" }, "Aluguel": { icon: "🏠", cor: "#F472B6" }, "Condomínio": { icon: "🏢", cor: "#2DD4BF" }, "Fornecedor": { icon: "📦", cor: "#FB923C" },
+  "Estacionamento": { icon: "🅿️", cor: "#94A3B8" }, "Outros": { icon: "🧾", cor: "#CBD5E1" },
+};
+function expenseStyle(c) { return EXPENSE_CAT_STYLE[c] || EXPENSE_CAT_STYLE["Outros"]; }
 const EXPENSE_CATEGORY_COLORS = { "Imposto": "#EF4444", "Água": "#3B82F6", "Luz": "#F59E0B", "Telefone": "#A78BFA", "Internet": "#22C55E", "Aluguel": "#EC4899", "Condomínio": "#8B5CF6", "Fornecedor": "#14B8A6", "Estacionamento": "#F97316", "Outros": "#8A97AC" };
 
 // Retorna a data do quinto dia útil do mês.
@@ -3126,6 +3133,61 @@ function PresentationForm({ initial, onSave, onCancel }) {
   );
 }
 
+// Cartão de uma conta a pagar: ícone da categoria, valor, prazo (em cor) e as ações (pagar, boleto, menu ⋯)
+function ExpenseCard({ e, money, hoje, h }) {
+  const st = expenseStyle(e.category);
+  const paga = !!e.paid;
+  const dias = e.due_date ? Math.round((new Date(e.due_date + "T00:00:00") - new Date(hoje + "T00:00:00")) / 86400000) : null;
+  const atrasada = !paga && dias !== null && dias < 0;
+  const cor = paga ? COLORS.success : (atrasada || dias === 0) ? COLORS.danger : (dias !== null && dias <= 7) ? COLORS.warn : COLORS.info;
+  const valor = paga ? (e.paid_value ?? e.value) : e.value;
+  const prazo = paga ? (e.paid_date ? `pago em ${fmtDate(e.paid_date)}` : "pago") : dias === null ? "" : prazoTexto(e.due_date, hoje);
+  return (
+    <div data-expense-card={e.id} data-expense-state={paga ? "paga" : atrasada ? "atrasada" : "aberta"} className="rounded-2xl border overflow-hidden relative transition hover:-translate-y-0.5" style={{ borderColor: COLORS.cardBorder, background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(cor, 0.06)})` }}>
+      <div aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: cor }} />
+      <div className="p-3.5 pl-5">
+        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] sm:grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 items-start">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl row-span-2 sm:row-span-1" style={{ background: rgba(st.cor, 0.16) }}>{st.icon}</div>
+          <div className="min-w-0 pr-10 sm:pr-0">
+            <div className="text-sm font-bold leading-snug break-words" style={{ color: COLORS.ink }}>{e.category}{e.description ? ` — ${e.description}` : ""}</div>
+            <div className="text-xs mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5" style={{ color: COLORS.inkMuted }}>
+              <span className="whitespace-nowrap">{e.due_date ? `vence ${fmtDate(e.due_date)}` : "sem vencimento"}</span>
+              {e.recurring && <span className="font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.15)" }}>🔁 recorrente</span>}
+            </div>
+          </div>
+          <div className="col-start-2 sm:col-start-3 sm:row-start-1 flex flex-wrap items-baseline gap-x-2 sm:block sm:text-right">
+            <div className="text-lg font-extrabold leading-tight" style={{ color: COLORS.ink }}>{money(valor)}</div>
+            {prazo && <div className="text-[11px] font-semibold" style={{ color: paga ? COLORS.success : cor === COLORS.info ? COLORS.inkMuted : cor }}>{prazo}</div>}
+          </div>
+        </div>
+        {e.notes && <div className="mt-2 text-xs" style={{ color: COLORS.inkMuted }}>Obs.: {e.notes}</div>}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2 min-w-0">
+            <PaidChip paid={paga} onClick={() => h.togglePaid(e)} labelOpen="○ Marcar como pago" />
+            {e.file_url ? (
+              <a href={paga && e.file_url_watermarked ? e.file_url_watermarked : e.file_url} target="_blank" rel="noreferrer" className="px-3 py-1 rounded-full text-xs font-bold border whitespace-nowrap" style={{ borderColor: paga ? COLORS.success : COLORS.brandLight, color: paga ? COLORS.success : COLORS.brandLight }}>
+                {paga ? "✓📎 " : "📎 "}<span className="sm:hidden">Boleto</span><span className="hidden sm:inline">{paga ? "Ver boleto (pago)" : "Ver boleto"}</span>
+              </a>
+            ) : (
+              <label className="px-3 py-1 rounded-full text-xs font-bold border border-dashed cursor-pointer whitespace-nowrap" title="Anexar o boleto (PDF ou foto)" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
+                📎 <span className="sm:hidden">Anexar</span><span className="hidden sm:inline">Anexar boleto</span>
+                <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(ev) => { const f = ev.target.files?.[0]; ev.target.value = ""; if (f) h.upload(e, f); }} />
+              </label>
+            )}
+          </div>
+          <div className="absolute top-2.5 right-2.5 sm:static">
+            <RowMenu items={[
+              { label: "✏️ Editar", onClick: () => h.edit(e) },
+              e.file_url && { label: "📎 Trocar o boleto", file: { accept: "application/pdf,image/*", onFile: (f) => h.upload(e, f) } },
+              { label: "🗑️ Excluir", danger: true, onClick: () => h.del(e.id) },
+            ]} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ExpenseForm({ initial, onSave, onCancel }) {
   const [category, setCategory] = useState(initial?.category || EXPENSE_CATEGORIES[0]);
   const [description, setDescription] = useState(initial?.description || "");
@@ -3137,6 +3199,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
   const [uploading, setUploading] = useState(false);
 
   const canSave = category && Number(value) > 0 && !uploading;
+  const st = expenseStyle(category);
 
   async function handleSubmit() {
     const id = initial?.id || uid();
@@ -3160,41 +3223,73 @@ function ExpenseForm({ initial, onSave, onCancel }) {
     onSave({ id, category, description: description.trim() || null, notes: expenseNotes.trim() || null, value: Number(value) || 0, due_date: dueDate || null, recurring, paid: initial?.paid || false, paid_date: initial?.paid_date || null, paid_value: initial?.paid_value || null, file_url: fileUrl, file_name: fileName });
   }
 
+  const hojeS = todayStr();
+  const lblSt = { color: COLORS.inkMuted };
+  const campoSt = { borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink };
   return (
-    <div className="rounded-xl p-4 border space-y-3" style={{ borderColor: COLORS.cardBorder, background: "rgba(124,92,255,0.06)" }}>
-      <div className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.brandLight }}>{initial ? "Editar despesa" : "Nova despesa"}</div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Categoria</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }}>
-            {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
-        <TextField label="Descrição" value={description} onChange={setDescription} placeholder="Ex: Conta de luz - loja" />
-        <TextField label="Obs." value={expenseNotes} onChange={setExpenseNotes} placeholder="Observação (opcional)" />
-        <TextField label="Valor" value={value} onChange={setValue} type="number" placeholder="0" />
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Data de vencimento</span>
-          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
-        </label>
-        <label className="block">
-          <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Anexo (boleto)</span>
-          <input type="file" accept="application/pdf,image/*" onChange={(e) => setPendingFile(e.target.files?.[0] || null)} className="w-full rounded-lg border px-3 py-1.5 text-xs outline-none" style={{ borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink }} />
-          {initial?.file_name && !pendingFile && <span className="text-xs" style={{ color: COLORS.inkMuted }}>Já tem um arquivo anexado ({initial.file_name}) — escolher outro vai trocar.</span>}
-        </label>
+    <div data-expense-form="1" className="rounded-3xl border overflow-hidden" style={{ borderColor: rgba(st.cor, 0.4), background: `radial-gradient(120% 140% at 0% 0%, ${rgba(st.cor, 0.16)}, transparent 55%), linear-gradient(160deg, ${COLORS.card}, #1B2A47)` }}>
+      <div className="flex items-center gap-3 p-4 sm:p-5 pb-3">
+        <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shrink-0" style={{ background: rgba(st.cor, 0.2) }}>{st.icon}</div>
+        <div className="min-w-0">
+          <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: st.cor }}>{initial ? "Editar despesa" : "Nova despesa"}</div>
+          <div className="text-sm" style={lblSt}>{initial ? "Mude o que precisar e salve." : "Só o valor é obrigatório; o resto ajuda a achar a conta depois."}</div>
+        </div>
       </div>
-      <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: COLORS.ink }}>
-        <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
-        Despesa recorrente (repete todo mês)
-      </label>
-      <div className="flex gap-2">
-        <button
-          disabled={!canSave}
-          onClick={handleSubmit}
-          className="px-5 py-2.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: COLORS.brand }}>
-          {uploading ? "Anexando..." : "Salvar despesa"}
-        </button>
-        <button onClick={onCancel} className="px-5 py-2.5 rounded-lg text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+      <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-4">
+        <div>
+          <div className="text-xs font-semibold mb-1.5" style={lblSt}>Categoria</div>
+          <div className="flex flex-wrap gap-1.5">
+            {EXPENSE_CATEGORIES.map((c) => {
+              const s2 = expenseStyle(c); const ativo = c === category;
+              return (
+                <button key={c} type="button" data-form-cat={c} aria-pressed={ativo} onClick={() => setCategory(c)} className="px-3 py-1.5 rounded-full text-xs font-bold border transition whitespace-nowrap"
+                  style={{ borderColor: ativo ? s2.cor : COLORS.cardBorder, background: ativo ? rgba(s2.cor, 0.18) : "transparent", color: ativo ? COLORS.ink : COLORS.inkMuted }}>{s2.icon} {c}</button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <TextField label="Descrição" value={description} onChange={setDescription} placeholder="Ex: Conta de luz - loja" />
+          <label className="block">
+            <span className="block text-xs font-semibold mb-1" style={lblSt}>Valor</span>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold" style={lblSt}>R$</span>
+              <input type="number" inputMode="decimal" min="0" step="0.01" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0" className="w-full rounded-lg border pl-10 pr-3 py-2 text-sm font-bold outline-none" style={campoSt} />
+            </div>
+          </label>
+          <div>
+            <label className="block">
+              <span className="block text-xs font-semibold mb-1" style={lblSt}>Data de vencimento</span>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm outline-none" style={campoSt} />
+            </label>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {[["Hoje", 0], ["+7 dias", 7], ["+15 dias", 15], ["+30 dias", 30]].map(([nome, n]) => (
+                <button key={nome} type="button" data-venc-rapido={n} onClick={() => setDueDate(addDaysStr(hojeS, n))} className="px-2.5 py-1 rounded-full text-[11px] font-bold border" style={{ borderColor: dueDate === addDaysStr(hojeS, n) ? COLORS.brandLight : COLORS.cardBorder, color: dueDate === addDaysStr(hojeS, n) ? COLORS.brandLight : COLORS.inkMuted }}>{nome}</button>
+              ))}
+            </div>
+          </div>
+          <TextField label="Obs." value={expenseNotes} onChange={setExpenseNotes} placeholder="Observação (opcional)" />
+        </div>
+        <label className="flex items-center gap-3 text-sm cursor-pointer select-none" style={{ color: COLORS.ink }}>
+          <button type="button" role="switch" aria-checked={recurring} aria-label="Despesa recorrente" data-recorrente-switch="1" onClick={() => setRecurring((v) => !v)} className="relative w-11 h-6 rounded-full shrink-0 transition" style={{ background: recurring ? COLORS.brand : "rgba(255,255,255,0.16)" }}>
+            <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" style={{ left: recurring ? 22 : 2 }} />
+          </button>
+          <span onClick={() => setRecurring((v) => !v)}>Despesa recorrente (repete todo mês)</span>
+        </label>
+        <label className="flex items-center gap-3 rounded-xl border border-dashed px-3.5 py-3 cursor-pointer" style={{ borderColor: pendingFile ? COLORS.success : COLORS.cardBorder, background: "rgba(255,255,255,0.03)" }}>
+          <span className="text-xl">📎</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold truncate" style={{ color: COLORS.ink }}>{pendingFile ? pendingFile.name : initial?.file_name ? `Boleto atual: ${initial.file_name}` : "Anexar boleto (PDF ou foto)"}</span>
+            <span className="block text-xs" style={lblSt}>{pendingFile ? "Será anexado ao salvar." : initial?.file_name ? "Escolher outro arquivo troca o boleto atual." : "Opcional. Você também pode anexar depois, na lista."}</span>
+          </span>
+          <input type="file" accept="application/pdf,image/*" onChange={(e) => setPendingFile(e.target.files?.[0] || null)} className="hidden" />
+        </label>
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <button disabled={!canSave} onClick={handleSubmit} className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>
+            {uploading ? "Anexando..." : "Salvar despesa"}
+          </button>
+          <button onClick={onCancel} className="px-5 py-2.5 rounded-xl text-sm font-semibold" style={{ color: COLORS.inkMuted }}>← Voltar</button>
+        </div>
       </div>
     </div>
   );
@@ -7262,8 +7357,10 @@ function App() {
   // Contas a Pagar abre só com as contas em aberto; "Pagos" e "Todos" continuam nos botões. A categoria escolhida vale junto com a situação.
   const [expenseFilter, setExpenseFilter] = useState("aberto");
   const [expenseCategory, setExpenseCategory] = useState("");
+  const [expenseSearch, setExpenseSearch] = useState("");
+  const [expenseLimit, setExpenseLimit] = useState(100);
   // ao sair de Contas a Pagar os botões voltam ao padrão: da próxima vez que a tela abrir, só as contas em aberto
-  useEffect(() => { if (tab !== "despesas") { setExpenseFilter("aberto"); setExpenseCategory(""); } }, [tab]);
+  useEffect(() => { if (tab !== "despesas") { setExpenseFilter("aberto"); setExpenseCategory(""); setExpenseSearch(""); setExpenseLimit(100); } }, [tab]);
   const [hideValues, setHideValues] = useState(false);
   const [iconMenu, setIconMenu] = useState(() => { try { return localStorage.getItem("adm_icon_menu") !== "0"; } catch (e) { return true; } });
   const [openGroup, setOpenGroup] = useState(null);
@@ -14926,106 +15023,150 @@ function App() {
           )}
 
           {effectiveTab === "despesas" && (
-            <div>
+            <div data-contas-root="1">
               {(() => {
-                const today = todayStr();
-                const in7days = new Date(); in7days.setDate(in7days.getDate() + 7);
-                const in7 = in7days.toISOString().slice(0, 10);
-                const totalAberto = expenses.filter((e) => !e.paid).reduce((s, e) => s + (Number(e.value) || 0), 0);
-                const totalPago = expenses.filter((e) => e.paid).reduce((s, e) => s + (Number(e.paid_value ?? e.value) || 0), 0);
-                const atrasadas = expenses.filter((e) => !e.paid && e.due_date && e.due_date < today);
-                const venceHoje = expenses.filter((e) => !e.paid && e.due_date === today);
-                const venceEmBreve = expenses.filter((e) => !e.paid && e.due_date && e.due_date >= today && e.due_date <= in7);
-                const filtered = expenses.filter((e) => {
-                  if (expenseCategory && e.category !== expenseCategory) return false;
+                const hoje = todayStr();
+                const mesAtual = monthKey(new Date());
+                const em7 = addDaysStr(hoje, 7);
+                const plural = (n, um, varios) => (n === 1 ? um : varios);
+                const norm = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+                const busca = norm(expenseSearch.trim());
+                const valorDe = (e) => Number(e.paid ? (e.paid_value ?? e.value) : e.value) || 0;
+                const soma = (list) => round2(list.reduce((t, e) => t + valorDe(e), 0));
+                const atrasada = (e) => !e.paid && !!e.due_date && e.due_date < hoje;
+                const abertas = expenses.filter((e) => !e.paid);
+                const atrasadas = abertas.filter(atrasada);
+                const venceHoje = abertas.filter((e) => e.due_date === hoje);
+                const ate7 = abertas.filter((e) => e.due_date && e.due_date >= hoje && e.due_date <= em7);
+                const adiante = abertas.filter((e) => !e.due_date || e.due_date > em7);
+                const pagasMes = expenses.filter((e) => e.paid && String(e.paid_date || e.due_date || "").slice(0, 7) === mesAtual);
+                const nomeMes = MONTHS_PT[Number(mesAtual.slice(5, 7)) - 1].toLowerCase();
+                const mesTxt = (k) => monthTitlePT(k).toLowerCase();
+                // lista da tela = busca + categoria + situação
+                const comBusca = expenses.filter((e) => (!expenseCategory || e.category === expenseCategory) && (!busca || norm(`${e.category} ${e.description || ""} ${e.notes || ""}`).includes(busca)));
+                const contagem = { todos: comBusca.length, aberto: comBusca.filter((e) => !e.paid).length, pago: comBusca.filter((e) => e.paid).length, atrasado: comBusca.filter(atrasada).length };
+                const filtered = comBusca.filter((e) => {
                   if (expenseFilter === "aberto") return !e.paid;
                   if (expenseFilter === "pago") return !!e.paid;
-                  if (expenseFilter === "atrasado") return !e.paid && !!e.due_date && e.due_date < today;
+                  if (expenseFilter === "atrasado") return atrasada(e);
                   return true;
                 }).sort((a, b) => (!!a.paid === !!b.paid ? 0 : a.paid ? 1 : -1));
                 // abriu em "Em aberto" e não sobrou nenhuma: mensagem própria (e diz onde estão as pagas)
-                const nenhumaEmAberto = filtered.length === 0 && expenses.length > 0 && expenseFilter === "aberto" && !expenseCategory;
+                const nenhumaEmAberto = filtered.length === 0 && expenses.length > 0 && expenseFilter === "aberto" && !expenseCategory && !busca;
+                // grupos da lista: atrasadas, hoje, próximos 7 dias, depois um por mês; as pagas, um grupo por mês (mais recente primeiro)
+                const porVenc = (a, b) => String(a.due_date || "9999").localeCompare(String(b.due_date || "9999"));
+                const grupos = [];
+                const poe = (key, titulo, icone, cor, lista) => { if (lista.length) grupos.push({ key, titulo, icone, cor, lista }); };
+                const abertasF = filtered.filter((e) => !e.paid), pagasF = filtered.filter((e) => e.paid);
+                poe("atrasadas", "Atrasadas", "⚠️", COLORS.danger, abertasF.filter(atrasada).sort(porVenc));
+                poe("hoje", "Vence hoje", "📅", COLORS.danger, abertasF.filter((e) => e.due_date === hoje).sort(porVenc));
+                poe("semana", "Próximos 7 dias", "🔔", COLORS.warn, abertasF.filter((e) => e.due_date && e.due_date > hoje && e.due_date <= em7).sort(porVenc));
+                const resto = abertasF.filter((e) => !e.due_date || e.due_date > em7);
+                const porMes = {};
+                resto.forEach((e) => { const k = e.due_date ? e.due_date.slice(0, 7) : "sem"; (porMes[k] = porMes[k] || []).push(e); });
+                Object.keys(porMes).filter((k) => k !== "sem").sort().forEach((k) => poe("mes-" + k, k === mesAtual ? `Ainda em ${nomeMes}` : monthTitlePT(k), "🗓️", COLORS.info, porMes[k].sort(porVenc)));
+                poe("sem-vencimento", "Sem vencimento", "🗓️", COLORS.inkMuted, porMes.sem || []);
+                const pagasPorMes = {};
+                pagasF.forEach((e) => { const k = String(e.paid_date || e.due_date || "").slice(0, 7) || "sem"; (pagasPorMes[k] = pagasPorMes[k] || []).push(e); });
+                Object.keys(pagasPorMes).sort().reverse().forEach((k) => poe("pagas-" + k, k === "sem" ? "Pagas" : `Pagas em ${mesTxt(k)}`, "✅", COLORS.success,
+                  pagasPorMes[k].sort((a, b) => String(b.paid_date || b.due_date || "").localeCompare(String(a.paid_date || a.due_date || "")))));
+                // para não pesar quando há muitas contas: mostra 100 por vez
+                let restante = expenseLimit;
+                const gruposVis = grupos.map((g) => { const n = Math.max(0, Math.min(g.lista.length, restante)); restante -= n; return { ...g, visiveis: g.lista.slice(0, n) }; }).filter((g) => g.visiveis.length > 0);
+                const ocultas = filtered.length - gruposVis.reduce((t, g) => t + g.visiveis.length, 0);
+                const hExp = {
+                  togglePaid: handleToggleExpensePaid, upload: handleUploadExpenseFile,
+                  edit: (x) => { setEditingExpense(x); setShowExpenseForm(true); }, del: handleDeleteExpense,
+                };
+                const nomeConta = (e) => `${e.category}${e.description ? " (" + e.description + ")" : ""}`;
                 function sendTodayDueWhatsApp() {
-                  const hojeFmt = new Date(today + "T00:00:00").toLocaleDateString("pt-BR");
-                  const linhas = venceHoje.map((e) => `• ${e.category}${e.description ? " (" + e.description + ")" : ""}: ${fmtMoney(e.value)}`).join("\n");
-                  const msg = `📅 Hoje (${hojeFmt}) vence${venceHoje.length > 1 ? "m" : ""} ${venceHoje.length} conta${venceHoje.length > 1 ? "s" : ""} a pagar:\n\n${linhas}\n\nTotal: ${fmtMoney(venceHoje.reduce((s, e) => s + (Number(e.value) || 0), 0))}`;
+                  const hojeFmt = new Date(hoje + "T00:00:00").toLocaleDateString("pt-BR");
+                  const linhas = venceHoje.map((e) => `• ${nomeConta(e)}: ${fmtMoney(e.value)}`).join("\n");
+                  const msg = `📅 Hoje (${hojeFmt}) vence${venceHoje.length > 1 ? "m" : ""} ${venceHoje.length} conta${venceHoje.length > 1 ? "s" : ""} a pagar:\n\n${linhas}\n\nTotal: ${fmtMoney(venceHoje.reduce((t, e) => t + (Number(e.value) || 0), 0))}`;
                   const phone = settings.expenses_alert_phone ? waNumber(settings.expenses_alert_phone) : "";
                   window.open(`https://web.whatsapp.com/send?${phone ? `phone=${phone}&` : ""}text=${encodeURIComponent(msg)}`, "_blank");
                 }
+                const gradBrand = `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})`;
+                const heroBox = { borderColor: rgba(COLORS.brand, 0.35), background: `radial-gradient(120% 160% at 0% 0%, ${rgba(COLORS.brand, 0.28)}, transparent 55%), linear-gradient(160deg, ${COLORS.card}, #1B2A47)` };
+                const kpiBox = { background: "rgba(0,0,0,0.22)", border: `1px solid ${COLORS.cardBorder}` };
+                const tile = (id, rotulo, cor, valor, sub, dica) => (
+                  <div key={id} title={dica} className="rounded-2xl px-3.5 py-2.5 min-[420px]:py-3 min-w-0 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 min-[420px]:block" style={kpiBox}>
+                    <div className="col-start-1 row-start-1 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: cor }}>{rotulo}</div>
+                    <div data-kpi={id} className="col-start-2 row-start-1 row-span-2 text-right min-[420px]:text-left text-base min-[420px]:text-[15px] sm:text-lg lg:text-xl font-extrabold min-[420px]:mt-0.5 whitespace-nowrap" style={{ color: COLORS.ink }}>{valor}</div>
+                    <div className="col-start-1 row-start-2 text-[11px] mt-0.5 leading-snug" style={{ color: COLORS.inkMuted }}>{sub}</div>
+                  </div>
+                );
+                const qtd = (n) => `${n} ${plural(n, "conta", "contas")}`;
+
+                if (showExpenseForm) return (
+                  <FormHost item={editingExpense}><ExpenseForm initial={editingExpense} onSave={handleSaveExpense} onCancel={() => { setShowExpenseForm(false); setEditingExpense(null); }} /></FormHost>
+                );
                 return (
                   <>
-                    {venceHoje.length > 0 && (
-                      <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.danger, background: "rgba(239,68,68,0.12)" }}>
-                        <span className="text-2xl">📅</span>
-                        <div className="flex-1">
-                          <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{venceHoje.length} conta(s) vencendo hoje</div>
-                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{venceHoje.map((e) => `${e.category}${e.description ? " (" + e.description + ")" : ""}: ${fmtMoney(e.value)}`).join(", ")}</div>
+                    <div data-contas-hero="1" className="rounded-3xl border p-4 sm:p-5 mb-4" style={heroBox}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-[11px] font-bold uppercase tracking-widest" style={{ color: COLORS.brandLight }}>A pagar</div>
+                          <div data-kpi="aberto" className="text-3xl sm:text-4xl font-extrabold leading-tight mt-0.5" style={{ color: COLORS.ink }}>{money(soma(abertas))}</div>
+                          <div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>
+                            {qtd(abertas.length)} em aberto{atrasadas.length > 0 && <> · <b style={{ color: COLORS.danger }}>{atrasadas.length} {plural(atrasadas.length, "atrasada", "atrasadas")}</b></>}
+                          </div>
                         </div>
-                        <button onClick={sendTodayDueWhatsApp} className="px-3 py-2 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: COLORS.wa }}>📤 Avisar por WhatsApp</button>
-                      </div>
-                    )}
-                    {venceEmBreve.length > 0 && (
-                      <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.warn, background: "rgba(245,158,11,0.1)" }}>
-                        <span className="text-2xl">🔔</span>
-                        <div>
-                          <div className="text-sm font-bold" style={{ color: COLORS.warn }}>{venceEmBreve.length} conta(s) vencendo nos próximos 7 dias</div>
-                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{venceEmBreve.map((e) => `${e.category}${e.description ? " (" + e.description + ")" : ""}`).join(", ")}</div>
-                        </div>
-                      </div>
-                    )}
-                    {atrasadas.length > 0 && (
-                      <div className="rounded-2xl border p-4 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: COLORS.danger, background: "rgba(239,68,68,0.1)" }}>
-                        <span className="text-2xl">⚠️</span>
-                        <div>
-                          <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{atrasadas.length} conta(s) atrasada(s)</div>
-                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{atrasadas.map((e) => `${e.category}${e.description ? " (" + e.description + ")" : ""}`).join(", ")}</div>
+                        <div className="flex items-center gap-2">
+                          <button type="button" data-nova-despesa="1" onClick={() => { setEditingExpense(null); setShowExpenseForm(true); }} className="px-4 py-2.5 rounded-xl text-xs font-semibold text-white" style={{ background: gradBrand }}>＋ Nova despesa</button>
+                          <RowMenu items={[
+                            { label: "🔁 Gerar recorrentes (próx. mês)", onClick: handleGenerateNextMonthExpenses },
+                            expenses.length > 0 && { label: "📊 Exportar Excel", onClick: () => exportExpensesExcel(filtered) },
+                            expenses.length > 0 && { label: "📄 Exportar PDF", onClick: () => exportExpensesPDF(filtered) },
+                          ]} />
                         </div>
                       </div>
-                    )}
-
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.warn }}>Em aberto</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalAberto)}</div>
-                      </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.success }}>Pago</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{money(totalPago)}</div>
-                      </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.danger }}>Atrasadas</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{atrasadas.length}</div>
-                      </div>
-                      <div className="rounded-2xl p-4 border" style={{ background: `linear-gradient(160deg, ${COLORS.card}, ${rgba(COLORS.brand, 0.035)})`, borderColor: COLORS.cardBorder }}>
-                        <div className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: COLORS.brandLight }}>Recorrentes</div>
-                        <div className="text-lg font-extrabold" style={{ color: COLORS.ink }}>{expenses.filter((e) => e.recurring).length}</div>
+                      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-2 min-[420px]:gap-2.5 mt-4">
+                        {tile("atrasadas", "Atrasadas", atrasadas.length > 0 ? COLORS.danger : COLORS.success, money(soma(atrasadas)), atrasadas.length > 0 ? qtd(atrasadas.length) : "nenhuma")}
+                        {tile("semana", "Próx. 7 dias", COLORS.warn, money(soma(ate7)), ate7.length > 0 ? qtd(ate7.length) : "nenhuma", "Contas que vencem de hoje até daqui a 7 dias")}
+                        {tile("adiante", "Mais adiante", COLORS.info, money(soma(adiante)), adiante.length > 0 ? qtd(adiante.length) : "nenhuma", "Contas que vencem depois dos próximos 7 dias")}
+                        {tile("pago", "Pago no mês", COLORS.success, money(soma(pagasMes)), `${nomeMes} · ${pagasMes.length > 0 ? qtd(pagasMes.length) : "nenhuma ainda"}`, `Contas pagas em ${nomeMes}`)}
                       </div>
                     </div>
 
-                    {expenses.length > 0 && (
-                      <div className="flex items-center justify-end gap-2 mb-3">
-                        <button onClick={() => exportExpensesExcel(filtered)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Exportar Excel</button>
-                        <button onClick={() => exportExpensesPDF(filtered)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Exportar PDF</button>
+                    {venceHoje.length > 0 && (
+                      <div data-contas-hoje="1" className="rounded-2xl border p-3.5 mb-4 flex flex-wrap items-center gap-3" style={{ borderColor: rgba(COLORS.danger, 0.55), background: rgba(COLORS.danger, 0.1) }}>
+                        <span className="text-xl">📅</span>
+                        <div className="min-w-0 flex-1 basis-48">
+                          <div className="text-sm font-bold" style={{ color: COLORS.danger }}>{venceHoje.length} {plural(venceHoje.length, "conta vence", "contas vencem")} hoje · {money(soma(venceHoje))}</div>
+                          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{venceHoje.map((e) => `${nomeConta(e)}: ${money(e.value)}`).join(", ")}</div>
+                        </div>
+                        <button type="button" onClick={sendTodayDueWhatsApp} className="px-3 py-2 rounded-lg text-xs font-bold text-white shrink-0" style={{ background: COLORS.wa }}>📤 Avisar por WhatsApp</button>
                       </div>
                     )}
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {["todos", "aberto", "pago", "atrasado"].map((f) => (
-                          <button key={f} onClick={() => setExpenseFilter(f)} className="text-xs font-semibold px-2.5 py-1.5 rounded-full border" style={{ borderColor: expenseFilter === f ? COLORS.brandLight : COLORS.cardBorder, color: expenseFilter === f ? COLORS.brandLight : COLORS.inkMuted, background: expenseFilter === f ? "rgba(124,92,255,0.1)" : "transparent" }}>
-                            {f === "todos" ? "Todos" : f === "aberto" ? "Em aberto" : f === "pago" ? "Pagos" : "Atrasados"}
-                          </button>
-                        ))}
-                        <span className="self-stretch w-px mx-1" style={{ background: COLORS.cardBorder }} />
-                        {EXPENSE_CATEGORIES.map((c) => (
-                          <button key={c} onClick={() => setExpenseCategory(expenseCategory === c ? "" : c)} title={expenseCategory === c ? "Toque de novo para tirar o filtro desta categoria" : undefined} className="text-xs font-semibold px-2.5 py-1.5 rounded-full border" style={{ borderColor: expenseCategory === c ? COLORS.brandLight : COLORS.cardBorder, color: expenseCategory === c ? COLORS.brandLight : COLORS.inkMuted, background: expenseCategory === c ? "rgba(124,92,255,0.1)" : "transparent" }}>
-                            {c}
-                          </button>
-                        ))}
+                    <div className="space-y-2.5 mb-3">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-70" aria-hidden="true">🔎</span>
+                        <input data-expenses-busca="1" value={expenseSearch} onChange={(ev) => { setExpenseSearch(ev.target.value); setExpenseLimit(100); }} placeholder="Buscar conta..." aria-label="Buscar nas contas (nome, categoria ou observação)" className="w-full rounded-xl border pl-9 pr-9 py-2.5 text-sm outline-none" style={{ borderColor: COLORS.cardBorder, background: "rgba(255,255,255,0.04)", color: COLORS.ink }} />
+                        {expenseSearch && <button type="button" aria-label="Limpar a busca" data-expenses-busca-limpar="1" onClick={() => setExpenseSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full text-xs" style={{ color: COLORS.inkMuted }}>✕</button>}
                       </div>
-                      <div className="flex gap-2">
-                        <button onClick={handleGenerateNextMonthExpenses} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>🔁 Gerar recorrentes (próx. mês)</button>
-                        <button onClick={() => { setEditingExpense(null); setShowExpenseForm(true); }} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Nova despesa</button>
+                      <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap">
+                        {[["todos", "Todos"], ["aberto", "Em aberto"], ["pago", "Pagos"], ["atrasado", "Atrasados"]].map(([f, nome]) => {
+                          const ativo = expenseFilter === f;
+                          return (
+                            <button key={f} type="button" data-exp-filter={f} aria-pressed={ativo} onClick={() => { setExpenseFilter(f); setExpenseLimit(100); }} className="px-3.5 py-1.5 rounded-full text-xs font-bold border transition text-center"
+                              style={{ borderColor: ativo ? COLORS.brandLight : COLORS.cardBorder, background: ativo ? rgba(COLORS.brand, 0.18) : "transparent", color: ativo ? COLORS.brandLight : COLORS.inkMuted }}>
+                              {nome} <span style={{ opacity: 0.8 }}>({contagem[f]})</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-1.5 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
+                        {EXPENSE_CATEGORIES.map((c) => {
+                          const s2 = expenseStyle(c); const ativo = expenseCategory === c;
+                          return (
+                            <button key={c} type="button" data-cat-chip={c} aria-pressed={ativo} onClick={() => { setExpenseCategory(ativo ? "" : c); setExpenseLimit(100); }} title={ativo ? "Toque de novo para tirar o filtro desta categoria" : undefined} className="px-2.5 py-1 rounded-full text-[11px] font-semibold border whitespace-nowrap shrink-0 transition"
+                              style={{ borderColor: ativo ? s2.cor : COLORS.cardBorder, background: ativo ? rgba(s2.cor, 0.18) : "transparent", color: ativo ? COLORS.ink : COLORS.inkMuted }}>
+                              {s2.icon} {c}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -15034,61 +15175,54 @@ function App() {
                       const nAbertas = expenses.length - nPagas;
                       const lista = expenseFilter === "todos" ? "todas as contas" : expenseFilter === "aberto" ? "só as contas em aberto" : expenseFilter === "pago" ? "só as contas pagas" : "só as contas atrasadas";
                       return (
-                        <div data-expenses-resumo="1" className="text-xs mb-3 px-1 leading-relaxed" style={{ color: COLORS.inkMuted }}>
+                        <div data-expenses-resumo="1" className="text-xs mb-4 px-1 leading-relaxed" style={{ color: COLORS.inkMuted }}>
                           Tudo o que você já lançou está salvo: <b style={{ color: COLORS.ink }}>{expenses.length} conta{expenses.length === 1 ? "" : "s"}</b> ({nAbertas} em aberto · {nPagas} paga{nPagas === 1 ? "" : "s"}).{" "}
-                          A lista abaixo mostra <b style={{ color: COLORS.ink }}>{lista}{expenseCategory ? ` de ${expenseCategory}` : ""}</b>.
-                          {(expenseFilter !== "todos" || expenseCategory) && <>{" "}<button type="button" data-expenses-ver-todas="1" onClick={() => { setExpenseFilter("todos"); setExpenseCategory(""); }} className="underline font-semibold" style={{ color: COLORS.brandLight }}>Ver todas</button></>}
+                          A lista abaixo mostra <b style={{ color: COLORS.ink }}>{lista}{expenseCategory ? ` de ${expenseCategory}` : ""}{busca ? ` com “${expenseSearch.trim()}”` : ""}</b>.
+                          {(expenseFilter !== "todos" || expenseCategory || busca) && <>{" "}<button type="button" data-expenses-ver-todas="1" onClick={() => { setExpenseFilter("todos"); setExpenseCategory(""); setExpenseSearch(""); }} className="underline font-semibold" style={{ color: COLORS.brandLight }}>Ver todas</button></>}
                         </div>
                       );
                     })()}
 
-                    {showExpenseForm && <FormHost item={editingExpense}><ExpenseForm initial={editingExpense} onSave={handleSaveExpense} onCancel={() => { setShowExpenseForm(false); setEditingExpense(null); }} /></FormHost>}
-
-                    {!showExpenseForm && (
-                      <div className="rounded-2xl border overflow-hidden mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
-                        {filtered.length === 0 ? (
-                          nenhumaEmAberto ? (
-                            <div className="p-10 text-center"><div className="text-3xl mb-2">✅</div><div className="text-sm font-semibold" style={{ color: COLORS.ink }}>Nenhuma conta em aberto.</div><div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>As contas pagas estão no botão “Pagos”.</div></div>
-                          ) : (
-                            <div className="p-10 text-center"><div className="text-3xl mb-2">🧾</div><div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma despesa encontrada.</div></div>
-                          )
-                        ) : filtered.map((e, i) => {
-                          const isLate = !e.paid && e.due_date && e.due_date < today;
-                          return (
-                            <div key={e.id} className="flex flex-wrap items-center justify-between gap-2 p-4" style={{ borderTop: i > 0 ? `1px solid ${COLORS.cardBorder}` : "none" }}>
-                              <div className="flex items-center gap-3">
-                                <span className="text-lg">{e.category === "Imposto" ? "🏛️" : e.category === "Água" ? "💧" : e.category === "Luz" ? "💡" : e.category === "Telefone" ? "📞" : e.category === "Internet" ? "🌐" : e.category === "Aluguel" ? "🏠" : e.category === "Condomínio" ? "🏢" : e.category === "Fornecedor" ? "📦" : e.category === "Estacionamento" ? "🅿️" : "🧾"}</span>
-                                <div>
-                                  <div className="text-sm font-bold flex items-center gap-2 flex-wrap" style={{ color: COLORS.ink }}>
-                                    {e.category}{e.description ? ` — ${e.description}` : ""}
-                                    {e.recurring && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: COLORS.brandLight, background: "rgba(124,92,255,0.15)" }}>🔁 recorrente</span>}
-                                  </div>
-                                  <div className="text-xs" style={{ color: isLate ? COLORS.danger : COLORS.inkMuted }}>
-                                    {money(e.value)} · vence {fmtDate(e.due_date)}{isLate ? " · ATRASADA" : ""}{e.notes ? ` · Obs.: ${e.notes}` : ""}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                {e.file_url ? (
-                                  <a href={e.paid && e.file_url_watermarked ? e.file_url_watermarked : e.file_url} target="_blank" className="text-xs font-bold px-2.5 py-1.5 rounded-full border" style={{ borderColor: e.paid ? COLORS.success : COLORS.brandLight, color: e.paid ? COLORS.success : COLORS.brandLight }}>
-                                    {e.paid ? "✓📎 Ver boleto (pago)" : "📎 Ver boleto"}
-                                  </a>
-                                ) : (
-                                  <label className="text-xs font-bold px-2.5 py-1.5 rounded-full border cursor-pointer" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>
-                                    📎 Anexar boleto
-                                    <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e2) => handleUploadExpenseFile(e, e2.target.files?.[0])} />
-                                  </label>
-                                )}
-                                <PaidChip paid={!!e.paid} onClick={() => handleToggleExpensePaid(e)} labelOpen="○ Marcar como pago" />
-                                <button onClick={() => { setEditingExpense(e); setShowExpenseForm(true); }} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>✏️</button>
-                                <button onClick={() => handleDeleteExpense(e.id)} className="px-3 py-1.5 rounded-lg text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.danger }}>🗑️</button>
-                              </div>
-                            </div>
-                          );
-                        })}
+                    {filtered.length === 0 ? (
+                      <div data-contas-vazio="1" className="rounded-2xl border p-8 sm:p-10 text-center mb-4" style={{ borderColor: COLORS.cardBorder, background: COLORS.card }}>
+                        {nenhumaEmAberto ? (
+                          <>
+                            <div className="text-4xl mb-2">✅</div>
+                            <div className="text-sm font-semibold" style={{ color: COLORS.ink }}>Nenhuma conta em aberto.</div>
+                            <div className="text-xs mt-1" style={{ color: COLORS.inkMuted }}>As contas pagas estão no botão “Pagos”.</div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-4xl mb-2">🧾</div>
+                            <div className="text-sm" style={{ color: COLORS.inkMuted }}>Nenhuma despesa encontrada.</div>
+                            {expenses.length === 0 && <div className="text-xs mt-1" style={{ color: COLORS.inkFaint }}>Toque em “＋ Nova despesa” para lançar a primeira conta.</div>}
+                          </>
+                        )}
                       </div>
+                    ) : (
+                      <>
+                        {gruposVis.map((g) => (
+                          <section key={g.key} data-expense-group={g.key} className="mb-5">
+                            <div className="flex items-center justify-between gap-2 mb-2 px-1">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-sm leading-none">{g.icone}</span>
+                                <span className="text-[11px] font-extrabold uppercase tracking-wider truncate" style={{ color: g.cor }}>{g.titulo}</span>
+                                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: g.cor, background: rgba(g.cor, 0.14) }}>{g.lista.length}</span>
+                              </div>
+                              <span className="text-xs font-bold shrink-0" style={{ color: COLORS.ink }}>{money(soma(g.lista))}</span>
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                              {g.visiveis.map((e) => <ExpenseCard key={e.id} e={e} money={money} hoje={hoje} h={hExp} />)}
+                            </div>
+                          </section>
+                        ))}
+                        {ocultas > 0 && (
+                          <div className="text-center mb-4">
+                            <button type="button" data-expenses-mais="1" onClick={() => setExpenseLimit((n) => n + 100)} className="px-4 py-2 rounded-xl text-xs font-bold border" style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>Mostrar mais ({ocultas} {plural(ocultas, "conta escondida", "contas escondidas")})</button>
+                          </div>
+                        )}
+                      </>
                     )}
-
                   </>
                 );
               })()}

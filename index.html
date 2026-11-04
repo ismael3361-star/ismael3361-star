@@ -15203,13 +15203,12 @@ function App() {
                       <>
                         {gruposVis.map((g) => (
                           <section key={g.key} data-expense-group={g.key} className="mb-5">
-                            <div className="flex items-center justify-between gap-2 mb-2 px-1">
+                            <div className="flex items-center gap-2 mb-2 px-1">
                               <div className="flex items-center gap-2 min-w-0">
                                 <span className="text-sm leading-none">{g.icone}</span>
                                 <span className="text-[11px] font-extrabold uppercase tracking-wider truncate" style={{ color: g.cor }}>{g.titulo}</span>
                                 <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full" style={{ color: g.cor, background: rgba(g.cor, 0.14) }}>{g.lista.length}</span>
                               </div>
-                              <span className="text-xs font-bold shrink-0" style={{ color: COLORS.ink }}>{money(soma(g.lista))}</span>
                             </div>
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                               {g.visiveis.map((e) => <ExpenseCard key={e.id} e={e} money={money} hoje={hoje} h={hExp} />)}

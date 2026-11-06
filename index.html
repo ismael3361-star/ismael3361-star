@@ -1517,8 +1517,17 @@ function proposalDropEmptyStores(items) {
   return list.filter((it) => !(proposalIsLoja(it) && /^Loja( \d+)?$/i.test(String(it.desc || "").trim())));
 }
 // Nome do valor cobrado uma única vez: se a integração é a única coisa nele, chama "Integração"; senão, "Implantação".
+// O Cloud tem caixa própria (fica de fora da implantação), por isso não conta aqui (o parâmetro fica só para não mudar quem chama).
 function proposalOneTimeLabel(hasInstall, hasCloud, hasCustom, hasIntegration) {
-  return hasIntegration && !hasInstall && !hasCloud && !hasCustom ? "Integração" : "Implantação";
+  return hasIntegration && !hasInstall && !hasCustom ? "Integração" : "Implantação";
+}
+// O valor do Cloud aparece separado da implantação. O que está gravado na proposta continua somando tudo
+// (implantacao_value = implantação + cloud, já com o desconto), então a separação é feita só na hora de mostrar:
+// o desconto da implantação abate primeiro a implantação e só passa para o Cloud se sobrar.
+function proposalSplitCloud(oneTimeTotal, cloudValue) {
+  const total = Math.max(0, Number(oneTimeTotal) || 0);
+  const impl = Math.max(0, total - Math.max(0, Number(cloudValue) || 0));
+  return { impl, cloud: total - impl };
 }
 // Linha-resumo da lista de propostas: mostra a integração e não inventa "Implantação R$ 0,00" quando ela não existe.
 function proposalListParts(p) {
@@ -1566,7 +1575,7 @@ function buildProposalPdf(p, prospect) {
   const PW = doc.internal.pageSize.getWidth(), PH = doc.internal.pageSize.getHeight();
   const ML = 14, CW = PW - ML * 2, BOTTOM = PH - 22;
   const NAVY = [19, 29, 51], INK = [38, 48, 72], GRAY = [104, 114, 134], LINE = [224, 229, 238];
-  const SOFT = [245, 247, 251], GREEN = [155, 197, 105], GREEN_DK = [74, 120, 40], AMBER = [176, 112, 0];
+  const SOFT = [245, 247, 251], GREEN = [155, 197, 105], GREEN_DK = [74, 120, 40], AMBER = [176, 112, 0], BLUE = [31, 95, 166];
   const ADDR_1 = "Rua Ribeiro de Lima, 282 - 6º andar - Sala 602 - Bairro: Bom Retiro";
   const ADDR_2 = "CEP: 01122-000  ·  São Paulo - SP  ·  Tel.: (11) 99246-0999";
   const dateBR = (d) => d.toLocaleDateString("pt-BR");
@@ -1586,7 +1595,7 @@ function buildProposalPdf(p, prospect) {
   const items = proposalDropEmptyStores(p.monthly_items || []);
   const isKindPdf = (it, kind, legacyTest) => (it.kind ? it.kind === kind : legacyTest(it));
   const rows6 = [], rows3 = [];
-  function pushRow(desc, qtd, valorImplantacao, valorMensal, detail) {
+  function pushRow(desc, qtd, valorImplantacao, valorMensal, detail, valorCloud) {
     const q = Number(qtd) || 1;
     rows6.push([
       desc, String(q),
@@ -1595,7 +1604,7 @@ function buildProposalPdf(p, prospect) {
       valorImplantacao != null ? fmtMoney(valorImplantacao * q) : "--",
       valorMensal != null ? fmtMoney(valorMensal * q) : "--",
     ]);
-    rows3.push([desc, valorImplantacao != null ? fmtMoney(valorImplantacao * q) : "—", valorMensal != null ? fmtMoney(valorMensal * q) : "—", detail || ""]);
+    rows3.push([desc, valorImplantacao != null ? fmtMoney(valorImplantacao * q) : "—", valorMensal != null ? fmtMoney(valorMensal * q) : "—", detail || "", valorCloud != null ? fmtMoney(valorCloud * q) : "—"]);
   }
   items.filter((it) => isKindPdf(it, "loja", (x) => (x.desc || "").startsWith("Loja"))).forEach((it) => pushRow(it.desc, 1, null, it.value));
   const fabricaItem = items.find((it) => isKindPdf(it, "fabrica", (x) => x.desc === "Fábrica"));
@@ -1608,7 +1617,8 @@ function buildProposalPdf(p, prospect) {
   const installBundle = (p.installation_value || 0) + (p.training_value || 0) + (p.db_transfer_value || 0);
   if (installBundle > 0) pushRow("Implantação (inclui treinamento e transferência de banco de dados, quando houver)", 1, installBundle, null);
   const cloudItem = items.find((it) => isKindPdf(it, "cloud", (x) => x.desc === "Cloud"));
-  if (cloudItem) pushRow(`Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, 1, cloudItem.value, null);
+  // o Cloud vai para a coluna dele (não entra mais na Implantação)
+  if (cloudItem) pushRow(`Cloud${p.cloud_description ? " - " + p.cloud_description : ""}`, 1, null, null, "", cloudItem.value);
   if (p.integration_setup_value > 0) pushRow(`Integração com e-commerce${p.integration_platforms ? " (" + p.integration_platforms + ")" : ""}`, 1, p.integration_setup_value, null, integNotePdf);
   const customItemsPdf = items.filter((it) => it.kind ? it.kind === "custom" : (!(it.desc || "").startsWith("Loja") && !["Produção", "Fábrica", "Cloud"].includes(it.desc) && !(it.desc || "").startsWith("Integração")));
   customItemsPdf.forEach((it) => pushRow(it.desc, 1, it.value, null));
@@ -1622,12 +1632,22 @@ function buildProposalPdf(p, prospect) {
   const mensalidadeTotalPdf = p.monthly_value != null ? p.monthly_value : mensalidadeBaseTotalPdf;
   const descontoImplantacaoPdf = Math.max(0, implantacaoBaseTotalPdf - implantacaoTotalPdf);
   const descontoMensalidadePdf = p.discount_value || Math.max(0, mensalidadeBaseTotalPdf - mensalidadeTotalPdf);
+  // O Cloud tem caixa e coluna próprias: sai de dentro da Implantação. O que está gravado na proposta continua somando tudo
+  // (propostas antigas também); a separação é feita aqui, na hora de montar o PDF. Sem Cloud nada muda.
+  const showCloud = !!cloudItem;
+  const cloudValuePdf = cloudItem ? Number(cloudItem.value) || 0 : 0;
+  const splitPdf = showCloud ? proposalSplitCloud(implantacaoTotalPdf, cloudValuePdf) : { impl: implantacaoTotalPdf, cloud: 0 };
+  const implantacaoSoTotalPdf = splitPdf.impl;                              // só a implantação, já com o desconto
+  const implantacaoSoBasePdf = implantacaoBaseTotalPdf - cloudValuePdf;     // a mesma, antes do desconto
+  const descontoImplSoPdf = Math.max(0, implantacaoSoBasePdf - implantacaoSoTotalPdf);
+  const cloudTotalPdf = splitPdf.cloud;
+  const descontoCloudPdf = Math.max(0, cloudValuePdf - cloudTotalPdf);
   // O PDF fala só do que foi marcado: se a integração é a única coisa cobrada uma vez, o valor único se chama "Integração"
   // (e não "Implantação"); e o lado (único ou mensal) que não tem nada fica de fora, para não sair "Implantação R$ 0,00".
   const oneLabel = proposalOneTimeLabel(installBundle > 0, !!cloudItem, customItemsPdf.length > 0, p.integration_setup_value > 0);
-  let showOne = rows3.some((r) => r[1] !== "—") || implantacaoTotalPdf > 0 || descontoImplantacaoPdf > 0;
+  let showOne = rows3.some((r) => r[1] !== "—") || implantacaoSoTotalPdf > 0 || descontoImplSoPdf > 0;
   let showMon = rows3.some((r) => r[2] !== "—") || mensalidadeTotalPdf > 0 || descontoMensalidadePdf > 0;
-  if (!showOne && !showMon) { showOne = true; showMon = true; } // proposta sem nenhum item: mostra os dois, como antes
+  if (!showOne && !showMon && !showCloud) { showOne = true; showMon = true; } // proposta sem nenhum item: mostra os dois, como antes
 
   // ---------- página, cabeçalho, rodapé ----------
   let y = 0;
@@ -1764,14 +1784,18 @@ function buildProposalPdf(p, prospect) {
     ensureSpace(42);
     const gap = 5, h = 28;
     const cards = [];
-    if (showOne) cards.push({ bg: NAVY, label: oneLabel.toUpperCase(), value: fmtMoney(implantacaoTotalPdf), cap: descontoImplantacaoPdf > 0 ? "já com desconto de " + fmtMoney(descontoImplantacaoPdf) : "pagamento único", capc: [190, 202, 226] });
+    if (showOne) cards.push({ bg: NAVY, label: oneLabel.toUpperCase(), value: fmtMoney(implantacaoSoTotalPdf), cap: descontoImplSoPdf > 0 ? "já com desconto de " + fmtMoney(descontoImplSoPdf) : "pagamento único", capc: [190, 202, 226] });
+    if (showCloud) cards.push({ bg: BLUE, label: "VALOR CLOUD", value: fmtMoney(cloudTotalPdf), cap: descontoCloudPdf > 0 ? "já com desconto de " + fmtMoney(descontoCloudPdf) : "pagamento único", capc: [200, 222, 244] });
     if (showMon) cards.push({ bg: GREEN_DK, label: "MENSALIDADE", value: fmtMoney(mensalidadeTotalPdf), cap: descontoMensalidadePdf > 0 ? "já com desconto de " + fmtMoney(descontoMensalidadePdf) : "por mês", capc: [222, 238, 200] });
     const w = (CW - gap * (cards.length - 1)) / cards.length;
     cards.forEach((c, i) => { c.x = ML + i * (w + gap); });
     cards.forEach((c) => {
       fill(c.bg); doc.roundedRect(c.x, y, w, h, 2.5, 2.5, "F");
       font("bold", 7.6, [255, 255, 255]); doc.text(c.label, c.x + 6, y + 8.2);
-      font("bold", 20, [255, 255, 255]); doc.text(c.value, c.x + 6, y + 18.6);
+      font("bold", 20, [255, 255, 255]);
+      const vW = doc.getTextWidth(c.value), vAvail = w - 11;   // com 3 caixinhas o valor grande pode não caber: diminui a letra só o necessário
+      if (vW > vAvail) font("bold", Math.max(11, Math.floor((20 * vAvail / vW) * 10) / 10), [255, 255, 255]);
+      doc.text(c.value, c.x + 6, y + 18.6);
       font("normal", 7.8, c.capc); doc.text(c.cap, c.x + 6, y + 24.2);
     });
     y += h + 6;
@@ -1786,10 +1810,12 @@ function buildProposalPdf(p, prospect) {
     heading("Detalhamento do investimento", 30);
     // colunas de valor: só as que existem (só integração = "Integração (única)" + "Mensalidade"; sem mensalidade, some a coluna)
     const cols = [];
-    if (showOne) cols.push({ idx: 1, title: oneLabel + " (única)", total: implantacaoTotalPdf, base: implantacaoBaseTotalPdf, disc: descontoImplantacaoPdf });
+    if (showOne) cols.push({ idx: 1, title: oneLabel + " (única)", total: implantacaoSoTotalPdf, base: implantacaoSoBasePdf, disc: descontoImplSoPdf });
+    if (showCloud) cols.push({ idx: 4, title: "Cloud (único)", total: cloudTotalPdf, base: cloudValuePdf, disc: descontoCloudPdf });
     if (showMon) cols.push({ idx: 2, title: "Mensalidade", total: mensalidadeTotalPdf, base: mensalidadeBaseTotalPdf, disc: descontoMensalidadePdf });
     // descrição embaixo do item (ex.: da integração): quebrada na largura da 1ª coluna; a linha da tabela cresce o necessário
-    const DET_FS = 7.8, DET_LH = 3.5, w0 = CW - 40 * cols.length - 6;
+    const COLW = cols.length > 2 ? 38 : 40;   // com 3 colunas de valor, cada uma fica um pouco mais estreita
+    const DET_FS = 7.8, DET_LH = 3.5, w0 = CW - COLW * cols.length - 6;
     font("normal", DET_FS, GRAY);
     const body = rows3.map((r) => {
       const det = r[3] ? String(r[3]).split("\n").map((l) => l.trim()).filter(Boolean).reduce((acc, l) => acc.concat(wrap(l, w0)), []) : [];
@@ -1802,7 +1828,7 @@ function buildProposalPdf(p, prospect) {
     }
     if (!body.length) body.push(["Nenhum item informado", ...cols.map(() => "—")]);
     const columnStyles = { 0: { cellWidth: "auto" } };
-    cols.forEach((c, i) => { columnStyles[i + 1] = { halign: "right", cellWidth: 40 }; });
+    cols.forEach((c, i) => { columnStyles[i + 1] = { halign: "right", cellWidth: COLW }; });
     doc.autoTable({
       startY: y,
       head: [["Módulos / Serviços", ...cols.map((c) => c.title)]],
@@ -2583,6 +2609,8 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
   const monthlyTotal = Math.max(0, mensalidadeBaseTotal - (Number(discountValue) || 0));
   const implantacaoBaseTotal = installationTotal + trainingTotal + dbTransferTotal + customTotal + integrationSetupTotal + cloudTotal;
   const implantacaoTotal = Math.max(0, implantacaoBaseTotal - (Number(discountImplantacaoValue) || 0));
+  // O Cloud tem quadro próprio: sai de dentro da implantação só na hora de mostrar (o que é gravado continua somando tudo, como sempre)
+  const cloudSplit = hasCloud ? proposalSplitCloud(implantacaoTotal, cloudTotal) : { impl: implantacaoTotal, cloud: 0 };
   const grandTotal = monthlyTotal + implantacaoTotal;
 
   async function handleSaveNewProspect(p) {
@@ -2807,7 +2835,7 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
 
         {/* Resumo: duas colunas principais + detalhes */}
         <div className="pt-3 border-t space-y-1.5" style={{ borderColor: COLORS.cardBorder }}>
-          <div className="grid grid-cols-2 gap-3 mb-2">
+          <div className={"grid gap-3 mb-2 " + (hasCloud ? "grid-cols-2 sm:grid-cols-3" : "grid-cols-2")}>
             <div className="rounded-lg p-3" style={{ background: "rgba(124,92,255,0.10)" }}>
               <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.brandLight }}>Valor total da mensalidade</div>
               <div className="text-lg font-extrabold" style={{ color: COLORS.brandLight }}>{fmtMoney(monthlyTotal)}</div>
@@ -2815,12 +2843,18 @@ function ProposalForm({ initial, proposals, prospects, clients, settings, onSave
             </div>
             <div className="rounded-lg p-3" style={{ background: "rgba(34,197,94,0.10)" }}>
               <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.success }}>Valor total da {oneLbl.toLowerCase()}</div>
-              <div className="text-lg font-extrabold" style={{ color: COLORS.success }}>{fmtMoney(implantacaoTotal)}</div>
-              <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{oneLbl === "Integração" ? "Só a integração (valor único)" : "Implantação + Treinamento + Customização + Cloud + Integração"}</div>
+              <div className="text-lg font-extrabold" style={{ color: COLORS.success }}>{fmtMoney(cloudSplit.impl)}</div>
+              <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>{oneLbl === "Integração" ? "Só a integração (valor único)" : "Implantação + Treinamento + Customização + Integração"}</div>
             </div>
+            {hasCloud && (
+              <div className="rounded-lg p-3 col-span-2 sm:col-span-1" style={{ background: "rgba(59,130,246,0.12)" }}>
+                <div className="text-[11px] font-bold uppercase tracking-wide mb-1" style={{ color: COLORS.info }}>Valor Cloud</div>
+                <div className="text-lg font-extrabold" style={{ color: COLORS.info }}>{fmtMoney(cloudSplit.cloud)}</div>
+                <div className="text-[11px]" style={{ color: COLORS.inkMuted }}>Pagamento único, separado da {oneLbl.toLowerCase()}</div>
+              </div>
+            )}
           </div>
           {hasFactory && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.inkMuted }}>· Fábrica (dentro da mensalidade)</span><span className="font-bold" style={{ color: COLORS.ink }}>{fmtMoney(factoryTotal)}</span></div>}
-          {hasCloud && <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.inkMuted }}>· Cloud (dentro da implantação)</span><span className="font-bold" style={{ color: COLORS.ink }}>{fmtMoney(cloudTotal)}</span></div>}
           {hasIntegration && (integrationSetupTotal > 0 || integrationMonthlyTotal > 0) && (
             <div className="flex items-center justify-between text-sm"><span style={{ color: COLORS.inkMuted }}>· Integração {integrationPlatforms.length ? `(${integrationPlatforms.join(", ")})` : ""} — setup: implantação / mensal: mensalidade</span><span className="font-bold" style={{ color: COLORS.ink }}>{fmtMoney(integrationSetupTotal)} + {fmtMoney(integrationMonthlyTotal)}/mês</span></div>
           )}

@@ -1588,7 +1588,7 @@ function buildProposalPdf(p, prospect) {
   try { const ip = doc.getImageProperties(LOGO_DATA_URI); if (ip && ip.width && ip.height) logoRatio = ip.width / ip.height; } catch (e) {}
   const font = (style, size, c) => { doc.setFont("helvetica", style); doc.setFontSize(size); doc.setTextColor(c[0], c[1], c[2]); };
   const fill = (c) => doc.setFillColor(c[0], c[1], c[2]);
-  try { doc.setProperties({ title: `Proposta comercial nº ${p.number}${clientName ? " - " + clientName : ""}`, author: "MireData", creator: "ADM / MIRE" }); } catch (e) {}
+  try { doc.setProperties({ title: `Proposta comercial${clientName ? " - " + clientName : ""}`, author: "MireData", creator: "ADM / MIRE" }); } catch (e) {}
 
   // ---------- valores (mesmas contas do modelo antigo) ----------
   // a "Loja 1" vazia que o formulário cria sozinho não entra (numa proposta só de integração sairia "Loja 1 - R$ 0,00")
@@ -1661,7 +1661,6 @@ function buildProposalPdf(p, prospect) {
       const lh = 16, lw = lh * logoRatio;
       try { doc.addImage(LOGO_DATA_URI, "PNG", ML, 9, lw, lh); } catch (e) {}
       font("bold", 15, [255, 255, 255]); doc.text("PROPOSTA COMERCIAL", PW - ML, 16, { align: "right" });
-      font("normal", 9.5, [206, 214, 231]); doc.text(`Nº ${p.number}`, PW - ML, 22, { align: "right" });
       font("normal", 8, [160, 172, 196]); doc.text(`Emitida em ${issuedTxt}  ·  Válida até ${validTxt}`, PW - ML, 27.5, { align: "right" });
     } else {
       fill(NAVY); doc.rect(0, 0, PW, 15, "F");
@@ -1669,7 +1668,7 @@ function buildProposalPdf(p, prospect) {
       const lh = 8, lw = lh * logoRatio;
       try { doc.addImage(LOGO_DATA_URI, "PNG", ML, 3.5, lw, lh); } catch (e) {}
       font("normal", 8, [206, 214, 231]);
-      const t = `Proposta comercial nº ${p.number}${clientName ? "  ·  " + clientName : ""}`;
+      const t = `Proposta comercial${clientName ? "  ·  " + clientName : ""}`;
       doc.text(doc.splitTextToSize(t, CW - lw - 8)[0], PW - ML, 9.5, { align: "right" });
     }
   }
@@ -4413,6 +4412,16 @@ function soMudancas(novo, base, estritos) {   // estritos: campos em que "falso"
     if (JSON.stringify(n(novo[k])) !== JSON.stringify(n(base[k]))) grava[k] = novo[k];
   });
   return grava;
+}
+// Grava um lançamento. Lançamento NOVO: grava a linha inteira. Lançamento que JÁ EXISTE: UPDATE só do que mudou (usa o "soMudancas" acima).
+// Não pode ser "upsert" só com o que mudou: o banco confere as colunas obrigatórias (como a "category" das contas) ANTES de ver que a linha já existe
+// e recusa com "null value in column ... violates not-null constraint".
+async function gravarLinha(tabela, novo, base, estritos) {
+  const grava = soMudancas(novo, base, estritos);
+  if (!(base && base.id && base.id === novo.id)) return await supa.from(tabela).upsert(grava);
+  const { id, ...mudou } = grava;
+  if (Object.keys(mudou).length === 0) return { error: null };   // nada mudou: não há o que gravar
+  return await supa.from(tabela).update(mudou).eq("id", id);
 }
 // Tabelas do "Backup completo" (o banco devolve no máximo 1000 linhas por pedido: lê de 1000 em 1000 até acabar)
 const TABELAS_BACKUP = ["clients", "settings", "boletos", "client_notes", "company_expenses", "payroll_records", "employees", "vt_vr_records", "petty_cash_entries", "lunch_entries",
@@ -8191,7 +8200,7 @@ function App() {
     }
   }
   async function handleSaveExpense(e) {
-    const { error } = await supa.from("company_expenses").upsert(soMudancas(e, editingExpense));
+    const { error } = await gravarLinha("company_expenses", e, editingExpense);
     if (error) { showToast(`Erro: ${error.message}`); return; }
     await loadExpenses();
     setShowExpenseForm(false); setEditingExpense(null);
@@ -8964,7 +8973,7 @@ function App() {
     await lerTabela("a folha de pagamento", () => supa.from("payroll_records").select("*").order("payment_date", { ascending: false }), setPayrollRecords);
   }, []);
   async function handleSaveEmployee(emp) {
-    const { error } = await supa.from("employees").upsert(soMudancas(emp, editingEmployee, ["active"]));
+    const { error } = await gravarLinha("employees", emp, editingEmployee, ["active"]);
     if (error) { showToast(`Erro: ${error.message}`); return; }
     await loadEmployees();
     setShowEmployeeForm(false); setEditingEmployee(null);
@@ -8977,7 +8986,7 @@ function App() {
     showToast("Funcionário removido.");
   }
   async function handleSavePayroll(rec) {
-    const { error } = await supa.from("payroll_records").upsert(soMudancas(rec, editingPayroll));
+    const { error } = await gravarLinha("payroll_records", rec, editingPayroll);
     if (error) {
       // o 13º usa colunas novas: se o SQL ainda não foi rodado, o formulário continua aberto e mostra o passo a passo
       if (decimoColunasFaltando(error)) { setDecimoReady(false); showToast("Falta rodar o SQL do 13º salário (o passo a passo está no formulário).", 5000); return; }
@@ -10143,8 +10152,7 @@ function App() {
     hy += 6;
     doc.setFontSize(9);
     doc.setTextColor(100);
-    doc.text(`Nº ${p.number}`, pageWidth / 2, hy, { align: "center" });
-    hy += 10;
+    hy += 4;
 
     doc.setFillColor(245, 245, 250);
     const clientBoxLines = 2 + (prospect && addressLine(prospect) ? 1 : 0) + (prospect?.cnpj ? 1 : 0) + ([prospect?.phone, prospect?.email].filter(Boolean).length ? 1 : 0);
@@ -12482,7 +12490,7 @@ function App() {
                         <div className="flex items-center gap-3">
                           <Avatar name={prospect?.name || "?"} size={34} />
                           <div>
-                            <div className="font-bold text-sm" style={{ color: COLORS.ink }}>{prospect?.name || "Cliente removido"} <span className="font-normal" style={{ color: COLORS.inkMuted }}>· nº {p.number}</span></div>
+                            <div className="font-bold text-sm" style={{ color: COLORS.ink }}>{prospect?.name || "Cliente removido"}</div>
                             <div className="text-xs" style={{ color: COLORS.inkMuted }}>
                               {proposalListParts(p).map(([lb, v]) => `${lb} ${money(v)}`).join(" · ")} · válida até {p.valid_until ? new Date(p.valid_until + "T00:00:00").toLocaleDateString("pt-BR") : "-"}
                             </div>

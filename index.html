@@ -10465,19 +10465,31 @@ function App() {
     doc.setDrawColor(220);
     doc.line(14, y, 196, y);
     y += 6;
+    // Dados do cliente na ordem do romaneio impresso:
+    //   Vendedor : ...  /  Cliente  : ...  /  RUA, Nº COMPLEMENTO BAIRRO: ...  /  CIDADE - UF CEP: ... TEL.: ...
+    //   CNPJ     : ...           I.E.: ...  /  A/C contato              E-MAIL: ...
+    const pc = prospect || {};
+    const COL2 = 112;                              // 2ª coluna (I.E. e E-MAIL)
+    const cabTxt = (txt, bold, x) => { doc.setFont("courier", bold ? "bold" : "normal"); doc.text(txt, x || 14, y); };
+    const cabLinhas = (txt, bold) => { doc.splitTextToSize(txt, 182).forEach((l) => { cabTxt(l, bold); y += 4.7; }); };
+    const corta = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+    doc.setTextColor(25);
+    doc.setFontSize(9.5);
+    cabTxt(`Vendedor : ${r.seller || ""}`, false); y += 5;
+    cabLinhas(`Cliente  : ${pc.name || "-"}`, true); y += 0.3;
+    const ruaNum = [pc.street, pc.number].map((x) => String(x || "").trim()).filter(Boolean).join(", ");
+    const linhaRua = [ruaNum, String(pc.complement || "").trim(), pc.neighborhood ? `BAIRRO: ${pc.neighborhood}` : ""].filter(Boolean).join(" ");
+    if (linhaRua) cabLinhas(linhaRua, true);
+    const cidUf = [pc.city, pc.state].map((x) => String(x || "").trim()).filter(Boolean).join(" - ");
+    const linhaCid = [cidUf, pc.cep ? `CEP: ${pc.cep}` : "", pc.phone ? `TEL.: ${pc.phone}` : ""].filter(Boolean).join(" ");
+    if (linhaCid) cabLinhas(linhaCid, true);
+    cabTxt(`CNPJ     : ${pc.cnpj || ""}`, false);
+    cabTxt(`I.E.: ${pc.state_registration || ""}`, false, COL2); y += 4.7;
+    cabTxt(corta(`A/C ${pc.contact_name || ""}`, 46), true);
+    cabTxt(corta(`E-MAIL: ${pc.email || ""}`, 41), true, COL2); y += 5;
+    doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
     doc.setTextColor(60);
-    if (r.seller) { doc.text(`Vendedor: ${r.seller}`, 14, y); y += 5; }
-    doc.setTextColor(30);
-    doc.setFontSize(10);
-    doc.text(`Cliente: ${prospect?.name || "-"}`, 14, y); y += 5;
-    doc.setFontSize(9);
-    doc.setTextColor(60);
-    if (prospect && addressLine(prospect)) { doc.text(addressLine(prospect), 14, y); y += 5; }
-    if (prospect?.cnpj) { doc.text(`CNPJ: ${prospect.cnpj}${prospect?.state_registration ? `  ·  IE: ${prospect.state_registration}` : ""}`, 14, y); y += 5; }
-    if (prospect?.contact_name) { doc.text(`Contato: ${prospect.contact_name}`, 14, y); y += 5; }
-    doc.text(`Cidade: ${prospect?.city || "-"}  ·  Estado: ${prospect?.state || "-"}`, 14, y); y += 5;
-    doc.text(`Telefone: ${prospect?.phone || "-"}${prospect?.email ? `  ·  E-mail: ${prospect.email}` : ""}`, 14, y); y += 5;
     if (r.delivery_address) { doc.setTextColor(30); doc.text(`Endereço de entrega: ${r.delivery_address}`, 14, y); y += 5; doc.setTextColor(60); }
 
     y += 3;

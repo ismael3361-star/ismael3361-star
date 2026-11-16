@@ -4307,6 +4307,91 @@ const PAYROLL_KIND_INFO = {
   "13_2": { icon: "🎁", label: "13º · 2ª PARCELA", tipo: "13º - 2ª parcela", color: "#38BDF8" },
 };
 function payrollTipoLabel(r) { return PAYROLL_KIND_INFO[payrollKind(r)].tipo; }
+
+// Antes de gerar o PDF da folha: escolher QUAIS pagamentos em aberto entram (por data de pagamento, por tipo e um a um).
+// Sem filtro nenhum sai igual a antes (todos os em aberto, mesmo título e mesmo nome de arquivo).
+function PayrollPdfPicker({ list, titulo, arquivo, onGerar, onClose }) {
+  const abertos = (list || []).filter((r) => !r.paid);
+  const datas = [...new Set(abertos.map((r) => r.payment_date || ""))].sort((a, b) => (a || "9999").localeCompare(b || "9999"));
+  const tipos = ["folha", "vale", "13_1", "13_2"].filter((k) => abertos.some((r) => payrollKind(r) === k));
+  const [data, setData] = useState("todas");
+  const [tipo, setTipo] = useState("todos");
+  const [fora, setFora] = useState({});   // lançamentos desmarcados (id -> true)
+  const passa = (r, d, t) => (d === "todas" || (r.payment_date || "") === d) && (t === "todos" || payrollKind(r) === t);
+  const visiveis = abertos.filter((r) => passa(r, data, tipo))
+    .sort((a, b) => (a.payment_date || "9999").localeCompare(b.payment_date || "9999") || (a.employee_name || "").localeCompare(b.employee_name || "", "pt-BR"));
+  const escolhidos = visiveis.filter((r) => !fora[r.id]);
+  const total = round2(escolhidos.reduce((s, r) => s + (Number(r.net_total) || 0), 0));
+  const tudo = data === "todas" && tipo === "todos" && escolhidos.length === abertos.length;
+  const gerar = () => {
+    if (!escolhidos.length) return;
+    if (tudo) return onGerar(escolhidos, { titulo, arquivo });
+    const tiposSel = [...new Set(escolhidos.map(payrollKind))];
+    const datasSel = [...new Set(escolhidos.map((r) => r.payment_date || ""))];
+    const partes = [];
+    if (tiposSel.length === 1) partes.push(PAYROLL_KIND_INFO[tiposSel[0]].tipo);
+    if (datasSel.length === 1 && datasSel[0]) partes.push(`Pagamento em ${fmtDate(datasSel[0])}`);
+    if (!partes.length) partes.push("Selecionados");
+    const arq = arquivo + (tiposSel.length === 1 ? "-" + tiposSel[0].replace("_", "-") : "") + (datasSel.length === 1 && datasSel[0] ? "-pagamento-" + datasSel[0] : (tiposSel.length === 1 ? "" : "-selecionados"));
+    onGerar(escolhidos, { titulo: titulo.replace(/ - Em aberto$/, "") + " - " + partes.join(" - "), arquivo: arq });
+  };
+  const chip = (ativo, onClick, txt, attrs) => (
+    <button type="button" onClick={onClick} {...attrs} className="px-3 py-1.5 rounded-full text-xs font-semibold border whitespace-nowrap"
+      style={ativo ? { background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})`, color: "#fff", borderColor: "transparent" } : { borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>{txt}</button>
+  );
+  const qtd = (d, t) => abertos.filter((r) => passa(r, d, t)).length;
+  return (
+    <div data-pdf-folha="1" className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col border" style={{ background: COLORS.card, borderColor: COLORS.cardBorder, maxWidth: 560, maxHeight: "90vh" }} onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b flex items-start justify-between gap-3" style={{ borderColor: COLORS.cardBorder }}>
+          <div className="min-w-0">
+            <div className="font-bold" style={{ color: COLORS.ink }}>📄 O que vai no PDF?</div>
+            <div className="text-xs mt-0.5" style={{ color: COLORS.inkMuted }}>Escolha só os pagamentos que você vai fazer agora. Os já pagos não entram.</div>
+          </div>
+          <button type="button" aria-label="Fechar" onClick={onClose} className="w-8 h-8 rounded-full border shrink-0" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>✕</button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: COLORS.inkFaint }}>Data de pagamento</div>
+            <div className="flex flex-wrap gap-1.5">
+              {chip(data === "todas", () => { setData("todas"); setFora({}); }, `Todas · ${qtd("todas", tipo)}`, { "data-pdf-data": "todas" })}
+              {datas.filter((d) => data === d || qtd(d, tipo) > 0).map((d) => chip(data === d, () => { setData(d); setFora({}); }, `${d ? fmtDate(d) : "Sem data"} · ${qtd(d, tipo)}`, { key: d || "sem", "data-pdf-data": d || "sem" }))}
+            </div>
+          </div>
+          {tipos.length > 1 && (
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-wider mb-1.5" style={{ color: COLORS.inkFaint }}>Tipo</div>
+              <div className="flex flex-wrap gap-1.5">
+                {chip(tipo === "todos", () => { setTipo("todos"); setFora({}); }, `Todos · ${qtd(data, "todos")}`, { "data-pdf-tipo": "todos" })}
+                {tipos.filter((k) => tipo === k || qtd(data, k) > 0).map((k) => chip(tipo === k, () => { setTipo(k); setFora({}); }, `${PAYROLL_KIND_INFO[k].icon} ${PAYROLL_KIND_INFO[k].tipo} · ${qtd(data, k)}`, { key: k, "data-pdf-tipo": k }))}
+              </div>
+            </div>
+          )}
+          <div className="rounded-xl border divide-y" style={{ borderColor: COLORS.cardBorder }}>
+            {visiveis.length === 0 && <div className="p-3 text-sm" style={{ color: COLORS.inkMuted }}>Nenhum pagamento em aberto com esse filtro.</div>}
+            {visiveis.map((r) => (
+              <label key={r.id} data-pdf-item={r.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer" style={{ borderColor: COLORS.cardBorder }}>
+                <input type="checkbox" checked={!fora[r.id]} onChange={() => setFora((f) => ({ ...f, [r.id]: !f[r.id] }))} className="w-4 h-4 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold truncate" style={{ color: COLORS.ink }}>{r.employee_name || "-"}</div>
+                  <div className="text-xs" style={{ color: COLORS.inkMuted }}>{PAYROLL_KIND_INFO[payrollKind(r)].icon} {payrollTipoLabel(r)} · pagamento {fmtDate(r.payment_date)}</div>
+                </div>
+                <div className="text-sm font-bold whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtMoney(r.net_total)}</div>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="p-4 border-t flex flex-wrap items-center justify-between gap-2" style={{ borderColor: COLORS.cardBorder }}>
+          <div className="text-xs" style={{ color: COLORS.inkMuted }}>{escolhidos.length} pagamento{escolhidos.length === 1 ? "" : "s"} · <b style={{ color: COLORS.ink }}>{fmtMoney(total)}</b></div>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="px-3 py-2 rounded-xl text-xs font-semibold border" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>Cancelar</button>
+            <button type="button" data-pdf-gerar="1" disabled={!escolhidos.length} onClick={gerar} className="px-4 py-2 rounded-xl text-xs font-semibold text-white disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>📄 Gerar PDF</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 function decimoRefLabel(kind, year) { return `13º salário ${year} - ${kind === "13_1" ? "1ª" : "2ª"} parcela`; }
 function isoDia(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 // prazo legal que cai no fim de semana é antecipado para a sexta-feira (assim nunca passa do prazo)
@@ -7451,6 +7536,7 @@ function App() {
   const [priceDialog, setPriceDialog] = useState(null);   // janela "a partir de qual mês?" da mensalidade
   const [priceTick, setPriceTick] = useState(0);          // muda para o campo da mensalidade voltar ao valor que vale no mês da tela
   const [signatureModal, setSignatureModal] = useState(null);
+  const [payrollPdfPick, setPayrollPdfPick] = useState(null);                       // { list, titulo, arquivo }: escolher o que entra no PDF da folha
   const [editingNameId, setEditingNameId] = useState(null);
   const [showDetailedReports, setShowDetailedReports] = useState(false);
   const [reportTab, setReportTab] = useState("clientes");
@@ -9333,7 +9419,7 @@ function App() {
     desenharQuadrosPix(doc, blocos, {
       y: doc.lastAutoTable.finalY + 10,
       titulo: "Pagamento por funcionário (PIX)",
-      subtitulo: "Cada funcionário recebe na própria chave PIX (a do cadastro de funcionários). Aponte a câmera do aplicativo do banco para o QR Code: o valor já vai preenchido (soma dos pagamentos em aberto dele).",
+      subtitulo: "Cada funcionário recebe na própria chave PIX (a do cadastro de funcionários). Aponte a câmera do aplicativo do banco para o QR Code: o valor já vai preenchido (soma dos pagamentos dele neste PDF).",
       vazio: "Funcionário não informado",
       qtdTxt: (b) => `${b.qtd} pagamento${b.qtd === 1 ? "" : "s"} em aberto`,
       semChave: () => "Sem chave PIX: cadastre a chave do funcionário (Folha de Pagamento > Funcionários) para gerar o QR Code.",
@@ -14695,7 +14781,7 @@ function App() {
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <button disabled={doMes.length === 0} onClick={() => exportPayrollExcel(doMes, `folha-pagamento-${payrollMonth}`)} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
-                            <button disabled={doMes.length === 0} onClick={() => exportPayrollPDF(doMes, { titulo: `Folha de Pagamento - ${monthTitlePT(payrollMonth)} - Em aberto`, arquivo: `folha-pagamento-${payrollMonth}` })} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                            <button disabled={doMes.length === 0} onClick={() => { const o = { titulo: `Folha de Pagamento - ${monthTitlePT(payrollMonth)} - Em aberto`, arquivo: `folha-pagamento-${payrollMonth}` }; doMes.some((r) => !r.paid) ? setPayrollPdfPick({ list: doMes, ...o }) : exportPayrollPDF(doMes, o); }} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                             <button data-lancar-folha="1" onClick={handleGeneratePayrollMonth} className={btnGhost} style={{ borderColor: COLORS.brandLight, color: COLORS.brandLight }}>⚡ Lançar folha do mês</button>
                             <button data-novo-lancamento="1" onClick={() => abrirForm(null)} className="px-4 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: gradBrand }}>＋ Novo lançamento</button>
                           </div>
@@ -14842,7 +14928,7 @@ function App() {
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <button disabled={recs13.length === 0} onClick={() => exportPayrollExcel(recs13, `decimo-terceiro-${decimoYear}`)} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📊 Excel</button>
-                            <button disabled={recs13.length === 0} onClick={() => exportPayrollPDF(recs13, { titulo: `13º Salário ${decimoYear} - Em aberto`, arquivo: `decimo-terceiro-${decimoYear}` })} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
+                            <button disabled={recs13.length === 0} onClick={() => { const o = { titulo: `13º Salário ${decimoYear} - Em aberto`, arquivo: `decimo-terceiro-${decimoYear}` }; recs13.some((r) => !r.paid) ? setPayrollPdfPick({ list: recs13, ...o }) : exportPayrollPDF(recs13, o); }} className={btnGhost} style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF</button>
                             <button data-novo-13="1" onClick={() => abrirForm({ kind: "13_1", decimo_year: decimoYear })} className="px-4 py-2 rounded-xl text-xs font-semibold text-white" style={{ background: gradBrand }}>＋ Novo 13º</button>
                           </div>
                         </div>
@@ -16244,6 +16330,7 @@ function App() {
         const cli = clients.find((x) => x.id === priceDialog.clientId);
         return cli ? <PriceChangeDialog client={cli} oldValue={priceDialog.oldValue} newValue={priceDialog.newValue} nowKey={priceDialog.nowKey} defaultFrom={priceDialog.defaultFrom} onConfirm={confirmPriceChange} onCancel={() => { setPriceDialog(null); setPriceTick((t) => t + 1); }} /> : null;
       })()}
+      {payrollPdfPick && <PayrollPdfPicker list={payrollPdfPick.list} titulo={payrollPdfPick.titulo} arquivo={payrollPdfPick.arquivo} onClose={() => setPayrollPdfPick(null)} onGerar={(lista, o) => { exportPayrollPDF(lista, o); setPayrollPdfPick(null); }} />}
       {signatureModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setSignatureModal(null)}>
           <div className="rounded-2xl p-4 max-w-sm w-full" style={{ background: "#FFFFFF" }} onClick={(e) => e.stopPropagation()}>

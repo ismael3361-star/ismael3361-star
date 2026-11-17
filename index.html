@@ -3620,7 +3620,9 @@ function DbMigrationForm({ initial, settings, onSave, onCancel }) {
 // O total NÃO é guardado no banco: é sempre a soma dos três valores (assim nunca fica diferente).
 // ---------------------------------------------------------------------------
 function round2(v) { return Math.round((Number(v) || 0) * 100) / 100; }
-function trainingTotal(t) { return round2((Number(t?.transport) || 0) + (Number(t?.lunch) || 0) + (Number(t?.training_value) || 0)); }
+// Treinamento REMOTO (coluna "modality" = "remoto"): não tem condução nem almoço — só o valor do treinamento.
+function trainingIsRemote(t) { return t?.modality === "remoto"; }
+function trainingTotal(t) { return round2((trainingIsRemote(t) ? 0 : (Number(t?.transport) || 0) + (Number(t?.lunch) || 0)) + (Number(t?.training_value) || 0)); }
 // mensagem do Supabase quando a tabela "trainings" ainda não foi criada (arquivo criar-tabela-treinamentos.sql não rodado)
 const TRAINING_MISSING_RE = /PGRST205|42P01|could not find the table|relation ["']?(public\.)?trainings["']? does not exist/i;
 
@@ -3707,7 +3709,7 @@ function agendaNoticeText(a) {
 }
 
 // "prefill" = o treinamento veio da Agenda de Treinamentos ("Realizado"): loja, data, técnico, valores e obs. já preenchidos (title/saveLabel trocam os textos)
-function TrainingForm({ initial, previous, prefill, title, saveLabel, stores, trainers, pixFor, pixColumnMissing, onSave, onCancel }) {
+function TrainingForm({ initial, previous, prefill, title, saveLabel, stores, trainers, pixFor, pixColumnMissing, modalityColumnMissing, onSave, onCancel }) {
   const fromPrefill = !initial && !!prefill;
   const copied = !initial && !fromPrefill && !!previous; // novo treinamento começa com o técnico e os valores do último lançado
   const [newId] = useState(() => initial?.id || prefill?.id || uid());
@@ -3718,6 +3720,8 @@ function TrainingForm({ initial, previous, prefill, title, saveLabel, stores, tr
   const [lunch, setLunch] = useState(initial ? (initial.lunch ?? "") : (fromPrefill ? (prefill.lunch ?? "") : (copied ? (previous.lunch ?? "") : "")));
   const [trainingValue, setTrainingValue] = useState(initial ? (initial.training_value ?? "") : (fromPrefill ? (prefill.training_value ?? "") : (copied ? (previous.training_value ?? "") : "")));
   const [notes, setNotes] = useState(initial?.notes || prefill?.notes || "");
+  // presencial ou remoto (remoto = sem condução e sem almoço). Vem do treinamento salvo ou da Agenda; novo começa presencial.
+  const [remoto, setRemoto] = useState(initial ? initial.modality === "remoto" : (fromPrefill ? prefill.modality === "remoto" : false));
   const [saving, setSaving] = useState(false);
   // Chave PIX do técnico (gera o QR Code dele no PDF). Vem sozinha do último treinamento dele, do cadastro de funcionários ou das Configurações (técnico de migração); o que a pessoa digita sempre vale mais.
   const noPix = { key: "", from: "" };
@@ -3737,7 +3741,7 @@ function TrainingForm({ initial, previous, prefill, title, saveLabel, stores, tr
     }
   }
 
-  const total = round2((Number(transport) || 0) + (Number(lunch) || 0) + (Number(trainingValue) || 0));
+  const total = round2((remoto ? 0 : (Number(transport) || 0) + (Number(lunch) || 0)) + (Number(trainingValue) || 0));
   const canSave = !!storeName.trim() && !!trainingDate && !saving;
   const inputCls = "w-full rounded-lg border px-3 py-2 text-sm outline-none";
   const inputSt = { borderColor: COLORS.cardBorder, background: "#1C2B48", color: COLORS.ink };
@@ -3774,11 +3778,28 @@ function TrainingForm({ initial, previous, prefill, title, saveLabel, stores, tr
           {pixColumnMissing && <span className="block text-xs mt-1" style={{ color: COLORS.warn }}>⚠️ Para guardar a chave PIX, rode antes (uma vez) o arquivo adicionar-pix-treinamentos.sql no Supabase. Se já rodou, atualize a página.</span>}
         </label>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {moneyField("Condução (R$)", transport, setTransport)}
-        {moneyField("Almoço (R$)", lunch, setLunch)}
-        {moneyField("Valor do treinamento (R$)", trainingValue, setTrainingValue)}
+      <div>
+        <span className="block text-xs font-semibold mb-1" style={{ color: COLORS.inkMuted }}>Como foi o treinamento?</span>
+        <div className="flex gap-2">
+          {[[false, "🏢 Presencial"], [true, "💻 Remoto"]].map(([v, txt]) => (
+            <button key={txt} type="button" data-treino-modo={v ? "remoto" : "presencial"} onClick={() => setRemoto(v)} className="flex-1 px-3 py-2 rounded-lg text-xs font-semibold border"
+              style={{ borderColor: remoto === v ? COLORS.brand : COLORS.cardBorder, background: remoto === v ? rgba(COLORS.brand, 0.18) : "transparent", color: remoto === v ? COLORS.ink : COLORS.inkMuted }}>{txt}</button>
+          ))}
+        </div>
+        {remoto && modalityColumnMissing && <span className="block text-xs mt-1" style={{ color: COLORS.warn }}>⚠️ Para guardar treinamento remoto, rode antes (uma vez) o arquivo adicionar-remoto-treinamentos.sql no Supabase. Se já rodou, atualize a página.</span>}
       </div>
+      {remoto ? (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div data-treino-sem-conducao className="sm:col-span-2 rounded-lg border px-3 py-2 text-xs flex items-center" style={{ borderColor: COLORS.cardBorder, color: COLORS.inkMuted }}>💻 Remoto: sem condução e sem almoço (não entram no valor nem no pagamento).</div>
+          {moneyField("Valor do treinamento (R$)", trainingValue, setTrainingValue)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {moneyField("Condução (R$)", transport, setTransport)}
+          {moneyField("Almoço (R$)", lunch, setLunch)}
+          {moneyField("Valor do treinamento (R$)", trainingValue, setTrainingValue)}
+        </div>
+      )}
       {copied && (
         <div className="text-xs" style={{ color: COLORS.inkFaint }}>
           O técnico e os valores vieram do último treinamento lançado ({previous.store_name}) — altere se for diferente.
@@ -3788,7 +3809,7 @@ function TrainingForm({ initial, previous, prefill, title, saveLabel, stores, tr
         <div className="text-xs" style={{ color: COLORS.inkFaint }}>{prefill.note}</div>
       )}
       <div className="flex items-center justify-between flex-wrap gap-2 rounded-lg px-4 py-3 border" style={{ borderColor: rgba(COLORS.brand, 0.35), background: rgba(COLORS.brand, 0.08) }}>
-        <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Total Mire <span className="font-semibold normal-case">(condução + almoço + treinamento)</span></span>
+        <span className="text-xs font-bold uppercase tracking-wide" style={{ color: COLORS.inkMuted }}>Total Mire <span className="font-semibold normal-case">{remoto ? "(remoto: só o treinamento)" : "(condução + almoço + treinamento)"}</span></span>
         <span className="text-xl font-extrabold tnum whitespace-nowrap" style={{ color: COLORS.ink }}>{fmtMoney(total)}</span>
       </div>
       <label className="block">
@@ -3803,7 +3824,8 @@ function TrainingForm({ initial, previous, prefill, title, saveLabel, stores, tr
             try {
               await onSave({
                 id: newId, store_name: storeName.trim(), training_date: trainingDate, trainer_name: trainerName.trim() || null, trainer_pix_key: pixKey.trim() || null,
-                transport: Number(transport) || 0, lunch: Number(lunch) || 0, training_value: Number(trainingValue) || 0,
+                transport: remoto ? 0 : (Number(transport) || 0), lunch: remoto ? 0 : (Number(lunch) || 0), training_value: Number(trainingValue) || 0,
+                modality: remoto ? "remoto" : "presencial",
                 notes: notes.trim() || null,
               });
             } finally { setSaving(false); }
@@ -7444,6 +7466,7 @@ function App() {
   const [showPaidMigrations, setShowPaidMigrations] = useState(false);
   const [trainings, setTrainings] = useState([]);
   const [trainingsMissing, setTrainingsMissing] = useState(false);
+  const [trainingsModalityMissing, setTrainingsModalityMissing] = useState(false); // true = a coluna "modality" (presencial/remoto) ainda não foi criada (arquivo adicionar-remoto-treinamentos.sql)
   const [trainingsPixMissing, setTrainingsPixMissing] = useState(false); // true = a coluna da chave PIX ainda não foi criada no Supabase (arquivo adicionar-pix-treinamentos.sql)
   const [showTrainingForm, setShowTrainingForm] = useState(false);
   const [editingTraining, setEditingTraining] = useState(null);
@@ -7897,6 +7920,12 @@ function App() {
       const sonda = await supa.from("trainings").select("trainer_pix_key").limit(1);
       setTrainingsPixMissing(!!(sonda.error && /trainer_pix_key/i.test(sonda.error.message || "")));
     }
+    // a coluna "modality" (presencial/remoto) já existe? (arquivo adicionar-remoto-treinamentos.sql)
+    if ((data || []).length > 0) setTrainingsModalityMissing(!("modality" in data[0]));
+    else {
+      const sonda2 = await supa.from("trainings").select("modality").limit(1);
+      setTrainingsModalityMissing(!!(sonda2.error && /modality/i.test(sonda2.error.message || "")));
+    }
   }, []);
   // chave PIX que o sistema sugere para um técnico: a do último treinamento dele; se não tiver, a do cadastro de funcionários; por fim, a do técnico de migração (Configurações) se o nome for o dele (só leitura: nada disso é alterado)
   const trainingPixFor = (nome) => {
@@ -7914,8 +7943,16 @@ function App() {
   // grava (insere ou atualiza) um treinamento na tabela e recarrega a lista; devolve true se gravou.
   // É o mesmo caminho do formulário da aba Treinamentos e do "Realizado" da Agenda de Treinamentos.
   async function persistTraining(t) {
-    const payload = { ...t, updated_by: session?.user?.email || "desconhecido" };
+    let payload = { ...t, updated_by: session?.user?.email || "desconhecido" };
     let { error } = await supa.from("trainings").upsert(payload);
+    if (error && /modality/i.test(error.message || "")) {
+      if (t.modality === "remoto") {
+        alert("Para guardar treinamento REMOTO falta rodar, UMA vez, o arquivo adicionar-remoto-treinamentos.sql no SQL Editor do Supabase.\n\nNada foi salvo e nada do que já existe foi alterado. Depois de rodar, é só salvar de novo.");
+        return false;
+      }
+      const { modality, ...semModo } = payload; payload = semModo;
+      ({ error } = await supa.from("trainings").upsert(payload));
+    }
     // ainda falta a coluna da chave PIX (arquivo adicionar-pix-treinamentos.sql não rodado): sem chave digitada salva normalmente; com chave, avisa e não grava nada
     if (error && /trainer_pix_key/i.test(error.message || "")) {
       if (t.trainer_pix_key) {
@@ -9625,8 +9662,8 @@ function App() {
       return linhas.join("\n");
     };
     const rows = lista.map((t) => [
-      t.store_name || "-", fmtDate(t.training_date), t.trainer_name || "-", quebra(t.trainer_pix_key) || "-",
-      fmtMoney(t.transport), fmtMoney(t.lunch), fmtMoney(t.training_value), fmtMoney(trainingTotal(t)), t.notes || "",
+      (t.store_name || "-") + (trainingIsRemote(t) ? "\n(remoto)" : ""), fmtDate(t.training_date), t.trainer_name || "-", quebra(t.trainer_pix_key) || "-",
+      trainingIsRemote(t) ? "-" : fmtMoney(t.transport), trainingIsRemote(t) ? "-" : fmtMoney(t.lunch), fmtMoney(t.training_value), fmtMoney(trainingTotal(t)), t.notes || "",
     ]);
     const dinheiro = { halign: "right", overflow: "visible" };
     doc.autoTable({
@@ -9686,8 +9723,8 @@ function App() {
     const montar = (lista, comPago) => {
       const soma = (campo) => round2(lista.reduce((s, t) => s + (Number(t[campo]) || 0), 0));
       const data = lista.map((t) => ({
-        "LOJA": t.store_name || "", "DATA": t.training_date ? fmtDate(t.training_date) : "", "TÉCNICO": t.trainer_name || "", "CHAVE PIX": t.trainer_pix_key || "",
-        "CONDUÇÃO": Number(t.transport) || 0, "ALMOÇO": Number(t.lunch) || 0, "VALOR TREINAMENTO": Number(t.training_value) || 0,
+        "LOJA": t.store_name || "", "DATA": t.training_date ? fmtDate(t.training_date) : "", "MODALIDADE": trainingIsRemote(t) ? "Remoto" : "Presencial", "TÉCNICO": t.trainer_name || "", "CHAVE PIX": t.trainer_pix_key || "",
+        "CONDUÇÃO": trainingIsRemote(t) ? 0 : (Number(t.transport) || 0), "ALMOÇO": trainingIsRemote(t) ? 0 : (Number(t.lunch) || 0), "VALOR TREINAMENTO": Number(t.training_value) || 0,
         "TOTAL MIRE": trainingTotal(t), "OBS.": t.notes || "",
         ...(comPago ? { "PAGO EM": t.paid_date ? fmtDate(t.paid_date) : "" } : {}),
       }));
@@ -13575,11 +13612,11 @@ function App() {
                         <TrainingForm
                           prefill={{
                             id: "ag-" + agendaDone.id, store_name: agendaDone.store_name, training_date: agendaDone.schedule_date, trainer_name: agendaDone.trainer_name || "",
-                            notes: agendaDone.notes || "",
+                            notes: agendaDone.notes || "", modality: agendaDone.modality === "remoto" ? "remoto" : "presencial",
                             note: `Veio da Agenda de Treinamentos (${dayLabel(agendaDone.schedule_date)}${agendaDone.start_time ? " às " + hourLabel(agendaDone.start_time) : ""}). Informe a condução, o almoço e o valor do treinamento e confira o técnico e a chave PIX — ao salvar, o treinamento aparece em Treinamentos, pronto para pagar.`,
                           }}
                           title="Treinamento realizado — confirme para enviar a Treinamentos" saveLabel="Salvar e enviar para Treinamentos"
-                          stores={stores} trainers={trainers} pixFor={trainingPixFor} pixColumnMissing={trainingsPixMissing}
+                          stores={stores} trainers={trainers} pixFor={trainingPixFor} pixColumnMissing={trainingsPixMissing} modalityColumnMissing={trainingsModalityMissing}
                           onSave={(t) => handleConfirmAgendaDone(agendaDone, t)} onCancel={() => setAgendaDone(null)} />
                       </FormHost>
                     )}
@@ -13618,7 +13655,7 @@ function App() {
                     {aberto && (
                       <td className="p-3"><input type="checkbox" checked={selectedTrainings.has(t.id)} onChange={() => toggleOne(t.id)} className="w-4 h-4" title="Selecionar para marcar como pago" /></td>
                     )}
-                    <td className="p-3 font-semibold">{t.store_name}</td>
+                    <td className="p-3 font-semibold">{t.store_name}{trainingIsRemote(t) && <span data-treino-remoto className="ml-1.5 align-middle px-1.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap" style={{ color: COLORS.brandLight, background: rgba(COLORS.brand, 0.15) }}>💻 Remoto</span>}</td>
                     <td className="p-3 whitespace-nowrap">{fmtDate(t.training_date)}</td>
                     <td className="p-3" style={{ minWidth: 214 }}>
                       {t.trainer_name ? <div className="font-semibold">{t.trainer_name}</div> : (!t.trainer_pix_key && "-")}
@@ -13630,8 +13667,8 @@ function App() {
                         </div>
                       )}
                     </td>
-                    <td className="p-3 text-right tnum whitespace-nowrap">{fmtMoney(t.transport)}</td>
-                    <td className="p-3 text-right tnum whitespace-nowrap">{fmtMoney(t.lunch)}</td>
+                    <td className="p-3 text-right tnum whitespace-nowrap">{trainingIsRemote(t) ? <span style={{ color: COLORS.inkFaint }}>—</span> : fmtMoney(t.transport)}</td>
+                    <td className="p-3 text-right tnum whitespace-nowrap">{trainingIsRemote(t) ? <span style={{ color: COLORS.inkFaint }}>—</span> : fmtMoney(t.lunch)}</td>
                     <td className="p-3 text-right tnum whitespace-nowrap">{fmtMoney(t.training_value)}</td>
                     <td className="p-3 text-right tnum whitespace-nowrap font-bold">{fmtMoney(trainingTotal(t))}</td>
                     <td className="p-3" style={{ maxWidth: 260, minWidth: 90 }}>{t.notes ? <span className="whitespace-pre-wrap">{t.notes}</span> : "-"}</td>
@@ -13684,7 +13721,7 @@ function App() {
                       <button onClick={exportTrainingsPDF} disabled={abertoList.length === 0} title="Gera o PDF só com os treinamentos em aberto (os pagos não entram)" className="px-4 py-2 rounded-lg text-sm font-semibold border disabled:opacity-40" style={{ borderColor: COLORS.cardBorder, color: COLORS.ink }}>📄 Gerar PDF (em aberto)</button>
                       <button onClick={() => { setEditingTraining(null); setShowTrainingForm(true); }} disabled={trainingsMissing} title={trainingsMissing ? "Primeiro rode o arquivo criar-tabela-treinamentos.sql no Supabase" : undefined} className="px-4 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${COLORS.brand}, ${COLORS.brandLight})` }}>＋ Novo treinamento</button>
                     </div>
-                    {showTrainingForm && <FormHost item={editingTraining}><TrainingForm initial={editingTraining} previous={previous} stores={stores} trainers={trainers} pixFor={pixFor} pixColumnMissing={trainingsPixMissing} onSave={handleSaveTraining} onCancel={() => { setShowTrainingForm(false); setEditingTraining(null); }} /></FormHost>}
+                    {showTrainingForm && <FormHost item={editingTraining}><TrainingForm initial={editingTraining} previous={previous} stores={stores} trainers={trainers} pixFor={pixFor} pixColumnMissing={trainingsPixMissing} modalityColumnMissing={trainingsModalityMissing} onSave={handleSaveTraining} onCancel={() => { setShowTrainingForm(false); setEditingTraining(null); }} /></FormHost>}
                     {selAbertos.length > 0 && (
                       <div className="flex items-center justify-between flex-wrap gap-2 mb-3 px-4 py-2.5 rounded-xl border" style={{ borderColor: COLORS.success, background: "rgba(34,197,94,0.08)" }}>
                         <span className="text-sm font-semibold" style={{ color: COLORS.ink }}>{selAbertos.length} treinamento(s) selecionado(s) — {fmtMoney(somaTotal(selAbertos))}</span>

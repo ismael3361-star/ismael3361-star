@@ -493,6 +493,14 @@ async function storageUpload(path, body, opts) {
   }
   return res;
 }
+// Nome do arquivo para o CAMINHO no armazenamento: o Supabase recusa "º", "ª", acentos, "ç" e outros símbolos ("Invalid key").
+// Ex.: "Recibo 13º 1ª parcela.pdf" -> "Recibo-13o-1a-parcela.pdf". O nome original continua aparecendo na tela.
+function nomeArquivoSeguro(nome) {
+  const s = String(nome || "arquivo").replace(/º/g, "o").replace(/ª/g, "a").normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "-").replace(/-+/g, "-").replace(/-+\./g, ".").replace(/^-+|-+$/g, "");
+  const r = !s || s.startsWith(".") ? "arquivo" + s : s;
+  return r.slice(-120);
+}
 function fmtFileSize(bytes) {
   const n = Number(bytes) || 0;
   if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1).replace(".", ",") + " MB";
@@ -3241,7 +3249,7 @@ function ExpenseForm({ initial, onSave, onCancel }) {
     if (pendingFile) {
       setUploading(true);
       try {
-        const path = `despesas/${id}-${Date.now()}-${pendingFile.name}`;
+        const path = `despesas/${id}-${Date.now()}-${nomeArquivoSeguro(pendingFile.name)}`;
         const { error } = await storageUpload(path, pendingFile, { upsert: true });
         if (error) throw error;
         const { data } = supa.storage.from("boletos").getPublicUrl(path);
@@ -6419,7 +6427,7 @@ function RomaneioForm({ initial, romaneioClients, settings, onSaveRomaneioClient
     if (!file) return;
     setUploadingProof(true);
     try {
-      const path = `comprovantes/${initial?.id || uid()}/${Date.now()}-${file.name}`;
+      const path = `comprovantes/${initial?.id || uid()}/${Date.now()}-${nomeArquivoSeguro(file.name)}`;
       const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
@@ -6646,7 +6654,7 @@ function ClientHistoryModal({ client, onClose }) {
     if (!file) return;
     setUploadingAtt(true);
     try {
-      const path = `anexos/${client.id}/${Date.now()}-${file.name}`;
+      const path = `anexos/${client.id}/${Date.now()}-${nomeArquivoSeguro(file.name)}`;
       const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
@@ -7793,7 +7801,7 @@ function App() {
   async function handleUploadPettyCashFile(e, file) {
     if (!file) return;
     try {
-      const path = `caixa/${e.id}-${Date.now()}-${file.name}`;
+      const path = `caixa/${e.id}-${Date.now()}-${nomeArquivoSeguro(file.name)}`;
       const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
@@ -7830,7 +7838,7 @@ function App() {
   async function handleUploadLunchFile(e, file) {
     if (!file) return;
     try {
-      const path = `almoco/${e.id}-${Date.now()}-${file.name}`;
+      const path = `almoco/${e.id}-${Date.now()}-${nomeArquivoSeguro(file.name)}`;
       const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
@@ -8363,7 +8371,7 @@ function App() {
   async function handleUploadExpenseFile(exp, file) {
     if (!file) return;
     try {
-      const path = `despesas/${exp.id}-${Date.now()}-${file.name}`;
+      const path = `despesas/${exp.id}-${Date.now()}-${nomeArquivoSeguro(file.name)}`;
       const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
@@ -9057,7 +9065,7 @@ function App() {
   async function handleUploadSupplierFile(o, file) {
     if (!file) return;
     try {
-      const path = `pedidos-etiquetas/${o.id}-${Date.now()}-${file.name}`;
+      const path = `pedidos-etiquetas/${o.id}-${Date.now()}-${nomeArquivoSeguro(file.name)}`;
       const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
@@ -9142,7 +9150,7 @@ function App() {
     if (!file) return;
     try {
       const token = rec.public_token || (uid() + uid());
-      const path = `recibos-folha/${rec.id}-${Date.now()}-${file.name}`;
+      const path = `recibos-folha/${rec.id}-${Date.now()}-${nomeArquivoSeguro(file.name)}`;
       const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);
@@ -10861,7 +10869,7 @@ function App() {
   async function quickUploadProof(r, file) {
     if (!file) return;
     try {
-      const path = `comprovantes/${r.id}/${Date.now()}-${file.name}`;
+      const path = `comprovantes/${r.id}/${Date.now()}-${nomeArquivoSeguro(file.name)}`;
       const { error } = await storageUpload(path, file, { upsert: true });
       if (error) throw error;
       const { data } = supa.storage.from("boletos").getPublicUrl(path);

@@ -14791,7 +14791,8 @@ function App() {
 
                 // ---------- FOLHA DO MÊS ----------
                 const viewMes = (() => {
-                  const doMes = payrollRecords.filter((r) => mesDe(r) === payrollMonth);
+                  // a aba do mês mostra só folha e vales: o 13º fica só na aba "13º salário"
+                  const doMes = payrollRecords.filter((r) => mesDe(r) === payrollMonth && !isDecimo(r));
                   const totalMes = soma(doMes);
                   const pagoMes = soma(doMes.filter((r) => r.paid));
                   const abertoMes = round2(totalMes - pagoMes);
@@ -14799,11 +14800,11 @@ function App() {
                   const pct = totalMes > 0 ? Math.round((pagoMes / totalMes) * 100) : 0;
                   const decMes = soma(doMes.filter(isDecimo));
                   const atrasadosMes = doMes.filter((r) => !r.paid && r.payment_date && r.payment_date < hoje);
-                  const atrasadosOutros = payrollRecords.filter((r) => !r.paid && r.payment_date && r.payment_date < hoje && mesDe(r) !== payrollMonth);
+                  const atrasadosOutros = payrollRecords.filter((r) => !isDecimo(r) && !r.paid && r.payment_date && r.payment_date < hoje && mesDe(r) !== payrollMonth);
                   const filtrados = doMes.filter((r) => payrollStatus === "todos" || (payrollStatus === "pago" ? !!r.paid : !r.paid)).sort(cmp);
                   const [py, pm] = payrollMonth.split("-").map(Number);
                   const quintoMes = quintoDiaUtil(py, pm - 1);
-                  const meses = [...new Set([...payrollRecords.map(mesDe), mesAtual, addMonthsKey(mesAtual, 1), payrollMonth])].sort().reverse();
+                  const meses = [...new Set([...payrollRecords.filter((r) => !isDecimo(r)).map(mesDe), mesAtual, addMonthsKey(mesAtual, 1), payrollMonth])].sort().reverse();
                   const plural = (n, um, varios) => (n === 1 ? um : varios);
                   return (
                     <>
